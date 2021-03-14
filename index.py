@@ -62,7 +62,7 @@ for episode in range(episodes):
         observation, reward, done, _ = env.step(action)
         new_state = discretizer(*observation)
 
-        outputs = np.append(outputs, [list(new_state)], axis=0) if len(outputs) > 0 else np.array([list(new_state)])
+        outputs = np.append(outputs, [[*list(new_state), policy(new_state)]], axis=0) if len(outputs) > 0 else np.array([[*list(new_state), policy(new_state)]])
         
         # lr = learning_rate(episode)
         # learned_value = new_Q_value(reward, new_state)
@@ -75,7 +75,7 @@ for episode in range(episodes):
 
 # print(inputs.shape)
 # print(outputs.shape)
-np.save('state-action-pair-inputs', inputs)
-np.save('state-outputs', outputs)
+np.save('state-action-inputs', inputs)
+np.save('state-action-outputs', outputs)
 # np.save('Q_table', Q_table)
 env.close()
