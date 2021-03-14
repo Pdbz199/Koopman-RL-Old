@@ -40,7 +40,7 @@ def exploration_rate(n: int, min_rate=0.1) -> float:
     """Decaying exploration rate"""
     return max(min_rate, min(1, 1.0 - math.log10((n+1)/25)))
 
-episodes = 1
+episodes = 1000
 # rendered_frames = 80
 Q_table = np.load('Q_table.npy')
 inputs = []
@@ -71,9 +71,11 @@ for episode in range(episodes):
 
         current_state = new_state
 
-        env.render()
+        # env.render()
 
-# np.save('state-action-pair-inputs', inputs)
-# np.save('state-outputs', outputs)
+# print(inputs.shape)
+# print(outputs.shape)
+np.save('state-action-pair-inputs', inputs)
+np.save('state-outputs', outputs)
 # np.save('Q_table', Q_table)
 env.close()
