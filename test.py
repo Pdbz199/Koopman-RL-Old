@@ -3,15 +3,16 @@ import algorithms
 import matplotlib.pyplot as plt
 import scipy as sp
 import scipy.sparse.linalg as sparse_linalg
-from scipy.spatial import distance
 
-k = algorithms.polynomialKernel(2)
+k = algorithms.polynomialKernel(2) # from one of the research repos, change to scikit?
 reg_param = 0.1
 num_eigenfuncs = 4
 
 M = 1000
+# random initial state?
+# potential constant deviation
 inputs = np.zeros((4, M))
-inputs[:,0] = [1,2,3,4]
+inputs[:,0] = [1,2,3,4] # sample from distribution, add one on it for a while
 for val in range(1, M):
     inputs[:,val] = inputs[:,val-1] + 1
 outputs = np.roll(inputs, -1)
@@ -40,7 +41,7 @@ print(f"Sigma shape: {Sigma.shape}")
 
 # Estimate Koopman operator
 Sigma_pseudo_inverse = sp.linalg.pinv(Sigma, rcond=1e-15)
-K_hat = (Sigma_pseudo_inverse @ Q.T) @ A_hat @ (Q @ Sigma_pseudo_inverse)
+K_hat = (Sigma_pseudo_inverse @ Q.T) @ A_hat @ (Q @ Sigma_pseudo_inverse) # change to np.dot
 print("\hat{K} shape:", K_hat.shape)
 
 evsK = 10
@@ -53,7 +54,7 @@ print("\hat{V} shape:", V_hat.shape)
 r = 10
 eigenvals_r = np.sqrt(eigenvalues_G_hat[0:r])
 zero_dummy = np.zeros((evs-r,1))
-Sigma_r = np.diag(np.append(eigenvals_r, zero_dummy))
+Sigma_r = np.diag(np.append(eigenvals_r, zero_dummy)) # Sigma^2 * Sigma pinv
 Sigma_r_pinv = sp.linalg.pinv(Sigma_r, rcond=1e-15)
 print(f"Sigma_r shape: {Sigma_r.shape}")
 Phi_X = Q @ Sigma_r @ V_hat
@@ -61,7 +62,7 @@ print(f"Phi_X shape: {Phi_X.shape}")
 Xi = sp.linalg.pinv(Phi_X, rcond=1e-15) @ inputs.T # TODO: Ensure Xi is correct
 print(f"Xi shape: {Xi.shape}")
 
-# CORRECT UP TO THIS POINT
+# I BELIEVE IT IS CORRECT UP TO THIS POINT
 
 def varphi(x):
     varphis = []
