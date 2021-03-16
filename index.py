@@ -40,13 +40,16 @@ def exploration_rate(n: int, min_rate=0.1) -> float:
     """Decaying exploration rate"""
     return max(min_rate, min(1, 1.0 - math.log10((n+1)/25)))
 
-episodes = 1000
+# CartPole has been solved! It took 230 episodes
+episodes = 230
 # rendered_frames = 80
+episode_rewards = []
 Q_table = np.load('Q_table.npy')
 inputs = []
 outputs = []
 
 for episode in range(episodes):
+    episode_reward = 0
     current_state = discretizer(*env.reset())
     done = False
 
@@ -61,6 +64,7 @@ for episode in range(episodes):
 
         observation, reward, done, _ = env.step(action)
         new_state = discretizer(*observation)
+        episode_reward += reward
 
         # outputs = np.append(outputs, [[*list(new_state), policy(new_state)]], axis=0) if len(outputs) > 0 else np.array([[*list(new_state), policy(new_state)]])
         
@@ -72,6 +76,14 @@ for episode in range(episodes):
         current_state = new_state
 
         # env.render()
+    
+    episode_rewards.append(episode_reward)
+    if len(episode_rewards) == 100:
+        if np.average(episode_rewards) >= 195.0:
+            print(f"CartPole has been solved! It took {episode+1} episodes")
+            break
+            
+        episode_rewards.pop(0)
 
 # print(inputs.shape)
 # print(outputs.shape)

@@ -20,6 +20,30 @@ class gaussianKernel(object):
     def __repr__(self):
         return 'Gaussian kernel with bandwidth sigma = %f.' % self.sigma
 
+class polynomialKernel(object):
+    '''Polynomial kernel with degree p and inhomogeneity c.'''
+    def __init__(self, p, c=1):
+        self.p = p
+        self.c = c
+    def __call__(self, x, y):
+        if x.ndim == 0:
+            return (self.c + x * y)**self.p
+        return (self.c + x.T @ y)**self.p
+    def diff(self, x, y):
+        if x.ndim == 0:
+            return self.p*(self.c + x * y)**(self.p-1)*y;
+        return self.p*(self.c + x.T @ y)**(self.p-1)*y;
+    def ddiff(self, x, y):
+        if x.ndim == 0:
+            return self.p*(self.p-1)*(self.c + x.T * y)**(self.p-2) * _np.outer(y, y)
+        return self.p*(self.p-1)*(self.c + x.T @ y)**(self.p-2) * _np.outer(y, y)
+    def laplace(self, x, y):
+        if x.ndim == 0:
+            self.p*(self.p-1)*(self.c + x.T * y)**(self.p-2) * _np.linalg.norm(y)**2
+        return self.p*(self.p-1)*(self.c + x.T @ y)**(self.p-2) * _np.linalg.norm(y)**2
+    def __repr__(self):
+        return 'Polynomial kernel with degree p = %f and inhomogeneity c = %f.' % (self.p, self.c)
+
 def gramian(X, k):
     '''Compute Gram matrix for training data X with kernel k.'''
     name = k.__class__.__name__
