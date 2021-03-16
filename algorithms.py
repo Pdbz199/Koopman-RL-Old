@@ -131,7 +131,7 @@ def kedmd(X, Y, k, regularization=0, evs=5, operator='K'):
     :param regularization:  regularization parameter
     :param evs:      number of eigenvalues/eigenvectors
     :param operator: 'K' for Koopman or 'P' for Perron-Frobenius (note that the default is K here)
-    :return:         eigenvalues d and eigenfunctions evaluated in X
+    :return:         eigenvalues d and eigenfunctions V evaluated in X
     '''
     if isinstance(X, list): # e.g., for strings
         n = len(X)
