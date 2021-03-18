@@ -1,5 +1,5 @@
-# XXX: the @ symbol sometimes produces array values when it shouldn't
-# XXX: Not really sure what the solution is...
+# XXX: "The @ operator can be used as a shorthand for np.matmul on ndarrays."
+# XXX: https://numpy.org/doc/stable/reference/generated/numpy.matmul.html#numpy.matmul
 
 import numpy as np
 import algorithms
@@ -8,11 +8,13 @@ import matplotlib.pyplot as plt
 import scipy as sp
 import scipy.sparse.linalg as sparse_linalg
 
-k = algorithms.polynomialKernel(2) # from one of the research repos, change to scikit?
-reg_param = 0.1
-num_eigenfuncs = 4
+# k = algorithms.polynomialKernel(2)
+# reg_param = 0.1
+# num_eigenfuncs = 4
+degree = 2
+gamma = 1
 
-M = 1000
+M = 100
 # random initial state?
 # potential constant deviation
 X = np.zeros((4, M))
@@ -30,10 +32,13 @@ Y[:,-1] = X[:,-1] + 1
 
 
 # Estimate G and A matrices
-# TODO: Look more closely at gramians, maybe use sklearn?
-# https://scikit-learn.org/stable/modules/generated/sklearn.metrics.pairwise.polynomial_kernel.html
-G_hat = algorithms.gramian(X, k)
-A_hat = algorithms.gramian2(Y, X, k)
+# https://scikit-learn.org/stable/modules/metrics.html#polynomial-kernel
+G_hat = polynomial_kernel(X.T, degree=degree, gamma=gamma)
+A_hat = polynomial_kernel(Y.T, X.T, degree=degree, gamma=gamma)
+# print(G_hat[0,0])
+# print(sk_G_hat[0,0])
+# test = np.array([[1,2,3,4]])
+# print(polynomial_kernel(test, test, degree=2, gamma=1))
 
 # Get Q and \Sigma from \hat{G}
 evs = 200
@@ -61,8 +66,8 @@ print("\hat{V} shape:", V_hat.shape)
 eigenvals_r = np.sqrt(eigenvalues_G_hat)
 # zero_dummy = np.zeros((evs-r,1))
 # Sigma_r = np.diag(np.append(eigenvals_r, zero_dummy))
-Sigma_r = Sigma
-# Sigma_r = np.power(Sigma, 2) @ Sigma_pseudo_inverse
+# Sigma_r = Sigma
+Sigma_r = np.power(Sigma, 2) @ Sigma_pseudo_inverse
 Sigma_r_pinv = sp.linalg.pinv(Sigma_r, rcond=1e-15)
 print(f"Sigma_r shape: {Sigma_r.shape}")
 Phi_X = Q @ Sigma_r @ V_hat
@@ -70,29 +75,37 @@ print(f"Phi_X shape: {Phi_X.shape}")
 Xi = sp.linalg.pinv(Phi_X, rcond=1e-15) @ X.T
 print(f"Xi shape: {Xi.shape}")
 
-# TODO: Fix varphi calc
 def varphi(x):
     varphis = []
     applied_kernels = []
     for i in range(M):
-        kernel_value = k(x, X[:,i].reshape(X[:,i].shape[0],-1))
-        applied_kernels.append(kernel_value[0,0])
+        kernel_value = polynomial_kernel([x], [X[:,i]], degree=degree, gamma=gamma)[0,0]
+        applied_kernels.append(kernel_value)
     Q_times_Sigma_r_pseudo_inverse = Q @ Sigma_r_pinv
     print(f"Q @ Sigma_r_pinv shape: {Q_times_Sigma_r_pseudo_inverse.shape}")
-    applied_kernels = np.reshape(applied_kernels, (len(applied_kernels),-1))
+    applied_kernels = np.reshape(applied_kernels, (1,len(applied_kernels)))
+    print(f"Applied kernels shape: {applied_kernels.shape}")
+    # (1000,200) times (200,) should be (1000,1) or (1000,) which it is!
+    # it is (1000,)
+    print(f"Q @ Sigma_r_pinv @ V_hat[0] shape: {(Q_times_Sigma_r_pseudo_inverse @ V_hat[0]).shape}")
+    # (1,1000) times (1000,) should be (1,1) or (1,) which it is!
+    # it is (1,)
+    print((applied_kernels @ (Q_times_Sigma_r_pseudo_inverse @ V_hat[0])))
     for v_hat_k in V_hat:
-        varphis.append(applied_kernels @ (Q_times_Sigma_r_pseudo_inverse @ v_hat_k))
+        varphis.append((applied_kernels @ (Q_times_Sigma_r_pseudo_inverse @ v_hat_k))[0])
     return np.array(varphis)
 
 # Function reconstruction
 def F(x):
-    # TODO: Determine whether varphi takes in column vector (as is now) or row vector
-    varphi_calc = varphi(np.reshape(x, (len(x),-1)))
-    print(f"varphi_calc shape: {varphi_calc.shape}")
-    # TODO: Check summation calculation (supposed to be using "*"?)
+    varphi_calcs = varphi(x)
+    print(f"varphi_calc shape: {varphi_calcs.shape}")
     summation = 0
+    print("eigenvals_r[0]:", np.real(eigenvals_r[0]))
+    print("Xi[0]:", Xi[0])
+    print("varphi_calc[0]:", np.real(varphi_calcs[0]))
+    print("eigenvals_r[0] * Xi[0]:", eigenvals_r[0] * Xi[0])
     for l in range(len(eigenvals_r)):
-        summation += eigenvals_r[l] * Xi[l] * varphi_calc[l]
+        summation += eigenvals_r[l] * Xi[l] * varphi_calcs[l]
     return summation
 
 print(F([1.,2.,3.,4.])) # Expected to output [2.,3.,4.,5.] or [[2.],[3.],[4.],[5.]]
