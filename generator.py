@@ -146,32 +146,32 @@ def a(l):
 
 a_1 = a(1)
 print(a_1.shape)
-print(a(1).reshape((d,d)))
+# print(a_1.reshape((d,d)))
 
-## Function to compute the a matrix at a specific snapshot index
-# def evalAMatrix(l):
-#     a_matrix = np.zeros((d, d))
-#     for p in range(d+1, d+1+s):
-#         monomial = str(sortedM[p])
-#         i = 0
-#         j = 0
-#         split_mon = monomial.split('**')
-#         if len(split_mon) > 1:
-#             i = int(split_mon[0][-1])
-#             j = int(split_mon[0][-1])
-#         else:
-#             split_mon = monomial.split('*')
-#             i = int(split_mon[0][-1])
-#             j = int(split_mon[1][-1])
+# Function to compute the a matrix at a specific snapshot index
+def evalAMatrix(l):
+    a_matrix = np.zeros((d, d))
+    for p in range(d+1, d+1+s):
+        monomial = str(sortedM[p])
+        i = 0
+        j = 0
+        split_mon = monomial.split('**')
+        if len(split_mon) > 1:
+            i = int(split_mon[0][-1])
+            j = int(split_mon[0][-1])
+        else:
+            split_mon = monomial.split('*')
+            i = int(split_mon[0][-1])
+            j = int(split_mon[1][-1])
 
-#         a_matrix[i,j] = a(l)[p-d-1]
-#         a_matrix[j,i] = a(l)[p-d-1]
+        a_matrix[i,j] = a(l)[p-d-1]
+        a_matrix[j,i] = a(l)[p-d-1]
 
-#     return a_matrix
+    return a_matrix
 
-# # Oh no... it's not positive definite
-# # Some calculation must be wrong, darn...
-# # decomp = np.linalg.cholesky(evalAMatrix(0))
+# Oh no... it's not positive definite
+# Some calculation must be wrong
+# decomp = sp.linalg.cholesky(evalAMatrix(0))
 
 # def sigma(l):
 #     # Attempt at work around without Cholesky
