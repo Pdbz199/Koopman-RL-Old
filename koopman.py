@@ -25,8 +25,8 @@ print("Expectation:", expectation)
 print("prediction ~= expectation:", np.array_equal(prediction, expectation))
 
 '''====================== TESTING ON POLICY FUNCTION ======================'''
-X = np.load('state-action-inputs.npy')
-# X = X[:int(X.shape[0]*0.5)]
+X = np.load('state-action-inputs.npy') # 20,000 entries
+X = X[:int(X.shape[0]*0.0015)] # 30 points!
 
 # Fit Koopman operator using closed-form solution to DMD
 optdmd = OptDMD(svd_rank=15)
@@ -49,6 +49,7 @@ from sklearn.preprocessing import KBinsDiscretizer
 from typing import Tuple
 import gym
 env = gym.make('CartPole-v0')
+koopEnv = gym.make('CartPole-v0')
 
 Q_table = np.load('Q_table.npy')
 
@@ -66,7 +67,7 @@ def policy(state: tuple):
     """ Choosing an action on epsilon-greedy policy """
     return np.argmax(Q_table[state])
 
-num_steps = 100
+num_steps = 200 # 100
 correctness_arr = np.zeros(num_steps)
 # START FROM BEGINNING STATE
 current_state = discretizer(*env.reset())
@@ -100,3 +101,39 @@ for i in range(num_steps):
     if not correctness_arr[i]:
         print(f"Step at which Koopman prediction diverges: {i}")
         break
+
+current_state = discretizer(*env.reset())
+current_stateK = discretizer(*koopEnv.reset())
+action = policy(current_state)
+actionK = policy(current_state)
+
+q_learner_reward = 0
+koopman_reward = 0
+
+for i in range(num_steps):
+    # environment details
+    observation, reward, done, _ = env.step(action)
+    observationK, rewardK, doneK, _ = koopEnv.step(actionK)
+
+    # keep track of rewards
+    q_learner_reward += reward
+    koopman_reward += rewardK
+
+    # discretize state - hoping generator won't have to!
+    new_state = discretizer(*observation)
+    new_stateK = discretizer(*observationK)
+
+    # get actions
+    next_action = policy(new_state)
+    prediction = model_optdmd.predict(np.array([*list(current_stateK), actionK]))
+    prediction = np.round(np.real(prediction))
+    next_actionK = int(prediction[-1])
+
+    # update environments
+    action = next_action
+    actionK = next_actionK
+    current_state = new_state
+    current_stateK = new_stateK
+
+print("Q rewards:", q_learner_reward)
+print("K rewards:", koopman_reward)
