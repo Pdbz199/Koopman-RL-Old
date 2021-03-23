@@ -1,3 +1,4 @@
+#%%
 import numpy as np
 import scipy as sp
 
@@ -47,8 +48,8 @@ X = np.empty((m, N+1))
 X[:, 0] = 50
 brownian(X[:, 0], N, dt, delta, out=X[:, 1:])
 
+#%%
 '''======================= SETUP/DEFINITIONS ======================='''
-#%% 
 import observables
 from sympy import symbols
 from sympy.polys.monomials import itermonomials, monomial_count
@@ -57,19 +58,22 @@ from sympy.polys.orderings import monomial_key
 d = X.shape[0]
 m = X.shape[1]
 s = int(d*(d+1)/2) # number of second order poly terms
+rtol=1e-02
+atol=1e-02
 psi = observables.monomials(2)
-x_str = ""
-for i in range(d):
-    x_str += 'x_' + str(i) + ', '
-x_syms = symbols(x_str)
-M = itermonomials(x_syms, 2)
-sortedM = sorted(M, key=monomial_key('grlex', np.flip(x_syms)))
+# x_str = ""
+# for i in range(d):
+#     x_str += 'x_' + str(i) + ', '
+# x_syms = symbols(x_str)
+# M = itermonomials(x_syms, 2)
+# sortedM = sorted(M, key=monomial_key('grlex', np.flip(x_syms)))
 # print(sortedM)
 Psi_X = psi(X)
 nablaPsi = psi.diff(X)
 nabla2Psi = psi.ddiff(X)
 print("nablaPsi Shape", nablaPsi.shape)
 n = Psi_X.shape[0]
+
 #%%
 '''======================= COMPUTATIONS ======================='''
 
@@ -89,33 +93,42 @@ dPsi_X = np.empty((n, m))
 for column in range(m-1):
     dPsi_X[:, column] = vectorized_dpsi(range(n), column)
 
+#%%
 # Calculate Koopman generator approximation
 train = int(m * 0.8)
 test = m - train
 M = dPsi_X[:, :train] @ np.linalg.pinv(Psi_X[:, :train]) # \widehat{L}^\top
 L = M.T # estimate of Koopman generator
 
-# Construct B matrix (selects first-order monomials except 1)
-B = constructB(d, n)
+def check_symmetric(a, rtol=1e-02, atol=1e-02):
+    return np.allclose(a, a.T, rtol=rtol, atol=atol)
+print("Is L approximately symmetric:", check_symmetric(L))
 
-# Computed b function (sometimes called \mu)
+# Eigen decomposition
+eig_vals, eig_vecs = sp.sparse.linalg.eigs(L) if sp.sparse.issparse(L) else sp.linalg.eig(L)
+# Compute eigenfunction matrix
+eig_funcs = (eig_vecs).T @ Psi_X
+
+#%% Construct estimates of drift vector (b) and diffusion matrix (a) using two methods:
+# 1. Directly from dictionary functions without dimension reduction  
+# 2. Construct eigendecomposition and restrict its order
+
+# Construct B matrix that selects first-order monomials (except 1) when multiplied by list of dictionary functions
+B = constructB(d, n)
+# Construct second order B matrix (selects second-order monomials)
+second_orderB = constructSecondOrderB(s, n)
+
+# Computed b function (sometimes denoted by \mu) without dimension reduction
 L_times_B_transposed = (L @ B).T
 def b(l):
     return L_times_B_transposed @ Psi_X[:, l] # (k,)
 
-def check_symmetric(a, rtol=1e-02, atol=1e-02):
-    return np.allclose(a, a.T, rtol=rtol, atol=atol)
-print("Is the matrix approximately symmetric:", check_symmetric(L))
+# The b_v2 function allows for heavy dimension reduction
+# default is reducing by 90% (taking the first n/10 eigen-parts)
 
-# Eigen decomposition
-eig_vals, eig_vecs = sp.sparse.linalg.eigs(L) if sp.sparse.issparse(L) else sp.linalg.eig(L)
 # Calculate Koopman modes
 V = B.T @ np.linalg.inv((eig_vecs).T)
-# Compute eigenfunction matrix
-eig_funcs = (eig_vecs).T @ Psi_X
 
-# This b function allows for heavy dimension reduction!
-# default is reducing by 90% (taking the first n/10 eigen-parts)
 # TODO: Figure out correct place to take reals
 def b_v2(l, num_dims=n//10):
     res = 0
@@ -123,51 +136,51 @@ def b_v2(l, num_dims=n//10):
         res += eig_vals[ell] * eig_funcs[ell, l] * V[:, ell] #.reshape(-1, 1)
     return np.real(res)
 
-# Construct second order B matrix (selects second-order monomials)
-second_orderB = constructSecondOrderB(s, n)
-
-# the a function
-# this was calculated in a weird way, so could have issues...
+# the following a functions compute the diffusion matrices as flattened vectors
+# this was calculated in a weird way, so it could have issues...
 L_times_second_orderB_transpose = (L @ second_orderB).T
-# l = 1
-# print("1:", L.shape)
-# print("2:", second_orderB.shape)
-# print("3:", L_times_second_orderB_transpose.shape)
-# print("4:", Psi_X[:, l].shape) #.reshape(-1, 1)
-# print("5:", (L_times_second_orderB_transpose @ Psi_X[:, l]).shape)
-# print("6:", second_orderB.T.shape)
-# print("7:", nablaPsi[:, :, l].shape)
-# print("8:", b_v2(l).shape) # (20,)
-# print("9:", (second_orderB.T @ nablaPsi[:, :, l]).shape)
-# print("10:", (second_orderB.T @ nablaPsi[:, :, l] @ b_v2(l)).shape)
+
 def a(l):
+    return (L_times_second_orderB_transpose @ Psi_X[:, l]) - \
+        (second_orderB.T @ nablaPsi[:, :, l] @ b(l))
+
+def a_v2(l):
     return (L_times_second_orderB_transpose @ Psi_X[:, l]) - \
         (second_orderB.T @ nablaPsi[:, :, l] @ b_v2(l))
 
-a_1 = a(1)
-print(a_1.shape)
-# print(a_1.reshape((d,d)))
+#%% Reshape a matrix and perform some tests
+# Function to reshape the a vector at a specific snapshot index
+# I think it needs a rewrite
+# def evalAMatrix(l):
+#     a_matrix = np.zeros((d, d))
+#     a_l = a(l)
+#     for p in range(d+1, d+1+s):
+#         monomial = str(sortedM[p])
+#         i = 0
+#         j = 0
+#         split_mon = monomial.split('**')
+#         if len(split_mon) > 1:
+#             i = int(split_mon[0][-1])
+#             j = int(split_mon[0][-1])
+#         else:
+#             split_mon = monomial.split('*')
+#             i = int(split_mon[0][-1])
+#             j = int(split_mon[1][-1])
 
-# Function to compute the a matrix at a specific snapshot index
-def evalAMatrix(l):
-    a_matrix = np.zeros((d, d))
-    for p in range(d+1, d+1+s):
-        monomial = str(sortedM[p])
-        i = 0
-        j = 0
-        split_mon = monomial.split('**')
-        if len(split_mon) > 1:
-            i = int(split_mon[0][-1])
-            j = int(split_mon[0][-1])
-        else:
-            split_mon = monomial.split('*')
-            i = int(split_mon[0][-1])
-            j = int(split_mon[1][-1])
+#         a_matrix[i,j] = a_l[p-d-1]
+#         a_matrix[j,i] = a_l[p-d-1]
 
-        a_matrix[i,j] = a(l)[p-d-1]
-        a_matrix[j,i] = a(l)[p-d-1]
+#     return a_matrix
 
-    return a_matrix
+# for j in range(0, n+1):
+#     print(np.count_nonzero(evalAMatrix(j)))
+
+# diagAMat = np.zeros(d,d)
+# for j in range(0, n+1):
+#     evaldA = evalAMatrix(n)
+#     for i in range(0, d):
+#         diagAMat[i,i] = evaldA[i,i]
+#     print(np.allclose(diagAMat,evalAMatrix(n), rtol=rtol, atol=atol))
 
 # Oh no... it's not positive definite
 # Some calculation must be wrong
@@ -197,7 +210,3 @@ def evalAMatrix(l):
 # epsilons = np.array(epsilons)
 # print(epsilons)
 # print(epsilons.shape)
-
-# # np.save('gedmd_epsilons_fixed', epsilons)
-# # np.savetxt("gedmd_epsilons_fixed.csv", epsilons.reshape(-1, epsilons.shape[1]), delimiter=",")
-# %%
