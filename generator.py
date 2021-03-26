@@ -33,11 +33,11 @@ def constructSecondOrderB(s, n):
 from brownian import brownian
 
 # The Wiener process parameter.
-delta = 2
+delta = 1
 # Total time.
 T = 10.0
 # Number of steps.
-N = 1000
+N = 5000
 # Time step size
 dt = T/N
 # Number of realizations to generate.
@@ -47,6 +47,8 @@ X = np.empty((m, N+1))
 # Initial values of x.
 X[:, 0] = 50
 brownian(X[:, 0], N, dt, delta, out=X[:, 1:])
+Z = np.roll(X,-1)[:, :-1]
+X = X[:, :-1]
 
 #%%
 '''======================= SETUP/DEFINITIONS ======================='''
@@ -58,17 +60,22 @@ from sympy.polys.orderings import monomial_key
 d = X.shape[0]
 m = X.shape[1]
 s = int(d*(d+1)/2) # number of second order poly terms
-rtol=1e-02
-atol=1e-02
+rtoler=1e-02
+atoler=1e-02
 psi = observables.monomials(2)
-# x_str = ""
-# for i in range(d):
-#     x_str += 'x_' + str(i) + ', '
-# x_syms = symbols(x_str)
-# M = itermonomials(x_syms, 2)
-# sortedM = sorted(M, key=monomial_key('grlex', np.flip(x_syms)))
+
+#%%
+x_str = ""
+for i in range(d):
+    x_str += 'x_' + str(i) + ', '
+x_syms = symbols(x_str)
+M = itermonomials(x_syms, 2)
+sortedM = sorted(M, key=monomial_key('grlex', np.flip(x_syms)))
 # print(sortedM)
+
+#%%
 Psi_X = psi(X)
+Psi_X_T = Psi_X.T
 nablaPsi = psi.diff(X)
 nabla2Psi = psi.ddiff(X)
 print("nablaPsi Shape", nablaPsi.shape)
@@ -123,12 +130,11 @@ L_times_B_transposed = (L @ B).T
 def b(l):
     return L_times_B_transposed @ Psi_X[:, l] # (k,)
 
-# The b_v2 function allows for heavy dimension reduction
-# default is reducing by 90% (taking the first n/10 eigen-parts)
-
 # Calculate Koopman modes
 V = B.T @ np.linalg.inv((eig_vecs).T)
 
+# The b_v2 function allows for heavy dimension reduction
+# default is reducing by 90% (taking the first n/10 eigen-parts)
 # TODO: Figure out correct place to take reals
 def b_v2(l, num_dims=n//10):
     res = 0
@@ -136,6 +142,19 @@ def b_v2(l, num_dims=n//10):
         res += eig_vals[ell] * eig_funcs[ell, l] * V[:, ell] #.reshape(-1, 1)
     return np.real(res)
 
+#%%
+# total_b = 0
+# total_b_v2 = 0
+# for l in range(m):
+#     b_l = b(l)
+#     b_v2_l = b_v2(l)
+#     checker = np.zeros(b_l.shape)
+#     total_b += np.allclose(b_l, checker, rtol=rtoler, atol=atoler)
+#     total_b_v2 += np.allclose(b_v2_l, checker, rtol=rtoler, atol=atoler)
+# print(total_b)
+# print(total_b_v2)
+
+#%%
 # the following a functions compute the diffusion matrices as flattened vectors
 # this was calculated in a weird way, so it could have issues...
 L_times_second_orderB_transpose = (L @ second_orderB).T
@@ -148,65 +167,76 @@ def a_v2(l):
     return (L_times_second_orderB_transpose @ Psi_X[:, l]) - \
         (second_orderB.T @ nablaPsi[:, :, l] @ b_v2(l))
 
-#%% Reshape a matrix and perform some tests
-# Function to reshape the a vector at a specific snapshot index
-# I think it needs a rewrite
-# def evalAMatrix(l):
-#     a_matrix = np.zeros((d, d))
-#     a_l = a(l)
-#     for p in range(d+1, d+1+s):
-#         monomial = str(sortedM[p])
-#         i = 0
-#         j = 0
-#         split_mon = monomial.split('**')
-#         if len(split_mon) > 1:
-#             i = int(split_mon[0][-1])
-#             j = int(split_mon[0][-1])
-#         else:
-#             split_mon = monomial.split('*')
-#             i = int(split_mon[0][-1])
-#             j = int(split_mon[1][-1])
+#%% Reshape a vector as matrix and perform some tests
+def covarianceMatrix_v2(l):
+    a_l = a_v2(l)
+    covariance = np.zeros((d, d))
+    row = 0
+    col = 0
+    covariance[row, col] = a_l[0]
+    col += 1
+    n = 1
+    while col < d:
+        covariance[row, col] = a_l[n]
+        covariance[col, row] = a_l[n]
+        if row == col: 
+            col += 1
+            row = 0
+        else:
+            row += 1
+        n +=1
+    return covariance
 
-#         a_matrix[i,j] = a_l[p-d-1]
-#         a_matrix[j,i] = a_l[p-d-1]
+# test = covarianceMatrix(2)
+# print(test)
+# print(test.shape)
+# print(check_symmetric(test, 0, 0))
 
-#     return a_matrix
+# for j in range(m):
+#     result = np.count_nonzero(covarianceMatrix(j))
+#     if result < d*d: print(result)
 
-# for j in range(0, n+1):
-#     print(np.count_nonzero(evalAMatrix(j)))
-
-# diagAMat = np.zeros(d,d)
-# for j in range(0, n+1):
-#     evaldA = evalAMatrix(n)
-#     for i in range(0, d):
-#         diagAMat[i,i] = evaldA[i,i]
-#     print(np.allclose(diagAMat,evalAMatrix(n), rtol=rtol, atol=atol))
+# diagAMat = np.zeros((d, d))
+# for j in range(m):
+#     evaldA = covarianceMatrix(j)
+#     for i in range(d):
+#         diagAMat[i, i] = evaldA[i, i]
+#     result = np.allclose(diagAMat, evaldA, rtol=rtoler, atol=atoler)
+#     if result: print("All close at j =", j)
 
 # Oh no... it's not positive definite
 # Some calculation must be wrong
-# decomp = sp.linalg.cholesky(evalAMatrix(0))
+# decomp = sp.linalg.cholesky(covarianceMatrix(0))
 
-# def sigma(l):
-#     # Attempt at work around without Cholesky
-#     U, S, V = np.linalg.svd(evalAMatrix(l))
-#     square_S = np.diag(S**(1/2))
-#     sigma = V @ square_S @ V.T
-#     return sigma
+#%%
+# A = Psi_X
+# B is Joe.
+B = np.zeros((d, m))
+m_range = np.arange(m)
+B = X[:, m_range] - Z[:, m_range]
+print("B shape:", B.shape)
+print("Psi_X transpose shape:", Psi_X_T.shape)
+PsiMult = sp.linalg.inv(Psi_X @ Psi_X_T) @ Psi_X
+C = PsiMult @ B.T
+# Each col of matric C represents the coeficients in a linear combo of the dictionary functions that makes up each component of the drift vector. So each c_{} 
+print("C shape:", C.shape)
 
-# # snapshots by coins
-# # rows are snapshots
-# epsilons = np.empty((d, m, 1))
-# def epsilon_t(l):
-#     return np.linalg.inv(sigma(l-1).T @ sigma(l-1)) @ sigma(l-1).T @ (X[:, l].reshape(-1, 1) - b_v2(l-1))
+b_v3 = C.T @ Psi_X
+for l in range(5):
+    print(b_v3[:, l])
+    
+def a_v3(l):
+    diffusionDictCoefs = np.empty((d, d, n))
+    diffusionMat = np.empty((d, d))
+    for i in range(d):
+        for j in range(d):
+            Bij = B[i]*B[j]
+            diffusionDictCoefs[i, j] = PsiMult @ Bij
+            diffusionMat[i, j] = np.dot(diffusionDictCoefs[i, j], Psi_X[:,l])
+    return diffusionMat
+    
+# not very good ):
+for l in range(5):
+    print(np.diagonal(a_v3(l)))
 
-#     for snapshot_index in range(1, epsilons.shape[1], 1):
-#         print("snapshot ", snapshot_index)
-#         epsilons[:, snapshot_index] = epsilon_t(snapshot_index)
-
-# # Epsilons produced make no sense...
-# # We are looking for numbers that follow a
-# # normal distribution but these are way off
-
-# epsilons = np.array(epsilons)
-# print(epsilons)
-# print(epsilons.shape)
+#%%

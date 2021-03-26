@@ -1,3 +1,4 @@
+#%%
 import numpy as np
 import pykoopman as pk
 from pydmd import OptDMD, DMD
@@ -43,6 +44,7 @@ expectation = X[index+1]
 print("Expectation:", expectation)
 print("prediction ~= expectation:", np.array_equal(prediction, expectation))
 
+#%%
 '''====================== TESTING AGAINST GROUND-TRUTH ======================'''
 import math
 from sklearn.preprocessing import KBinsDiscretizer
@@ -102,6 +104,7 @@ for i in range(num_steps):
         print(f"Step at which Koopman prediction diverges: {i}")
         break
 
+#%%
 current_state = discretizer(*env.reset())
 current_stateK = discretizer(*koopEnv.reset())
 action = policy(current_state)
@@ -137,3 +140,4 @@ for i in range(num_steps):
 
 print("Q rewards:", q_learner_reward)
 print("K rewards:", koopman_reward)
+# %%
