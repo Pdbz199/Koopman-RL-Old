@@ -89,7 +89,7 @@ We simulated some paths from a standard Brownian Motion (drift coefficient 0 and
 '''
 ### Simlulation of Brownian Data
 '''
-We simulated 20 paths of standard BM each with 5000 steps in a time interval of size 5000 so that the time step was 1. We took each of these 20 paths to be a state variable in our state vector. Our state vector is thus comprised of 20 iid BMs. Formally, our state variable dynamics have the form
+We simulated 20 paths of standard BM each with 5000 steps in a time interval of size 5000 so that the time step was 1. We took each of these 20 paths to be a state variable in our state vector. Our state vector is thus comprised of 20 iid BMs. Formally, our state vector dynamics have the form
 $$
     \text{d}\tilde X_t = b\text{d}t + \Sigma\text{d}W_t
 $$
