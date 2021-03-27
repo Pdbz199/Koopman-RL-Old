@@ -33,11 +33,11 @@ def constructSecondOrderB(s, n):
 from brownian import brownian
 
 # The Wiener process parameter.
-delta = 1
+sigma = 1
 # Total time.
-T = 10.0
+T = 20000.0
 # Number of steps.
-N = 5000
+N = 20000
 # Time step size
 dt = T/N
 # Number of realizations to generate.
@@ -46,7 +46,7 @@ m = 20
 X = np.empty((m, N+1))
 # Initial values of x.
 X[:, 0] = 50
-brownian(X[:, 0], N, dt, delta, out=X[:, 1:])
+brownian(X[:, 0], N, dt, sigma, out=X[:, 1:])
 Z = np.roll(X,-1)[:, :-1]
 X = X[:, :-1]
 
