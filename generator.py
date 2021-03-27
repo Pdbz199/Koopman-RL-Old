@@ -5,9 +5,9 @@ import scipy as sp
 '''======================= HELPER FUNCTIONS ======================='''
 
 # Construct B matrix as seen in 3.1.2 of the reference paper
-def constructB(d, n):
-    Bt = np.zeros((d, n))
-    if n == 1:
+def constructB(d, k):
+    Bt = np.zeros((d, k))
+    if k == 1:
         Bt[0,0] = 1
     else:
         num = np.arange(d)
@@ -16,9 +16,9 @@ def constructB(d, n):
     return B
 
 # Construct similar B matrix as above, but for second order monomials
-def constructSecondOrderB(s, n):
-    Bt = np.zeros((s, n))
-    if n == 1:
+def constructSecondOrderB(s, k):
+    Bt = np.zeros((s, k))
+    if k == 1:
         Bt[0,0] = 1
     else:
         row = 0
@@ -41,9 +41,9 @@ N = 20000
 # Time step size
 dt = T/N
 # Number of realizations to generate.
-m = 20
+n = 20
 # Create an empty array to store the realizations.
-X = np.empty((m, N+1))
+X = np.empty((n, N+1))
 # Initial values of x.
 X[:, 0] = 50
 brownian(X[:, 0], N, dt, sigma, out=X[:, 1:])
@@ -79,7 +79,7 @@ Psi_X_T = Psi_X.T
 nablaPsi = psi.diff(X)
 nabla2Psi = psi.ddiff(X)
 print("nablaPsi Shape", nablaPsi.shape)
-n = Psi_X.shape[0]
+k = Psi_X.shape[0]
 
 #%%
 '''======================= COMPUTATIONS ======================='''
@@ -96,9 +96,9 @@ def dpsi(k, l, t=1):
 vectorized_dpsi = np.vectorize(dpsi)
 
 # Construct \text{d}\Psi_X matrix
-dPsi_X = np.empty((n, m))
+dPsi_X = np.empty((k, m))
 for column in range(m-1):
-    dPsi_X[:, column] = vectorized_dpsi(range(n), column)
+    dPsi_X[:, column] = vectorized_dpsi(range(k), column)
 
 #%%
 # Calculate Koopman generator approximation
@@ -121,9 +121,9 @@ eig_funcs = (eig_vecs).T @ Psi_X
 # 2. Construct eigendecomposition and restrict its order
 
 # Construct B matrix that selects first-order monomials (except 1) when multiplied by list of dictionary functions
-B = constructB(d, n)
+B = constructB(d, k)
 # Construct second order B matrix (selects second-order monomials)
-second_orderB = constructSecondOrderB(s, n)
+second_orderB = constructSecondOrderB(s, k)
 
 # Computed b function (sometimes denoted by \mu) without dimension reduction
 L_times_B_transposed = (L @ B).T
@@ -134,11 +134,11 @@ def b(l):
 V = B.T @ np.linalg.inv((eig_vecs).T)
 
 # The b_v2 function allows for heavy dimension reduction
-# default is reducing by 90% (taking the first n/10 eigen-parts)
+# default is reducing by 90% (taking the first k/10 eigen-parts)
 # TODO: Figure out correct place to take reals
-def b_v2(l, num_dims=n//10):
+def b_v2(l, num_dims=k//10):
     res = 0
-    for ell in range(n-1, n-num_dims, -1):
+    for ell in range(k-1, k-num_dims, -1):
         res += eig_vals[ell] * eig_funcs[ell, l] * V[:, ell] #.reshape(-1, 1)
     return np.real(res)
 
@@ -226,7 +226,7 @@ for l in range(5):
     print(b_v3[:, l])
     
 def a_v3(l):
-    diffusionDictCoefs = np.empty((d, d, n))
+    diffusionDictCoefs = np.empty((d, d, k))
     diffusionMat = np.empty((d, d))
     for i in range(d):
         for j in range(d):
@@ -238,5 +238,3 @@ def a_v3(l):
 # not very good ):
 for l in range(5):
     print(np.diagonal(a_v3(l)))
-
-#%%

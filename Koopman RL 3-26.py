@@ -89,9 +89,12 @@ We simulated some paths from a standard Brownian Motion (drift coefficient 0 and
 '''
 ### Simlulation of Brownian Data
 '''
-We simulated 20 paths of standard BM each with 5000 steps in a time interval of size 5000 so that the time step was 1. We took each of these 20 paths to be a state variable in our state vector. Our state vector is thus comprised of 20 iid BMs. 
+We simulated 20 paths of standard BM each with 5000 steps in a time interval of size 5000 so that the time step was 1. We took each of these 20 paths to be a state variable in our state vector. Our state vector is thus comprised of 20 iid BMs. Formally, our state variable dynamics have the form
+$$
+    \text{d}\tilde X_t = b\text{d}t + \Sigma\text{d}W_t
+$$
+where $b$ is a $n=20$ dimensional vector of 0s and $\Sigma$ is a $n\times n$ identity matrix.
 '''
-### Fitting the BM data using Generator EDMD (gEDMD)
 '''
 from brownian import brownian
 
@@ -112,4 +115,33 @@ X[:, 0] = 50
 brownian(X[:, 0], N, dt, sigma, out=X[:, 1:])
 Z = np.roll(X,-1)[:, :-1]
 X = X[:, :-1]
+'''
+
+### Fitting the BM data using Generator EDMD (gEDMD) from Klus et al. 2020
+'''
+From the learner's point of view, we assume that we are in the class of continuous Markov processes and thus that the generator is of the form
+$$
+    \mathcal{L}f = b\cdot\nabla_{\tilde x}f + \frac{1}{2}a:\nabla^2_{\tilde x}f 
+    %= \sum_{i=1}^n b_i\frac{\partial f}{\partial \tilde{x}_i} + \frac{1}{2} \sum_{i=1}^n \sum_{j=1}^n a_{ij} \frac{\partial^2 f}{\partial \tilde{x}_i \partial \tilde{x}_j},
+$$
+where $a = \sigma \sigma^\top$, $\nabla^2_x$ denotes the Hessian, and $:$ denotes the double dot product. Applying the generator to each dictionary function \psi_k and assuming that we have access to a single ergodic sample with time step $dt= 1$, we can use the following finite difference estimator of $\mathcal{L}\psi_k$:
+$$
+\widehat{d\psi_k}(\tilde{\mathbf{x}}_l) = \frac{1}{t}(\tilde{\mathbf{x}}_{l+1} - \tilde{\mathbf{x}}_l) \cdot \nabla\psi_k(\tilde{\mathbf{x}}_l) + \frac{1}{2t} \Big[(\tilde{\mathbf{x}}_{l+1} - \tilde{\mathbf{x}}_l)(\tilde{\mathbf{x}}_{l+1} - \tilde{\mathbf{x}}_l)^\top\Big] : \nabla^2 \psi_k(\tilde{\mathbf{x}}_l)
+$$
+Note that we are adopting Klus's notation here only for reference. The stochastic total differential $d\psi_k$ is a different object that the generator of the Koopman operator they are related in that the drift of the stochastic total differential is the same thing as the generator.
+
+Next, we set up the dictionary and the matrices
+
+The idea behind generator EDMD is that we assume that the genertor applied to the the dictionary functions can be ("approximately") expressed as a linear combination of the dictionary functions and find the coeficients of those linear combinations by minimizing $|| \text{d}\Psi_{\tilde{\mathbf{X}}} - M\Psi_{\tilde{\mathbf{X}}} ||_F$ which leads to the least-squares approximation
+$$ 
+M = \text{d}\Psi_{\tilde{\mathbf{X}}} \Psi^{+}_{\tilde{\mathbf{X}}} = (\text{d}\Psi_{\tilde{\mathbf{X}}}\Psi_{\tilde{\mathbf{X}}}^\top)(\Psi_{\tilde{\mathbf{X}}}\Psi_{\tilde{\mathbf{X}}}^\top)^+ $$
+$$
+Thus, we obtain the empirical estimate $L=M^T$ of the Koopman generator $\mathcal{L}$.
+
+For the dictionary space, we chose monomials of up to order 2. We also tried monomials of order 1, which is not sufficient to pick up the diffusion term, but was successful at picking up the drift quicker. We hypothesize that this is because there are fewer terms in the regression over the dictionary functions.
+
+Note: we used Klus's d3 repo to set up the Psi
+'''
+'''
+Put in code for
 '''
