@@ -130,7 +130,21 @@ $$
 $$
 Note that we are adopting Klus's notation here only for reference. The stochastic total differential $d\psi_k$ is a different object that the generator of the Koopman operator they are related in that the drift of the stochastic total differential is the same thing as the generator.
 
-Next, we set up the dictionary and the matrices
+Next, we set up matrices for the dictionary and the generator applied to it: 
+$$
+    \Psi_{\mathbf{X}} = \begin{bmatrix} 
+                        \psi_1(\tilde{\mathbf{x}}_1) & \dots & \psi_1(\tilde{\mathbf{x}}_m) \\
+                        \vdots & \ddots & \vdots \\
+                        \psi_k(\tilde{\mathbf{x}}_1) & \dots & \psi_k(\tilde{\mathbf{x}}_m) 
+                    \end{bmatrix},
+$$
+$$
+    \text{d}\Psi_{\mathbf{X}} = \begin{bmatrix} 
+                        \text{d}\psi_1(\tilde{\mathbf{x}}_1) & \dots & \text{d}\psi_1(\tilde{\mathbf{x}}_m) \\
+                        \vdots & \ddots & \vdots \\
+                        \text{d}\psi_k(\tilde{\mathbf{x}}_1) & \dots & \text{d}\psi_k(\tilde{\mathbf{x}}_m) 
+                    \end{bmatrix}
+$$
 
 The idea behind generator EDMD is that we assume that the genertor applied to the the dictionary functions can be ("approximately") expressed as a linear combination of the dictionary functions and find the coeficients of those linear combinations by minimizing $|| \text{d}\Psi_{\tilde{\mathbf{X}}} - M\Psi_{\tilde{\mathbf{X}}} ||_F$ which leads to the least-squares approximation
 $$ 
@@ -140,8 +154,39 @@ Thus, we obtain the empirical estimate $L=M^T$ of the Koopman generator $\mathca
 
 For the dictionary space, we chose monomials of up to order 2. We also tried monomials of order 1, which is not sufficient to pick up the diffusion term, but was successful at picking up the drift quicker. We hypothesize that this is because there are fewer terms in the regression over the dictionary functions.
 
-Note: we used Klus's d3 repo to set up the Psi
+Note: we used Klus's d3 repo to create the PsiX and dPsiX objects
 '''
 '''
-Put in code for
+Put in code for constructing PsiX, dPsiX, M, L here
+'''
+
+'''
+Specifically, to identify $b(x)$
+\begin{enumerate}
+    \item Get eigenfunctions $\xi_i$ of $\widehat{L}$ and store them in $\Xi = \{ \xi_1, \cdots, \xi_n \}$.
+    \item Express eigenfunctions in terms of the dictionary $\psi(x) = \Xi^\top \psi(x)$
+    \item Calculate Koopman modes $V = B^\top \Xi^{-\top}$
+    \item Express drift in terms of reduced order eigenexpansion (we decided to set our default cutoff to be one tenth of the total eigenfunctions)
+    $$ (\mathcal{L}g) (x) = b(x) \approx \sum_{\ell = 1}^{cutoff} \lambda_\ell \psi_\ell(x) v_\ell $$
+    where $v_\ell$ is the $\ell$th column vector of $V$.
+    \item Alternatively we can use the Koopman generator approximation $\widehat{L}$ directly and get drift $b$:
+    $$ \mathcal{L}g(x) = b(x) \approx (LB)^\top  \psi(x) $$
+\end{enumerate}
+'''
+'''
+\item {\bf Detailed Derivation of covariance matrix $a$}\\
+\begin{enumerate}
+    \item Set the observable, $g(x) (\in \mathbb{R}^w) = $ second order monomials
+    \item Find $B \in \mathbb{R}^{s \times w}$ s.t. $B^\top \psi(x) = g(x)$
+    \item 
+    \begin{align*}
+        \mathcal{L}g(x) &= \nabla g(x) b(x) + \text{vec}(a) \text{ where vec(}a\text{) is a vectorized (flattened) a matrix}.\\
+        &= \nabla(B^\top \psi(x)) b(x) + \text{vec}(a)\\
+        &= B^\top \nabla \psi(x) b(x) + \text{vec}(a) (\text{we also note that the order of }\text{vec}(a)\text{ matches the order of }g(x))\\
+    \end{align*}
+    Using $\mathcal{L}g(x) \approx (\widehat{L} B)^\top \psi(x)$
+    $$ \implies \text{vec}(a) \approx (\widehat{L}B)^\top \psi(x) - B^\top \nabla \psi(x) \widehat{b}(x) $$
+    \item Given an estimate for $\widehat{b}(x)$, we can estimate $a(x)$
+    $$ \widehat{a} = (\widehat{L} B)^\top \psi(x) - B \nabla \psi(x) \widehat{b}(x) $$
+\end{enumerate}
 '''

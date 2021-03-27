@@ -35,9 +35,9 @@ from brownian import brownian
 # The Wiener process parameter.
 sigma = 1
 # Total time.
-T = 20000.0
+T = 10000
 # Number of steps.
-N = 20000
+N = 10000
 # Time step size
 dt = T/N
 # Number of realizations to generate.
@@ -168,8 +168,8 @@ def a_v2(l):
         (second_orderB.T @ nablaPsi[:, :, l] @ b_v2(l))
 
 #%% Reshape a vector as matrix and perform some tests
-def covarianceMatrix_v2(l):
-    a_l = a_v2(l)
+def covarianceMatrix(a_func, l):
+    a_l = a_func(l)
     covariance = np.zeros((d, d))
     row = 0
     col = 0
@@ -187,8 +187,10 @@ def covarianceMatrix_v2(l):
         n +=1
     return covariance
 
-# test = covarianceMatrix(2)
-# print(test)
+test = covarianceMatrix(a, 2)
+test_v2 = covarianceMatrix(a_v2, 2)
+print(np.diagonal(test))
+print(np.diagonal(test_v2))
 # print(test.shape)
 # print(check_symmetric(test, 0, 0))
 
