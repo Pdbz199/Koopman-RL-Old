@@ -209,6 +209,38 @@ This version of a  achieved the results we were hoping for and returned near ide
 
 
 '''Theory for Lu and Duan (2021)
-We tried one final appoach that was adapted from Lu and Duan 2021. They exploit the Perron-Frobenius operator (PF)(solution to the Fokker-Planck equation) to analyze systems with non-Gaussian Levy noise in addition to Gaussian noise. We restricted their method to analyze our system which just has Guassian noise. We will describe the estimation procedure here, but for the theory, please see their paper
+We tried one final appoach that was adapted from Lu and Duan 2021. They exploit the Perron-Frobenius operator (PF)(solution to the Fokker-Planck equation) to analyze systems with non-Gaussian Levy noise in addition to Gaussian noise. We restricted their method to analyze our system which just has Guassian noise. We will describe the estimation procedure here, but for the theory, please see their paper.
 
+First, we assume that the drift can be approximated as a linear combination of the dictionary functions, $b(x) \approx \psi(x)^\top C$ where $C$ is a $k\times d$ matrix. Next, we collect a sample of the finite differences between observations $S\in \mathbb{R}^{d\times m}$ where the jth column vector is
+$$
+S_j = (x_j - z_j)/h
+$$
+where $x_j$ is the jth snapshot vector and $z_j=x_{j+h}$ is the associated future value where we take time step $h=1$. To find the coeficient matrix $C$, we solve the following least squares problem
+$$
+min_{C} ||\Psi_X^\top C - S^\top||_F
+$$
+which leads to the solution
+$$
+\hat C = (\Psi_X \Psi_X)^{-1}(\Psi_XB^\top)
+$$
+'''
+
+'''
+Finally, to calculate the diffusion matrix using Li and Duan's approach, we make the same assumption about each element of the diffusion matrix as being approximated as a linear combination of the dictionary functions 
+$$
+a_{ij}(x) \appox d_ij \cdot \psi(x)
+$$
+where $d_ij = [d_{ij,1},\, \cdots,\, d_{ij,k}]^\top$. For the diffusion terms, we need to collect samples of the (cross) quadratic variation
+$$
+B_{ij} = h^{-1}[(x_{i,1}-z_{i,1})(x_{j,1}-z_{j,1})]
+$$
+where $i$ and $j$ represent the $i$-th and $j$-th components of the snapshot vectors. The resulting least squares problem to find the coeficients $d_{ij}$ for each ($i$, $j$) pair is
+$$
+||\Psi_X^\top d_{ij} - B_{ij}||
+$$
+which results in the estimate 
+$$
+\hat{d}_{ij} = (\Psi_X\Psi_X^\top)^{-1}(\Psi_X B_{ij})
+$$
+TODO: Figure out how to vectorize/matrix-ize for faster computation!
 '''

@@ -1,6 +1,7 @@
 #%%
 import numpy as np
 import scipy as sp
+import pandas as pd
 
 '''======================= HELPER FUNCTIONS ======================='''
 
@@ -143,18 +144,11 @@ def b_v2(l, num_dims=k//10, V=V_v1):
     return np.real(res)
 
 #%%
-# total_b = 0
-# total_b_v2 = 0
 # for l in range(m):
 #     b_l = b(l)
 #     print("b(l):", b_l)
 #     b_v2_l = b_v2(l)
 #     print("b_v2(l):", b_v2_l)
-#     checker = np.zeros(b_l.shape)
-#     total_b += np.allclose(b_l, checker, rtol=rtoler, atol=atoler)
-#     total_b_v2 += np.allclose(b_v2_l, checker, rtol=rtoler, atol=atoler)
-# print(total_b)
-# print(total_b_v2)
 
 #%%
 # the following a functions compute the diffusion matrices as flattened vectors
@@ -192,8 +186,10 @@ def covarianceMatrix(a_func, l):
 
 test = covarianceMatrix(a, 2)
 test_v2 = covarianceMatrix(a_v2, 2)
-print("a_v1:", test)
-print("a_v2:", test_v2)
+test_df = pd.DataFrame(test)
+test_v2_df = pd.DataFrame(test_v2)
+print("a_v1:", test_df)
+print("a_v2:", test_v2_df)
 print("a_v1 diagonal:", np.diagonal(test))
 print("a_v2 diagonal:", np.diagonal(test_v2))
 # print(test.shape)
