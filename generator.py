@@ -161,12 +161,12 @@ L_times_second_orderB_transpose = (L @ second_orderB).T
 
 def a(l):
     return (L_times_second_orderB_transpose @ Psi_X[:, l]) - \
-        (B.T @ nablaPsi[:, :, l] @ b(l))
+        (second_orderB.T @ nablaPsi[:, :, l] @ b(l))
 
 V_v2 = second_orderB.T @ np.linalg.inv((eig_vecs).T)
 def a_v2(l):
     return (b_v2(l, V=V_v2)) - \
-        (B.T @ nablaPsi[:, :, l] @ b_v2(l))
+        (second_orderB.T @ nablaPsi[:, :, l] @ b_v2(l))
 
 #%% Reshape a vector as matrix and perform some tests
 def covarianceMatrix(a_func, l):
@@ -190,8 +190,8 @@ def covarianceMatrix(a_func, l):
 
 test = covarianceMatrix(a, 2)
 test_v2 = covarianceMatrix(a_v2, 2)
-print(np.diagonal(test))
-print(np.diagonal(test_v2))
+print("a_v1:", np.diagonal(test))
+print("a_v2:", np.diagonal(test_v2))
 # print(test.shape)
 # print(check_symmetric(test, 0, 0))
 
@@ -238,6 +238,7 @@ def a_v3(l):
             diffusionMat[i, j] = np.dot(diffusionDictCoefs[i, j], Psi_X[:,l])
     return diffusionMat
     
-# not very good ):
+print("a_v3:")
 for l in range(5):
-    print(np.diagonal(a_v3(l)))
+    calc = a_v3(l)
+    print(np.diagonal(calc))
