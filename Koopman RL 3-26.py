@@ -190,3 +190,25 @@ Specifically, to identify $b(x)$
     $$ \widehat{a} = (\widehat{L} B)^\top \psi(x) - B \nabla \psi(x) \widehat{b}(x) $$
 \end{enumerate}
 '''
+
+''' RESULTS OF b AND b_v2
+By calculating the b's separetely and printing out their values, we could tell that they were (relatively) close to zero (numbers were around the +/- 1e-2 area) which is exactly what we were hoping to find. It is nice that the heavily reduced b_v2 performed well because it means that we can actually take advantage of the computational benefits.
+'''
+
+''' RESULTS OF a AND a_v2
+Unfortunately, the results of both a and a_v2 are far from identity matrices. In fact, most of the entries were on the scale of +/- 1e1
+'''
+
+''' RESULTS OF b_v3
+This new version of b reached good results, but not quite as good as either b or b_v2 from earlier. The entries were on the scale of +/- 1e-1.
+'''
+
+''' RESULTS OF a_v3
+This version of a  achieved the results we were hoping for and returned near identity matrices with numbers of about +/- 1e-1 in the entries outside the diagonal.
+'''
+
+
+'''Theory for Lu and Duan (2021)
+We tried one final appoach that was adapted from Lu and Duan 2021. They exploit the Perron-Frobenius operator (PF)(solution to the Fokker-Planck equation) to analyze systems with non-Gaussian Levy noise in addition to Gaussian noise. We restricted their method to analyze our system which just has Guassian noise. We will describe the estimation procedure here, but for the theory, please see their paper
+
+'''
