@@ -131,12 +131,12 @@ def b(l):
     return L_times_B_transposed @ Psi_X[:, l] # (k,)
 
 # Calculate Koopman modes
-V = B.T @ np.linalg.inv((eig_vecs).T)
+V_v1 = B.T @ np.linalg.inv((eig_vecs).T)
 
 # The b_v2 function allows for heavy dimension reduction
 # default is reducing by 90% (taking the first k/10 eigen-parts)
 # TODO: Figure out correct place to take reals
-def b_v2(l, num_dims=k//10):
+def b_v2(l, num_dims=k//10, V=V_v1):
     res = 0
     for ell in range(k-1, k-num_dims, -1):
         res += eig_vals[ell] * eig_funcs[ell, l] * V[:, ell] #.reshape(-1, 1)
@@ -161,11 +161,12 @@ L_times_second_orderB_transpose = (L @ second_orderB).T
 
 def a(l):
     return (L_times_second_orderB_transpose @ Psi_X[:, l]) - \
-        (second_orderB.T @ nablaPsi[:, :, l] @ b(l))
+        (B.T @ nablaPsi[:, :, l] @ b(l))
 
+V_v2 = second_orderB.T @ np.linalg.inv((eig_vecs).T)
 def a_v2(l):
-    return (L_times_second_orderB_transpose @ Psi_X[:, l]) - \
-        (second_orderB.T @ nablaPsi[:, :, l] @ b_v2(l))
+    return (b_v2(l, V=V_v2)) - \
+        (B.T @ nablaPsi[:, :, l] @ b_v2(l))
 
 #%% Reshape a vector as matrix and perform some tests
 def covarianceMatrix(a_func, l):
