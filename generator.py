@@ -133,6 +133,7 @@ def b(l):
 
 # Calculate Koopman modes
 V_v1 = B.T @ np.linalg.inv((eig_vecs).T)
+print("V_v1 shape:", V_v1.shape)
 
 # The b_v2 function allows for heavy dimension reduction
 # default is reducing by 90% (taking the first k/10 eigen-parts)
