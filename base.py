@@ -4,6 +4,7 @@ import timeit
 import observables
 import numpy as np
 import scipy as sp
+import pandas as pd
 from brownian import brownian
 
 #%%
@@ -62,6 +63,7 @@ rtoler=1e-02
 atoler=1e-02
 psi = observables.monomials(2)
 Psi_X = psi(X)
+Psi_X_T = Psi_X.T
 k = Psi_X.shape[0]
 nablaPsi = psi.diff(X)
 nabla2Psi = psi.ddiff(X)
@@ -76,3 +78,4 @@ def dpsi(k, l, t=1):
     term_4 = nabla2Psi[k, :, :, l]
     return np.dot(term_1, term_2) + np.tensordot(term_3, term_4)
 vectorized_dpsi = np.vectorize(dpsi)
+# %%
