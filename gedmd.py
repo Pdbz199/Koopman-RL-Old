@@ -1,5 +1,6 @@
 #%%
 from base import *
+import matplotlib.pyplot as plt
 
 #%%
 # Construct \text{d}\Psi_X matrix
@@ -12,7 +13,10 @@ for column in range(m-1):
 
 #%% Step 1
 U, Sigma, VT = sp.linalg.svd(Psi_X, full_matrices=False)
-r = 10 # arbitrarily selected cutoff
+plt.plot(Sigma)
+plt.axline((7, 1e7), (7, 0), color='b')
+plt.show()
+r = 8 # selected from elbow in graph (not sure if plotted correctly though)
 U_tilde = U[:, :r]
 Sigma_tilde = np.diag(Sigma[:r])
 VT_tilde = VT[:r]
@@ -56,4 +60,4 @@ def b_v2(l, num_dims=r, V=V_v1):
 for l in range(r):
     b_v2_l = b_v2(l)
     print(f"b_v2({r}):", b_v2_l)
-# %%
+#%%

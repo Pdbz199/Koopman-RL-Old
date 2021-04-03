@@ -25,7 +25,7 @@ def sparsifyDynamics(Theta, dXdt, lamb, n):
 lamb = 0.05 # sparsification knob lambda
 Xi = sparsifyDynamics(Psi_X.T, dPsi_X.T, lamb, d)
 #%%
-L = Xi
+L = Xi # estimate of Koopman generator
 
 #%%
 B = constructB(d, k)
@@ -52,10 +52,9 @@ def a(l):
 def covarianceMatrix(a_func, l):
     a_l = a_func(l)
     covariance = np.zeros((d, d))
+    covariance[0, 0] = a_l[0]
     row = 0
-    col = 0
-    covariance[row, col] = a_l[0]
-    col += 1
+    col = 1
     n = 1
     while col < d:
         covariance[row, col] = a_l[n]
@@ -71,5 +70,10 @@ def covarianceMatrix(a_func, l):
 #%% Did not perform well ):
 test = covarianceMatrix(a, 2)
 test_df = pd.DataFrame(test)
-print("a_v1:", test_df)
-print("a_v1 diagonal:", np.diagonal(test))
+print("a:", test_df)
+print("a diagonal:", np.diagonal(test))
+
+#%% Condition numbers - we want small numbers
+print(np.linalg.cond(L)) # inf
+print(np.linalg.cond(Psi_X)) # 98 million+
+# %%
