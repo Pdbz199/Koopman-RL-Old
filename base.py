@@ -67,6 +67,8 @@ Psi_X_T = Psi_X.T
 k = Psi_X.shape[0]
 nablaPsi = psi.diff(X)
 nabla2Psi = psi.ddiff(X)
+B = constructB(d, k)
+second_order_B = constructSecondOrderB(s, k)
 
 # This computes dpsi_k(x) exactly as in the paper
 # t = 1 is a placeholder time step, not really sure what it should be
