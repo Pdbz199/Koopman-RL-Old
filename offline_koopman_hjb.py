@@ -36,8 +36,10 @@ eigenvalues, eigenvectors = sp.linalg.eig(L_T)
 #     return x**3 + x**2
 # derivative(f, 1.0, dx=1e-6)
 # 4.9999999999217337
+
 def rhoV(x):
     # suprema_{pi_t \in P(U)} integral_U r(x,u) - \
     #     lamb * np.log(pi_t(u)) * du + integral_U \sum_{l=1}^cutoff \
     #         lamb * eig_funcs[ell](x, u) * m_ell^V * pi_t(u) du
     pass
+
