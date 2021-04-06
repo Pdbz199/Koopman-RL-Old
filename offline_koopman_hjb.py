@@ -28,18 +28,29 @@ Xi = sparsifyDynamics(Psi_X.T, dPsi_X.T, lamb, d)
 L = Xi # estimate of Koopman generator
 L_T = L.T
 
-eigenvalues, eigenvectors = sp.linalg.eig(L_T)
+#%%
+# every time you get value function and you want to do optimization
+# project value function evaulated at some points (randomly sampled)
+# goal is to get B as in equation 6
+# same points you evaluate V, you evaluate Phi
 
+def learningAlgorithm(L, Psi_X, reward, epsilon=0.1):
+    eigenvalues, eigenvectors = sp.linalg.eig(L)
+    eigenfunctions = np.dot(eigenvectors, Psi_X) # is this right?
+    B = 0
+    generatorModes = B.T @ sp.linalg.inv(eigenvectors).T
 
-# from scipy.misc import derivative
-# def f(x):
-#     return x**3 + x**2
-# derivative(f, 1.0, dx=1e-6)
-# 4.9999999999217337
+    summation = 0
+    for ell in range(cutoff):
+        summation += generatorModes[ell] * eigenvalues[ell] * eigenfunctions[ell]
+    numerator = np.exp((1/lamb) * (reward + summation))
+    denominator = integral_U (numerator * du)
+    pi_star = numerator / denominator
 
-def rhoV(x):
-    # suprema_{pi_t \in P(U)} integral_U r(x,u) - \
-    #     lamb * np.log(pi_t(u)) * du + integral_U \sum_{l=1}^cutoff \
-    #         lamb * eig_funcs[ell](x, u) * m_ell^V * pi_t(u) du
-    pass
-
+    # j = 1
+    V = 0
+    lastV = 0
+    pi_star_j = 0 # placeholder
+    while abs(V - lastV) >= epsilon:
+        lastV = V
+        # calculate new V by pluging in last pi into equation 9

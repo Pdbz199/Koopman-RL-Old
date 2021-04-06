@@ -28,10 +28,6 @@ Xi = sparsifyDynamics(Psi_X.T, dPsi_X.T, lamb, d)
 L = Xi # estimate of Koopman generator
 
 #%%
-B = constructB(d, k)
-second_order_B = constructSecondOrderB(s, k)
-
-#%%
 L_times_B_transposed = (L @ B).T
 def b(l):
     return L_times_B_transposed @ Psi_X[:, l] # (k,)

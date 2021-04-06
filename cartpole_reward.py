@@ -1,8 +1,8 @@
 import math
-import gym
+# import gym
 import numpy as np
-env = gym.make('CartPole-v0')
-cart_position, cart_velocity, pole_angle, pole_velocity = env.reset()
+# env = gym.make('CartPole-v0')
+# cart_position, cart_velocity, pole_angle, pole_velocity = env.reset()
 theta_threshold_radians = 12 * 2 * math.pi / 360
 x_threshold = 2.4
 gravity = 9.8
