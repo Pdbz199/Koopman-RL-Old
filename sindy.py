@@ -70,6 +70,6 @@ print("a:", test_df)
 print("a diagonal:", np.diagonal(test))
 
 #%% Condition numbers - we want small numbers
-print(np.linalg.cond(L)) # inf
-print(np.linalg.cond(Psi_X)) # 98 million+
+print("Condition number of L:", np.linalg.cond(L)) # inf
+print("Condition number of Phi_X:", np.linalg.cond(Psi_X)) # 98 million+
 # %%
