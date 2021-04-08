@@ -80,4 +80,26 @@ def dpsi(k, l, t=1):
     term_4 = nabla2Psi[k, :, :, l]
     return np.dot(term_1, term_2) + np.tensordot(term_3, term_4)
 vectorized_dpsi = np.vectorize(dpsi)
+
+# %%
+def vectorToMatrix(vector):
+    size = np.array(vector).shape[0]
+    d = 1
+    while size > (d*(d+1))/2:
+        d += 1
+    matrix = np.zeros((d, d))
+    matrix[0, 0] = vector[0]
+    row = 0
+    col = 1
+    n = 1
+    while col < d and n != size:
+        matrix[row, col] = vector[n]
+        matrix[col, row] = vector[n]
+        if row == col: 
+            col += 1
+            row = 0
+        else:
+            row += 1
+        n +=1
+    return matrix
 # %%
