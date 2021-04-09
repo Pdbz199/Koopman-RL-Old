@@ -1,5 +1,5 @@
 #%%
-from base import k, m, vectorized_dpsi
+from base import np, sp, d, m, k, Psi_X, Psi_X_T, vectorized_dpsi
 
 #%%
 # Construct \text{d}\Psi_X matrix
