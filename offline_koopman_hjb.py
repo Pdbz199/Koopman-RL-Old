@@ -62,5 +62,25 @@ def learningAlgorithm(L, X, Psi_X_tilde, U, reward, cutoff=8, lamb=0.05, epsilon
             V[i] = V(i)
 
         # j+=1
+#%% Rough attempt at Algorithm 2
+n = x.shape[0]
+delta = 1
+phi = delta * np.identity(n)
+z = np.zeros((n,n))
+def rgEDMD(x):
+    global Psi_X, dPsi_X, phi, z
+
+    X = np.append(X, x, axis=1)
+    Psi_X = psi(X)
+    dPsi_X = np.append(dPsi_X, dpsi(k, X.shape[1]-1), axis=1)
+
+    Psi_X_pinv = sp.linalg.pinv(Psi_X)
+    z = z + dPsi_X @ Psi_X_pinv
+    phi_inverse = sp.linalg.inv(phi)
+    phi_inverse = phi_inverse - \
+                    ((phi_inverse @ Psi_X @ Psi_X_pinv @ phi_inverse) / (1 + Psi_X_pinv @ phi_inverse @ Psi_X))
+    L_m = z @ phi_inverse
+
+    return L_m
 
 # %%
