@@ -1,3 +1,4 @@
+#%%
 from sklearn.preprocessing import KBinsDiscretizer
 import numpy as np
 import time, math, random
@@ -41,20 +42,27 @@ def exploration_rate(n: int, min_rate=0.1) -> float:
     return max(min_rate, min(1, 1.0 - math.log10((n+1)/25)))
 
 # CartPole has been solved! It took 230 episodes
-episodes = 230
+episodes = 100
 # rendered_frames = 80
 episode_rewards = []
 Q_table = np.load('Q_table.npy')
 inputs = []
 outputs = []
 
+states = []
+actions = []
+rewards = []
+
 for episode in range(episodes):
     episode_reward = 0
-    current_state = discretizer(*env.reset())
+    current_state = env.reset()
+    states.append(current_state)
+    descretized_current_state = discretizer(*current_state)
     done = False
 
     while done == False:
-        action = policy(current_state)
+        action = policy(descretized_current_state)
+        actions.append(action)
 
         # inputs = np.append(inputs, [[*list(current_state), action]], axis=0) if len(inputs) > 0 else np.array([[*list(current_state), action]])
 
@@ -63,6 +71,8 @@ for episode in range(episodes):
         #     action = env.action_space.sample()
 
         observation, reward, done, _ = env.step(action)
+        states.append(observation)
+        rewards.append(reward)
         new_state = discretizer(*observation)
         episode_reward += reward
 
@@ -73,7 +83,7 @@ for episode in range(episodes):
         # old_value = Q_table[current_state][action]
         # Q_table[current_state][action] = ((1 - lr) * old_value) + (lr * learned_value)
 
-        current_state = new_state
+        descretized_current_state = new_state
 
         # env.render()
     
@@ -85,9 +95,21 @@ for episode in range(episodes):
             
     #     episode_rewards.pop(0)
 
+    # states.pop()
+
+# states = np.array(states)
+# print(states.shape)
+# actions = np.array(actions)
+# print(actions.shape)
+# rewards = np.array(rewards)
+# print(rewards.shape)
+# np.save('cartpole-states', states)
+# np.save('cartpole-actions', actions)
+# np.save('cartpole-rewards', rewards)
 # print(inputs.shape)
 # print(outputs.shape)
 # np.save('state-action-inputs', inputs)
 # np.save('state-action-outputs', outputs)
 # np.save('Q_table', Q_table)
 env.close()
+# %%
