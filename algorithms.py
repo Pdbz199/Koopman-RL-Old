@@ -19,8 +19,8 @@ def nb_einsum(A, B):
     return res
 
 #%%
-X = (np.load('random-cartpole-states.npy'))[:10000].T # states
-U = (np.load('random-cartpole-actions.npy'))[:10000].T # actions
+X = (np.load('random-cartpole-states.npy'))[:5000].T # states
+U = (np.load('random-cartpole-actions.npy'))[:5000].T # actions
 X_tilde = np.append(X, [U], axis=0) # extended states
 d = X_tilde.shape[0]
 m = X_tilde.shape[1]
@@ -33,6 +33,13 @@ Psi_X_tilde_T = Psi_X_tilde.T
 k = Psi_X_tilde.shape[0]
 nablaPsi = psi.diff(X_tilde)
 nabla2Psi = psi.ddiff(X_tilde)
+
+#%%
+@nb.njit
+def psi_x_tilde_with_diff_u(l, u):
+    result = Psi_X_tilde[:,l].copy()
+    result[-1] = u
+    return result
 
 #%%
 @nb.njit(fastmath=True)
@@ -67,7 +74,10 @@ def learningAlgorithm(L, X, Psi_X_tilde, U, reward, timesteps=100, cutoff=8, lam
     constant = 1/lamb
 
     eigenvalues, eigenvectors = sp.linalg.eig(L) # L created with X_tilde
-    eigenfunctions = lambda ell, l: np.dot(eigenvectors[ell], Psi_X_tilde[:, l])
+    eigenvectors = eigenvectors
+    @nb.njit(fastmath=True)
+    def eigenfunctions(i, psi_x_tilde):
+        return np.dot(np.real(eigenvectors[i]), psi_x_tilde) #Psi_X_tilde[:, l]
 
     eigenvectors_inverse_transpose = sp.linalg.inv(eigenvectors).T # pseudoinverse?
 
@@ -79,55 +89,64 @@ def learningAlgorithm(L, X, Psi_X_tilde, U, reward, timesteps=100, cutoff=8, lam
     t = 0
     while t < timesteps:
         G_X_tilde = currentV.copy()
-        B_g = ols(Psi_X_tilde_T, G_X_tilde.T)
+        B_v = ols(Psi_X_tilde_T, G_X_tilde)
 
-        generatorModes = B_g.T @ eigenvectors_inverse_transpose
+        generatorModes = B_v.T @ eigenvectors_inverse_transpose
 
-        def Lv_hat(l):
+        @nb.jit(forceobj=True, fastmath=True)
+        def Lv_hat(l, u):
+            psi_x_tilde = psi_x_tilde_with_diff_u(l, u)
             summation = 0
             for ell in range(cutoff):
-                summation += eigenvalues[ell] * eigenfunctions(ell, l) * generatorModes[ell]
+                summation += eigenvalues[ell] * eigenfunctions(ell, psi_x_tilde) * generatorModes[ell]
             return summation
 
+        @nb.jit(forceobj=True, fastmath=True)
         def compute(u, l):
-            inp = (constant * (reward(X[:,l], u) + Lv_hat(l))).astype('longdouble')
+            inp = (constant * (reward(X[:,l], u) + Lv_hat(l, u))).astype('longdouble')
             return np.exp(inp)
+
         def pi_hat_star(u, l): # action given state
             numerator = compute(u, l)
             denominator = integrate.romberg(compute, low, high, args=(l,), divmax=30)
             return numerator / denominator
-        eval_pi_hat_star = np.empty((U.shape[0], X.shape[1]))
-        for state in range(X.shape[1]):
-            for action in range(U.shape[0]):
-                eval_pi_hat_star[action, state] = pi_hat_star(action, state)
-        eval_pi_hat_star[0]
+
+        def compute_2(u, l):
+            eval_pi_hat_star = pi_hat_star(u, l)
+            return (reward(X[:,l], u) - (lamb * ln(eval_pi_hat_star))) * eval_pi_hat_star
 
         def integral_summation(l):
             summation = 0
             for ell in range(cutoff):
                 summation += generatorModes[ell] * eigenvalues[ell] * \
                     integrate.romberg(
-                        lambda u, l: eigenfunctions(ell, l) * eval_pi_hat_star[int(np.around(u+0.1)), l],
+                        lambda u, l: eigenfunctions(ell, Psi_X_tilde[:, l]) * pi_hat_star(u, l),
                         low, high, args=(l,), divmax=30
                     )
             return summation
 
         def V(l):
-            return (integrate.romberg(
-                lambda u, l: (reward(X[:,l], u) - (lamb * ln(eval_pi_hat_star[int(np.around(u+0.1)), l]))) * eval_pi_hat_star[int(np.around(u+0.1)), l],
-                low, high, args=(l,), divmax=30
-            ) + integral_summation(l))
+            return (integrate.romberg(compute_2, low, high, args=(l,), divmax=30) + \
+                        integral_summation(l))
 
         lastV = currentV
         for i in range(currentV.shape[0]):
             currentV[i] = V(i)
 
         t+=1
+        print(t)
     
     return currentV, pi_hat_star
 
 #%%
-V, pi = learningAlgorithm(L, X, Psi_X_tilde, np.array([0,1]), cartpoleReward, timesteps=3, lamb=0.5)
+V, pi = learningAlgorithm(L, X, Psi_X_tilde, np.array([0,1]), cartpoleReward, timesteps=3, lamb=1)
+print(pi(0, 100))
+print(pi(1, 100))
+
+#%% Should be 1, it is!
+print(integrate.romberg(
+    pi, 0, 1, args=(0,), divmax=30
+))
 
 #%% Rough attempt at Algorithm 2
 # n = x.shape[0]
