@@ -35,13 +35,6 @@ nablaPsi = psi.diff(X_tilde)
 nabla2Psi = psi.ddiff(X_tilde)
 
 #%%
-@nb.njit
-def psi_x_tilde_with_diff_u(l, u):
-    result = Psi_X_tilde[:,l].copy()
-    result[-1] = u
-    return result
-
-#%%
 @nb.njit(fastmath=True)
 def dpsi(X, k, l, t=1):
     difference = X[:, l+1] - X[:, l]
@@ -52,7 +45,7 @@ def dpsi(X, k, l, t=1):
     return np.dot(term_1, term_2) + nb_einsum(term_3, term_4)
 
 #%% Construct \text{d}\Psi_X matrix
-dPsi_X_tilde = np.empty((k, m))
+dPsi_X_tilde = np.zeros((k, m))
 for row in range(k):
     for column in range(m-1):
         dPsi_X_tilde[row, column] = dpsi(X_tilde, row, column)
@@ -62,7 +55,14 @@ dPsi_X_tilde_T = dPsi_X_tilde.T
 L = rrr(Psi_X_tilde_T, dPsi_X_tilde_T)
 
 #%%
-# arg for (epsilon=0.1,)
+@nb.njit
+def psi_x_tilde_with_diff_u(l, u):
+    result = Psi_X_tilde[:,l].copy()
+    result[-1] = u
+    return result
+
+#%% Algorithm 1
+#? arg for (epsilon=0.1,)?
 def learningAlgorithm(L, X, Psi_X_tilde, U, reward, timesteps=100, cutoff=8, lamb=0.05):
     # placeholder functions
     V = lambda x: x
@@ -134,39 +134,81 @@ def learningAlgorithm(L, X, Psi_X_tilde, U, reward, timesteps=100, cutoff=8, lam
             currentV[i] = V(i)
 
         t+=1
-        print(t)
+        print("Completed learning step", t, "\n")
     
     return currentV, pi_hat_star
 
 #%%
-V, pi = learningAlgorithm(L, X, Psi_X_tilde, np.array([0,1]), cartpoleReward, timesteps=3, lamb=1)
+# V, pi = learningAlgorithm(L, X, Psi_X_tilde, np.array([0,1]), cartpoleReward, timesteps=3, lamb=1)
+# print(pi(0, 100))
+# print(pi(1, 100))
+
+# #%% Should be 1, it is!
+# print(integrate.romberg(
+#     pi, 0, 1, args=(0,), divmax=30
+# ))
+
+#%% Algorithm 2
+def rgEDMD(
+    x_tilde,
+    X_tilde,
+    Psi_X_tilde,
+    dPsi_X_tilde,
+    k,
+    z_m=np.zeros((k,k)),
+    phi_m_inverse=np.linalg.inv(np.identity(k))
+):
+    X_tilde = np.append(X_tilde, x_tilde.reshape(-1,1), axis=1)
+    Psi_X_tilde = psi(X_tilde)
+    # dPsi_x_tilde = np.empty(k)
+    # for k in range(k):
+    #     dPsi_x_tilde[k] = dpsi(X_tilde, k, -1)
+    # dPsi_X_tilde = np.append(dPsi_X_tilde, dPsi_x_tilde.reshape(-1,1), axis=1)
+    for l in range(k):
+        dPsi_X_tilde[l, -1] = dpsi(X_tilde, l, -2)
+    dPsi_X_tilde = np.append(dPsi_X_tilde, np.zeros((k,1)), axis=1) #? should this really append 0s?
+
+    Psi_X_tilde_m = Psi_X_tilde[:,-1].reshape(-1,1)
+    Psi_X_tilde_m_T = Psi_X_tilde_m.T #? maybe pinv?
+
+    # update z_m
+    z_m = z_m + dPsi_X_tilde[:,-2].reshape(-1,1) @ Psi_X_tilde_m_T
+
+    # update \phi_m^{-1}
+    phi_m_inverse = phi_m_inverse - \
+                    ((phi_m_inverse @ Psi_X_tilde_m @ Psi_X_tilde_m_T @ phi_m_inverse) / \
+                        (1 + Psi_X_tilde_m_T @ phi_m_inverse @ Psi_X_tilde_m))
+    
+    L_m = z_m @ phi_m_inverse
+
+    # updated dPsi_X_tilde, updated z_m, updated \phi_m^{-1}, and approximate generator
+    return dPsi_X_tilde, z_m, phi_m_inverse, L_m
+
+#%%
+# dPsi_X_tilde, z_m, phi_m_inverse, L_m = rgEDMD(X_tilde[:,-1], X_tilde[:,:-1], Psi_X_tilde[:,:-1], dPsi_X_tilde[:,:-1], k)
+
+#%% Algorithm 3
+def onlineKoopmanLearning():
+    global X_tilde, Psi_X_tilde, dPsi_X_tilde
+
+    X_tilde_builder = X_tilde[:,:2]
+    Psi_X_tilde_builder = Psi_X_tilde[:,:2]
+    dPsi_X_tilde_builder = dPsi_X_tilde[:,:2]
+    k = dPsi_X_tilde_builder.shape[0]
+
+    z_m = np.zeros((k,k))
+    phi_m_inverse = np.linalg.inv(np.identity(k))
+    for x_tilde in X_tilde.T:
+        dPsi_X_tilde, z_m, phi_m_inverse, L_m = rgEDMD(
+            x_tilde, X_tilde_builder, Psi_X_tilde_builder, dPsi_X_tilde_builder, k, z_m, phi_m_inverse
+        )
+
+    _, pi = learningAlgorithm(L, X, Psi_X_tilde, np.array([0,1]), cartpoleReward, timesteps=2, lamb=1)
+    return pi
+    
+#%% YAY!
+pi = onlineKoopmanLearning()
 print(pi(0, 100))
 print(pi(1, 100))
 
-#%% Should be 1, it is!
-print(integrate.romberg(
-    pi, 0, 1, args=(0,), divmax=30
-))
-
-#%% Rough attempt at Algorithm 2
-# n = x.shape[0]
-# delta = 1
-# phi = delta * np.identity(n)
-# z = np.zeros((n,n))
-# def rgEDMD(x):
-#     global Psi_X, dPsi_X, phi, z
-
-#     X = np.append(X, x, axis=1)
-#     Psi_X = psi(X)
-#     dPsi_X = np.append(dPsi_X, dpsi(k, X.shape[1]-1), axis=1)
-
-#     Psi_X_pinv = sp.linalg.pinv(Psi_X)
-#     z = z + dPsi_X @ Psi_X_pinv
-#     phi_inverse = sp.linalg.inv(phi)
-#     phi_inverse = phi_inverse - \
-#                     ((phi_inverse @ Psi_X @ Psi_X_pinv @ phi_inverse) / (1 + Psi_X_pinv @ phi_inverse @ Psi_X))
-#     L_m = z @ phi_inverse
-
-#     return L_m
-
-# %%
+#%%
