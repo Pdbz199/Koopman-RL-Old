@@ -188,6 +188,8 @@ def rgEDMD(
 # dPsi_X_tilde, z_m, phi_m_inverse, L_m = rgEDMD(X_tilde[:,-1], X_tilde[:,:-1], Psi_X_tilde[:,:-1], dPsi_X_tilde[:,:-1], k)
 
 #%% Algorithm 3
+# running this would take an infeasible amount of time to so instead,
+# comment out line 207 and uncommment line 209 for testing
 def onlineKoopmanLearning():
     global X_tilde, Psi_X_tilde, dPsi_X_tilde
 
@@ -202,8 +204,9 @@ def onlineKoopmanLearning():
         dPsi_X_tilde, z_m, phi_m_inverse, L_m = rgEDMD(
             x_tilde, X_tilde_builder, Psi_X_tilde_builder, dPsi_X_tilde_builder, k, z_m, phi_m_inverse
         )
+        _, pi = learningAlgorithm(L, X, Psi_X_tilde, np.array([0,1]), cartpoleReward, timesteps=2, lamb=1)
 
-    _, pi = learningAlgorithm(L, X, Psi_X_tilde, np.array([0,1]), cartpoleReward, timesteps=2, lamb=1)
+    # _, pi = learningAlgorithm(L, X, Psi_X_tilde, np.array([0,1]), cartpoleReward, timesteps=2, lamb=1)
     return pi
     
 #%% YAY!
