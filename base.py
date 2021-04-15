@@ -70,16 +70,27 @@ nabla2Psi = psi.ddiff(X)
 B = constructB(d, k)
 second_order_B = constructSecondOrderB(s, k)
 
+#%%
+@nb.njit(fastmath=True) #parallel=True,
+def nb_einsum(A, B):
+    assert A.shape == B.shape
+    res = 0
+    for i in range(A.shape[0]):
+        for j in range(A.shape[1]):
+            res += A[i,j]*B[i,j]
+    return res
+
+#%%
 # This computes dpsi_k(x) exactly as in the paper
 # t = 1 is a placeholder time step, not really sure what it should be
-def dpsi(k, l, t=1):
-    difference = (X[:, l+1] - X[:, l])
+@nb.njit(fastmath=True)
+def dpsi(X, k, l, t=1):
+    difference = X[:, l+1] - X[:, l]
     term_1 = (1/t) * (difference)
     term_2 = nablaPsi[k, :, l]
-    term_3 = (1/(2*t)) * (difference.reshape(-1, 1) @ difference.reshape(1, -1))
+    term_3 = (1/(2*t)) * np.outer(difference, difference)
     term_4 = nabla2Psi[k, :, :, l]
-    return np.dot(term_1, term_2) + np.tensordot(term_3, term_4)
-vectorized_dpsi = np.vectorize(dpsi)
+    return np.dot(term_1, term_2) + nb_einsum(term_3, term_4)
 
 # %%
 def vectorToMatrix(vector):

@@ -86,6 +86,7 @@ def learningAlgorithm(L, X, Psi_X_tilde, U, reward, timesteps=100, cutoff=8, lam
     # G_X_tilde = np.empty((currentV.shape[0], currentV.shape[0]))
 
     # (abs(V - lastV) > epsilon).any() # there may be a more efficient way with maintaining max
+    # https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.RK45.html
     t = 0
     while t < timesteps:
         G_X_tilde = currentV.copy()
@@ -142,6 +143,9 @@ def learningAlgorithm(L, X, Psi_X_tilde, U, reward, timesteps=100, cutoff=8, lam
 # V, pi = learningAlgorithm(L, X, Psi_X_tilde, np.array([0,1]), cartpoleReward, timesteps=3, lamb=1)
 # print(pi(0, 100))
 # print(pi(1, 100))
+# sample from gaussian distribution instead?
+# second order taylor expansion around mean of pi (things inside exp)
+# damping in control
 
 # #%% Should be 1, it is!
 # print(integrate.romberg(
@@ -189,7 +193,7 @@ def rgEDMD(
 
 #%% Algorithm 3
 # running this would take an infeasible amount of time to so instead,
-# comment out line 207 and uncommment line 209 for testing
+# comment out line 211 and uncommment line 213 for testing
 def onlineKoopmanLearning():
     global X_tilde, Psi_X_tilde, dPsi_X_tilde
 
@@ -210,7 +214,7 @@ def onlineKoopmanLearning():
     return pi
     
 #%% YAY!
-pi = onlineKoopmanLearning()
+pi_online = onlineKoopmanLearning()
 print(pi(0, 100))
 print(pi(1, 100))
 

@@ -49,7 +49,7 @@ def ols(X, Y, pinv=True):
 #%% (X=Psi_X_T, Y=dPsi_X_T, rank=8)
 @nb.njit(fastmath=True)
 def rrr(X, Y, rank=8):
-    B_ols = ols(X, Y)
+    B_ols = ols(X, Y) # if infeasible use GD (numpy CG)
     U, S, V = np.linalg.svd(Y.T @ X @ B_ols)
     W = V[0:rank].T
 

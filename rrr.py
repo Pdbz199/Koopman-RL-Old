@@ -4,8 +4,9 @@ from base import *
 #%%
 # Construct \text{d}\Psi_X matrix
 dPsi_X = np.empty((k, m))
-for column in range(m-1):
-    dPsi_X[:, column] = vectorized_dpsi(np.arange(k), column)
+for row in range(k):
+    for column in range(m-1):
+        dPsi_X[row, column] = dpsi(X, row, column)
 dPsi_X_T = dPsi_X.T
 
 #%%
