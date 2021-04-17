@@ -105,9 +105,9 @@ def cartpoleReward(state, action):
     return reward
 """
 The important line from the above is the asignment
-reward = (1 - (x ** 2) / 11.52 - (theta ** 2) / 288)
+$$reward = 1 - \frac{x^2}{11.52} - \frac{\theta^2}{288} = 1 - \frac{1}{2}\left(\frac{x}{2.4}\right)^2 - \frac{1}{2}\left(\frac{\theta}{12}\right)^2 $$
 
-We can see that with an increase in the absolute values of x and θ, the reward decreases and reaches 0 when |x| = 2.4 and |θ| = 12.
+The above takes 1 and subtracts the simple average of the normalized squared position and angle. We can see that with an increase in the absolute values of x and θ, the reward decreases and reaches 0 when |x| = 2.4 and |θ| = 12. Note that the angle and position in this reward function are functions themselves of the current action and previous state (angle, position, velocity, and angle velocity).
 """
 
 ## Setup for Algorithms
@@ -202,7 +202,9 @@ Solving this maximization policy we get the feedback control:
 
 
 
-To run our algorithm, we initialize V in either some random way or we set it to 0. Then we want to find the OLS projection matrix B^\top_v of V^{\pi_0^*} onto the dictionary space by solving the following least squares problem 
+To run our algorithm, we initialize V in either some random way or we set it to 0. If we have some informed prior of what the form of the value function is, for example, using the assumption that the optimal value function is in the span of the dictionary space, we can probably speed up convergence significantly. 
+
+Next, we want to find the OLS projection matrix B^\top_v of V^{\pi_0^*} onto the dictionary space by solving the following least squares problem 
 \begin{align}
    \min_{B_g}\; \lVert G_{\tilde X} - B_g^\top \Psi_{\tilde X}\rVert_F \label{gProjPsi}
 \end{align}
@@ -367,3 +369,35 @@ def onlineKoopmanLearning(X_tilde, Psi_X_tilde, dPsi_X_tilde):
 The way the algorithm is written, it might be infeasible to test since it has to run the computationally expensive learning algorithm every time a new data point is added.
 For testing purposes we will uncomment the line before "return pi" and comment out the looping learningAlgorithm call.
 """
+
+## Theoretical Considerations
+
+### TODO: Closure of Iteration Procedure in the Dictionary Space
+'''
+Here we would like to show that from one iteration to the next the updated value function still lies in the span of the dictionary functions. Let $H = span(\psi)$ where we recall that $\psi = (\psi_1,...,\psi_k)^\top$. We first start with a value function $V^{\pi^*_j}$ which we assume, along with the reward function $r(x,u)$ to be in $H$ as part of our induction assumption. This implies from \eqref{approxOptPolicy} that we have
+\begin{align}
+    \widehat{\pi}_{j+1}^*(u | x, v) = \frac{\exp\left(\sum_{\ell = 1}^c \alpha_{j,\ell}\widehat{\varphi}_\ell(x,u)\right)  }{\int_U \exp\left(\sum_{\ell = 1}^c \alpha_{j,\ell}\widehat{\varphi}_\ell(x,u)\right) du} 
+\end{align}
+
+Plugging this into \eqref{KoopmanHJB} to get $V^{\pi^*_{j+1}}$, it is unclear if $V^{\pi^*_{j+1}}\in H$, i.e. that the new value function remains in the span of the dictionary functions.
+'''
+'''
+### TODO: Operator Algebra Approach
+Let $\mathcal{E}_x$ represent the conditional expectation over $\pi^*(\cdot|x)$, then we can represent the HJB expression as 
+\begin{align}
+    \rho V  &= \mathcal{E}_x r - \mathcal{E}^*_x \ln \pi_t
+    \\
+    \implies (\rho I - \mathcal{E}_x \mathcal{L})V &= \mathcal{E}_x(r - \ln \pi_t)
+    \\
+    \implies \ln \pi^* &= \left(\rho\mathcal{E}^{-1}_x -\mathcal{L}\right)V....
+\end{align}
+
+Along the lines of operator analysis, as discussed with Wen, we would like to show that the overall procedure of projecting each iteration of the value function on the estimated eigensystem, finding the estimated optimal policy, and then finding the new value function results in a contraction map. If we assume that the optimal value function itself lies in the span of the dictionary space, it seems intuitive that this proceedure should converge to the optimal value function since each iteration some kind of composition between a projection operator and a Bellman operator, both of which are contractive. 
+'''
+
+
+
+'''
+# TODO: Mean Field Game Approaches Using Stochastic Maximum Principle
+There seem to be some promising works at the intersection of relaxed control theory and mean field games. Mixed strategies look very close to MDP problems and the way that MFGs are sometimes solved is with Pontryagin's maximum principle. See Daneil Lacker's thesis and IPAM summary papers (\href{http://www.columbia.edu/~dl3133/dlacker-dissertation.pdf}{Thesis Link}, \href{http://www.columbia.edu/~dl3133/IPAM-MFGCompactnessMethods.pdf}{IPAM Lecture Link}, \href{http://www.ipam.ucla.edu/programs/summer-schools/graduate-summer-school-mean-field-games-and-applications/?tab=schedule}{IPAM Lecture Video})
+'''

@@ -234,7 +234,7 @@ def a_v3(l):
     diffusionMat = np.empty((d, d))
     for i in range(d):
         for j in range(d):
-            Bij = B[i]*B[j]
+            Bij = (1/dt)*B[i]*B[j]
             diffusionDictCoefs[i, j] = PsiMult @ Bij
             diffusionMat[i, j] = np.dot(diffusionDictCoefs[i, j], Psi_X[:,l])
     return diffusionMat
@@ -242,4 +242,6 @@ def a_v3(l):
 print("a_v3:")
 for l in range(5):
     calc = a_v3(l)
-    print(np.diagonal(calc))
+    print(f"Matrix {l}:", calc)
+    print(f"Diagonal {l}:", np.diagonal(calc))
+# %%

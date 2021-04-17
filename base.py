@@ -4,6 +4,7 @@ import timeit
 import observables
 import numpy as np
 import scipy as sp
+import numba as nb
 import pandas as pd
 from brownian import brownian
 
@@ -84,7 +85,7 @@ def nb_einsum(A, B):
 # This computes dpsi_k(x) exactly as in the paper
 # t = 1 is a placeholder time step, not really sure what it should be
 @nb.njit(fastmath=True)
-def dpsi(X, k, l, t=1):
+def dpsi(X, k, l, t=dt):
     difference = X[:, l+1] - X[:, l]
     term_1 = (1/t) * (difference)
     term_2 = nablaPsi[k, :, l]
