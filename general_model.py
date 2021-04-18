@@ -38,6 +38,13 @@ def rejection_sampler(p, xbounds, pmax):
 
 class GeneratorModel:
     def __init__(self, psi, reward):
+        """
+        Create instance of model
+
+            Parameters:
+                psi: Set of dictionary functions from the observables class
+                reward: The reward function for whatever problem you are trying to model
+        """
         self.psi = psi
         self.reward = reward
 
@@ -48,7 +55,6 @@ class GeneratorModel:
             Parameters:
                 X: State data
                 U: Action data
-                psi: Dictionary functions
 
         """
         self.X = X
@@ -85,13 +91,13 @@ class GeneratorModel:
 
     def update(self, x, u):
         """
-        Update the policy to include data about a new point
+        Updates the model to include data about a new point (this assumes only two states/actions were given during the fitting process)
 
             Parameters:
                 x: A single state vector
                 u: A single action vector
         """
-        self.dPsi_X_tilde, self.z_m, self.phi_m_inverse, self.L_m = rgEDMD(
+        self.dPsi_X_tilde, self.z_m, self.phi_m_inverse, self.L = rgEDMD(
             np.append(x, u),
             self.X_tilde,
             self.psi,
@@ -105,8 +111,10 @@ class GeneratorModel:
 
     def sample_action(self):
         """
+        Sample action from policy pi
+
             Returns:
-                pi: Estimated optimal policy
+                action: Action sampled from estimated optimal policy pi
         """
         try:
             return rejection_sampler(lambda u: self.pi(u, 100), [self.min_action,self.max_action], 1.1)[0]
