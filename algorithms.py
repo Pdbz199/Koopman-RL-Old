@@ -3,7 +3,7 @@ import observables
 import numpy as np
 import scipy as sp
 import numba as nb
-from scipy import integrate
+from scipy import integrate, interpolate
 from estimate_L import *
 from cartpole_reward import cartpoleReward
 @nb.njit(fastmath=True)
@@ -19,46 +19,45 @@ def nb_einsum(A, B):
     return res
 
 #%%
-# X = (np.load('random-cartpole-states.npy'))[:5000].T # states
-# U = (np.load('random-cartpole-actions.npy'))[:5000].T # actions
-# X_tilde = np.append(X, [U], axis=0) # extended states
-# d = X_tilde.shape[0]
-# m = X_tilde.shape[1]
-# s = int(d*(d+1)/2) # number of second order poly terms
+X = (np.load('random-cartpole-states.npy'))[:5000].T # states
+U = (np.load('random-cartpole-actions.npy'))[:5000].T # actions
+X_tilde = np.append(X, [U], axis=0) # extended states
+d = X_tilde.shape[0]
+m = X_tilde.shape[1]
+s = int(d*(d+1)/2) # number of second order poly terms
 
 #%%
-# psi = observables.monomials(2)
-# Psi_X_tilde = psi(X_tilde)
-# Psi_X_tilde_T = Psi_X_tilde.T
-# k = Psi_X_tilde.shape[0]
-# nablaPsi = psi.diff(X_tilde)
-# nabla2Psi = psi.ddiff(X_tilde)
+psi = observables.monomials(2)
+Psi_X_tilde = psi(X_tilde)
+Psi_X_tilde_T = Psi_X_tilde.T
+k = Psi_X_tilde.shape[0]
+nablaPsi = psi.diff(X_tilde)
+nabla2Psi = psi.ddiff(X_tilde)
 
 #%%
-# @nb.njit(fastmath=True)
-# def dpsi(X, k, l, t=1):
-#     difference = X[:, l+1] - X[:, l]
-#     term_1 = (1/t) * (difference)
-#     term_2 = nablaPsi[k, :, l]
-#     term_3 = (1/(2*t)) * np.outer(difference, difference)
-#     term_4 = nabla2Psi[k, :, :, l]
-#     return np.dot(term_1, term_2) + nb_einsum(term_3, term_4)
+@nb.njit(fastmath=True)
+def dpsi(X, k, l, t=1):
+    difference = X[:, l+1] - X[:, l]
+    term_1 = (1/t) * (difference)
+    term_2 = nablaPsi[k, :, l]
+    term_3 = (1/(2*t)) * np.outer(difference, difference)
+    term_4 = nabla2Psi[k, :, :, l]
+    return np.dot(term_1, term_2) + nb_einsum(term_3, term_4)
 
 #%% Construct \text{d}\Psi_X matrix
-# dPsi_X_tilde = np.zeros((k, m))
-# for row in range(k):
-#     for column in range(m-1):
-#         dPsi_X_tilde[row, column] = dpsi(X_tilde, row, column)
-# dPsi_X_tilde_T = dPsi_X_tilde.T
+dPsi_X_tilde = np.zeros((k, m))
+for row in range(k):
+    for column in range(m-1):
+        dPsi_X_tilde[row, column] = dpsi(X_tilde, row, column)
+dPsi_X_tilde_T = dPsi_X_tilde.T
 
 #%%
-# L = rrr(Psi_X_tilde_T, dPsi_X_tilde_T)
+L = rrr(Psi_X_tilde_T, dPsi_X_tilde_T)
 
 #%%
 @nb.njit
-def psi_x_tilde_with_diff_u(Psi_X_tilde, u):
-    l = Psi_X_tilde.shape[1]
-    result = Psi_X_tilde[:,l].copy()
+def psi_x_tilde_with_diff_u(psi_X_tilde, u):
+    result = psi_X_tilde
     result[-1] = u
     return result
 
@@ -97,7 +96,7 @@ def learningAlgorithm(L, X, Psi_X_tilde, U, reward, timesteps=100, cutoff=8, lam
 
         @nb.jit(forceobj=True, fastmath=True)
         def Lv_hat(l, u):
-            psi_x_tilde = psi_x_tilde_with_diff_u(Psi_X_tilde, u)
+            psi_x_tilde = psi_x_tilde_with_diff_u(Psi_X_tilde[:,l], u)
             summation = 0
             for ell in range(cutoff):
                 summation += eigenvalues[ell] * eigenfunctions(ell, psi_x_tilde) * generatorModes[ell]
@@ -146,6 +145,24 @@ def learningAlgorithm(L, X, Psi_X_tilde, U, reward, timesteps=100, cutoff=8, lam
 # print(pi(1, 100))
 
 # %%
+# 1. For each new state, x, evaluate the density on two regions [0,0.5) and (0.5,1]. This gives you the piecewise constant density on the two regions.
+#    Call these f1 and f2
+# 2. The inverse cdf is then given by F^{-1}(y) = y/f_1 for y\in[0,0.5f1] and (y-0.5*f1 +0.5*f2)/f2 for y\in (0.5*f1, 0.5*f1+0.5*f2]
+# 3. Draw a uniform(0,1) random sample y and evaluate F^{-1}(y) to get the sample from the \pi(u|x)
+# 4. Given sampled action, update state and repeat
+
+# def sample_action(x):
+#     f1 = pi(0.2, x)
+#     f2 = pi(0.7, x)
+#     y = np.random.rand()
+#     if y <= 0.5*f1 and y >= 0:
+#         return y / f1
+    
+#     return (y - 0.5 * f1 + 0.5 * f2) / f2
+
+# #%%
+# sample_action(100)
+
 # from scipy import stats
 # Didn't work:
 # class your_distribution(stats.rv_continuous):
@@ -215,9 +232,7 @@ def rgEDMD(
 #%% Algorithm 3
 # running this would take an infeasible amount of time to so instead,
 # comment out line 211 and uncommment line 213 for testing
-def onlineKoopmanLearning():
-    global X_tilde, Psi_X_tilde, dPsi_X_tilde
-
+def onlineKoopmanLearning(X_tilde, Psi_X_tilde, dPsi_X_tilde):
     X_tilde_builder = X_tilde[:,:2]
     Psi_X_tilde_builder = Psi_X_tilde[:,:2]
     dPsi_X_tilde_builder = dPsi_X_tilde[:,:2]
@@ -238,5 +253,3 @@ def onlineKoopmanLearning():
 # pi_online = onlineKoopmanLearning()
 # print(pi(0, 100))
 # print(pi(1, 100))
-
-#%%

@@ -36,6 +36,15 @@ def rejection_sampler(p, xbounds, pmax):
         if y<=p(x[0]):
             return x
 
+def sample_cartpole_action(pi, x):
+    f1 = pi(0.2, x)
+    f2 = pi(0.7, x)
+    y = np.random.rand()
+    if y <= 0.5*f1 and y >= 0:
+        return y / f1
+    
+    return (y - 0.5 * f1 + 0.5 * f2) / f2
+
 class GeneratorModel:
     def __init__(self, psi, reward):
         """
@@ -89,6 +98,13 @@ class GeneratorModel:
         self.z_m = np.zeros((self.k, self.k))
         self.phi_m_inverse = np.linalg.inv(np.identity(self.k))
 
+        self.V, self.pi = learningAlgorithm(
+            self.L, self.X, self.Psi_X_tilde,
+            self.U, self.reward, timesteps=2, lamb=0.5
+        )
+
+        self.pi_with_state = lambda u, x: self.pi(u, )
+
     def update(self, x, u):
         """
         Updates the model to include data about a new point (this assumes only two states/actions were given during the fitting process)
@@ -109,20 +125,30 @@ class GeneratorModel:
             self.phi_m_inverse
         )
 
-    def sample_action(self):
+        self.V, self.pi = learningAlgorithm(
+            self.L, self.X, self.Psi_X_tilde,
+            self.U, self.reward, timesteps=2, lamb=0.5
+        )
+
+    def sample_action(self, x):
         """
         Sample action from policy pi
+
+            Parameters:
+                x: Current state vector
 
             Returns:
                 action: Action sampled from estimated optimal policy pi
         """
-        try:
-            return rejection_sampler(lambda u: self.pi(u, 100), [self.min_action,self.max_action], 1.1)[0]
-        except:
-            self.V, self.pi = learningAlgorithm(
-                self.L, self.X, self.Psi_X_tilde,
-                self.U, self.reward, timesteps=2, lamb=0.5
-            )
+        return sample_cartpole_action(self.pi, x)
+
+        # try:
+        #     return rejection_sampler(lambda u: self.pi(u, 100), [self.min_action,self.max_action], 1.1)[0]
+        # except:
+        #     self.V, self.pi = learningAlgorithm(
+        #         self.L, self.X, self.Psi_X_tilde,
+        #         self.U, self.reward, timesteps=2, lamb=0.5
+        #     )
         
-        return rejection_sampler(lambda u: self.pi(u, 100), [self.min_action,self.max_action], 1.1)[0]
+        # return rejection_sampler(lambda u: self.pi(u, 100), [self.min_action,self.max_action], 1.1)[0]
 # %%
