@@ -142,6 +142,11 @@ class GeneratorModel:
         """
         return sample_cartpole_action(self.pi, x)
 
+        # Attempt at taylor approximation sampling
+        # pi_hat_star_hat = interpolate.approximate_taylor_polynomial(self.pi, np.mean(U), 2, 1)
+        # rand = np.random.normal(loc=, scale=)
+        # sampled_action = pi_hat_star_hat(rand)
+
         # try:
         #     return rejection_sampler(lambda u: self.pi(u, 100), [self.min_action,self.max_action], 1.1)[0]
         # except:

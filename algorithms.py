@@ -56,11 +56,11 @@ dPsi_X_tilde_T = dPsi_X_tilde.T
 L = rrr(Psi_X_tilde_T, dPsi_X_tilde_T)
 
 #%%
-@nb.njit
-def psi_x_tilde_with_diff_u(psi_X_tilde, u):
-    result = psi_X_tilde
-    result[-1] = u
-    return result
+# @nb.njit
+# def psi_x_tilde_with_diff_u(psi_X_tilde, u):
+#     result = psi_X_tilde
+#     result[-1] = u
+#     return result
 
 #%% Algorithm 1
 #? arg for (epsilon=0.1,)?
@@ -118,7 +118,8 @@ def learningAlgorithm(L, X, psi, Psi_X_tilde, U, reward, timesteps=100, cutoff=8
 
             x_tilde = np.append(x, u)
             inp = (constant * (reward(x, u) + Lv_hat(x_tilde))).astype('longdouble')
-            return np.exp(inp) #! overflow encountered here
+            if inp > 709.0: inp = 709.0
+            return np.exp(inp) #! overflow encountered here, Lv_hat might be bigger than it should be
 
         def pi_hat_star(u, x): # action given state
             # print("pi_hat_star")
@@ -164,7 +165,7 @@ def learningAlgorithm(L, X, psi, Psi_X_tilde, U, reward, timesteps=100, cutoff=8
     return currentV, pi_hat_star
 
 #%%
-V, pi = learningAlgorithm(L, X, psi, Psi_X_tilde, np.array([0,1]), cartpoleReward, timesteps=2, lamb=0.5)
+V, pi = learningAlgorithm(L, X, psi, Psi_X_tilde, np.array([0,1]), cartpoleReward, timesteps=2, lamb=10000)
 print(pi(0, 100))
 print(pi(1, 100))
 
