@@ -19,6 +19,7 @@ def nb_einsum(A, B):
     return res
 
 #%%
+# Columns are state vectors
 X = (np.load('random-cartpole-states.npy'))[:5000].T # states
 U = (np.load('random-cartpole-actions.npy'))[:5000].T # actions
 X_tilde = np.append(X, [U], axis=0) # extended states
@@ -63,7 +64,11 @@ def psi_x_tilde_with_diff_u(psi_X_tilde, u):
 
 #%% Algorithm 1
 #? arg for (epsilon=0.1,)?
-def learningAlgorithm(L, X, Psi_X_tilde, U, reward, timesteps=100, cutoff=8, lamb=0.05):
+# TODO: Make sure np.real() calls are where they need to be
+def learningAlgorithm(L, X, psi, Psi_X_tilde, U, reward, timesteps=100, cutoff=8, lamb=0.05):
+    _divmax = 30
+    Psi_X_tilde_T = Psi_X_tilde.T
+
     # placeholder functions
     V = lambda x: x
     pi_hat_star = lambda x: x
@@ -74,10 +79,11 @@ def learningAlgorithm(L, X, Psi_X_tilde, U, reward, timesteps=100, cutoff=8, lam
     constant = 1/lamb
 
     eigenvalues, eigenvectors = sp.linalg.eig(L) # L created with X_tilde
-    eigenvectors = eigenvectors
+    eigenvalues = np.real(eigenvalues)
+    eigenvectors = np.real(eigenvectors)
     @nb.njit(fastmath=True)
-    def eigenfunctions(i, psi_x_tilde):
-        return np.dot(np.real(eigenvectors[i]), psi_x_tilde) #Psi_X_tilde[:, l]
+    def eigenfunctions(ell, psi_x_tilde):
+        return np.dot(eigenvectors[ell], psi_x_tilde)[0]
 
     eigenvectors_inverse_transpose = sp.linalg.inv(eigenvectors).T # pseudoinverse?
 
@@ -87,52 +93,70 @@ def learningAlgorithm(L, X, Psi_X_tilde, U, reward, timesteps=100, cutoff=8, lam
 
     # (abs(V - lastV) > epsilon).any() # there may be a more efficient way with maintaining max
     # https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.RK45.html
+    # scipy.integrate.RK45(fun, t0, y0, t_bound, max_step=inf, rtol=0.001, atol=1e-06, vectorized=False, first_step=None, **extraneous)
+    # Not really sure how to replace romberg with that...
     t = 0
     while t < timesteps:
         G_X_tilde = currentV.copy()
-        B_v = ols(Psi_X_tilde.T, G_X_tilde)
+        B_v = ols(Psi_X_tilde_T, G_X_tilde)
 
         generatorModes = B_v.T @ eigenvectors_inverse_transpose
 
-        @nb.jit(forceobj=True, fastmath=True)
-        def Lv_hat(l, u):
-            psi_x_tilde = psi_x_tilde_with_diff_u(Psi_X_tilde[:,l], u)
+        # @nb.jit(forceobj=True, fastmath=True)
+        def Lv_hat(x_tilde):
+            # print("Lv_hat")
+
+            psi_x_tilde = psi(x_tilde.reshape(-1,1))
             summation = 0
             for ell in range(cutoff):
-                summation += eigenvalues[ell] * eigenfunctions(ell, psi_x_tilde) * generatorModes[ell]
+                summation += generatorModes[ell] * eigenvalues[ell] * eigenfunctions(ell, psi_x_tilde)
             return summation
 
-        @nb.jit(forceobj=True, fastmath=True)
-        def compute(u, l):
-            inp = (constant * (reward(X[:,l], u) + Lv_hat(l, u))).astype('longdouble')
-            return np.exp(inp)
+        # @nb.jit(forceobj=True, fastmath=True)
+        def compute(u, x):
+            # print("compute")
 
-        def pi_hat_star(u, l): # action given state
-            numerator = compute(u, l)
-            denominator = integrate.romberg(compute, low, high, args=(l,), divmax=30)
+            x_tilde = np.append(x, u)
+            inp = (constant * (reward(x, u) + Lv_hat(x_tilde))).astype('longdouble')
+            return np.exp(inp) #! overflow encountered here
+
+        def pi_hat_star(u, x): # action given state
+            # print("pi_hat_star")
+
+            numerator = compute(u, x)
+            denominator = integrate.romberg(compute, low, high, args=(x,), divmax=_divmax)
             return numerator / denominator
 
-        def compute_2(u, l):
-            eval_pi_hat_star = pi_hat_star(u, l)
-            return (reward(X[:,l], u) - (lamb * ln(eval_pi_hat_star))) * eval_pi_hat_star
+        def compute_2(u, x):
+            # print("compute_2")
 
-        def integral_summation(l):
+            eval_pi_hat_star = pi_hat_star(u, x)
+            return (reward(x, u) - (lamb * ln(eval_pi_hat_star))) * eval_pi_hat_star
+
+        def integral_summation(x):
+            # print("integral_summation")
+
             summation = 0
             for ell in range(cutoff):
                 summation += generatorModes[ell] * eigenvalues[ell] * \
                     integrate.romberg(
-                        lambda u, l: eigenfunctions(ell, Psi_X_tilde[:, l]) * pi_hat_star(u, l),
-                        low, high, args=(l,), divmax=30
+                        lambda u, x: eigenfunctions(ell, psi(np.append(x, u).reshape(-1,1))) * pi_hat_star(u, x),
+                        low, high, args=(x,), divmax=_divmax
                     )
             return summation
 
-        def V(l):
-            return (integrate.romberg(compute_2, low, high, args=(l,), divmax=30) + \
-                        integral_summation(l))
+        def V(x):
+            # print("V")
+
+            return (integrate.romberg(compute_2, low, high, args=(x,), divmax=_divmax) + \
+                        integral_summation(x))
 
         lastV = currentV
         for i in range(currentV.shape[0]):
-            currentV[i] = V(i)
+            x = X[:,i]
+            currentV[i] = V(x)
+            if i % 1000 == 0:
+                print(i)
 
         t+=1
         print("Completed learning step", t, "\n")
@@ -140,9 +164,9 @@ def learningAlgorithm(L, X, Psi_X_tilde, U, reward, timesteps=100, cutoff=8, lam
     return currentV, pi_hat_star
 
 #%%
-# V, pi = learningAlgorithm(L, X, Psi_X_tilde, np.array([0,1]), cartpoleReward, timesteps=3, lamb=1)
-# print(pi(0, 100))
-# print(pi(1, 100))
+V, pi = learningAlgorithm(L, X, psi, Psi_X_tilde, np.array([0,1]), cartpoleReward, timesteps=2, lamb=0.5)
+print(pi(0, 100))
+print(pi(1, 100))
 
 # %%
 # 1. For each new state, x, evaluate the density on two regions [0,0.5) and (0.5,1]. This gives you the piecewise constant density on the two regions.
