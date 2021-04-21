@@ -6,8 +6,8 @@ from general_model import GeneratorModel
 from cartpole_reward import cartpoleReward
 
 #%%
-X = (np.load('random-cartpole-states.npy'))[:10000].T # states
-U = (np.load('random-cartpole-actions.npy'))[:10000].T # actions
+X = (np.load('random-cartpole-states.npy'))[:5000].T # states
+U = (np.load('random-cartpole-actions.npy'))[:5000].T # actions
 psi = observables.monomials(2)
 
 #%%
@@ -15,13 +15,17 @@ env = gym.make('CartPole-v0')
 
 #%%
 model = GeneratorModel(psi, cartpoleReward)
-model.fit(X, U)
+print(X.shape)
+print(U.shape)
+print(X[:,:2].shape)
+print(U[:2].shape)
+model.fit(X[:,:2], U[:2])
 
 #%%
 print(model.sample_action(0))
 
 #%%
-episodes = 10
+episodes = 150
 episode_rewards = []
 for episode in range(episodes):
     episode_reward = 0
@@ -32,10 +36,11 @@ for episode in range(episodes):
     while done == False:
         env.render()
 
-        action = model.sample_action(state_num)
-        state_num += 1
+        action = model.sample_action(current_state)
 
-        observation, reward, done, _ = env.step(int(np.around(action)))
+        model.update(current_state, action)
+
+        current_state, reward, done, _ = env.step(int(np.around(action)))
         episode_reward += reward
     
     print("episode reward:", episode_reward)

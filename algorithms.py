@@ -85,7 +85,7 @@ def learningAlgorithm(L, X, psi, Psi_X_tilde, U, reward, timesteps=100, cutoff=8
     def eigenfunctions(ell, psi_x_tilde):
         return np.dot(eigenvectors[ell], psi_x_tilde)[0]
 
-    eigenvectors_inverse_transpose = sp.linalg.inv(eigenvectors).T # pseudoinverse?
+    # eigenvectors_inverse_transpose = sp.linalg.inv(eigenvectors).T # pseudoinverse?
 
     currentV = np.zeros(X.shape[1]) # V^{\pi*_0}
     lastV = currentV.copy()

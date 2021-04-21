@@ -99,16 +99,14 @@ class GeneratorModel:
         self.phi_m_inverse = np.linalg.inv(np.identity(self.k))
 
         self.V, self.pi = learningAlgorithm(
-            self.L, self.X, self.Psi_X_tilde,
-            self.U, self.reward, timesteps=2, lamb=0.5
+            self.L, self.X, self.psi, self.Psi_X_tilde,
+            self.U, self.reward, timesteps=2, lamb=10
         )
-
-        self.pi_with_state = lambda u, x: self.pi(u, )
 
     def update_policy(self):
         self.V, self.pi = learningAlgorithm(
-            self.L, self.X, self.Psi_X_tilde,
-            self.U, self.reward, timesteps=2, lamb=0.5
+            self.L, self.X, self.psi, self.Psi_X_tilde,
+            self.U, self.reward, timesteps=2, lamb=10
         )
 
     def update(self, x, u):
