@@ -65,7 +65,7 @@ L = rrr(Psi_X_tilde_T, dPsi_X_tilde_T)
 #%% Algorithm 1
 #? arg for (epsilon=0.1,)?
 # TODO: Make sure np.real() calls are where they need to be
-def learningAlgorithm(L, X, psi, Psi_X_tilde, U, reward, timesteps=100, cutoff=8, lamb=0.05):
+def learningAlgorithm(L, X, psi, Psi_X_tilde, U, reward, timesteps=100, cutoff=8, lamb=10):
     _divmax = 30
     Psi_X_tilde_T = Psi_X_tilde.T
 
@@ -98,19 +98,21 @@ def learningAlgorithm(L, X, psi, Psi_X_tilde, U, reward, timesteps=100, cutoff=8
     t = 0
     while t < timesteps:
         G_X_tilde = currentV.copy()
-        B_v = ols(Psi_X_tilde_T, G_X_tilde)
+        B_v = rrr(Psi_X_tilde_T, G_X_tilde.reshape(-1,1))
 
-        generatorModes = B_v.T @ eigenvectors_inverse_transpose
+        # generatorModes = B_v.T @ eigenvectors_inverse_transpose
 
         # @nb.jit(forceobj=True, fastmath=True)
         def Lv_hat(x_tilde):
             # print("Lv_hat")
 
-            psi_x_tilde = psi(x_tilde.reshape(-1,1))
-            summation = 0
-            for ell in range(cutoff):
-                summation += generatorModes[ell] * eigenvalues[ell] * eigenfunctions(ell, psi_x_tilde)
-            return summation
+            # psi_x_tilde = psi(x_tilde.reshape(-1,1))
+            # summation = 0
+            # for ell in range(cutoff):
+            #     summation += generatorModes[ell] * eigenvalues[ell] * eigenfunctions(ell, psi_x_tilde)
+            # return summation
+
+            return (L @ B_v).T @ psi(x_tilde.reshape(-1,1))
 
         # @nb.jit(forceobj=True, fastmath=True)
         def compute(u, x):
@@ -118,8 +120,10 @@ def learningAlgorithm(L, X, psi, Psi_X_tilde, U, reward, timesteps=100, cutoff=8
 
             x_tilde = np.append(x, u)
             inp = (constant * (reward(x, u) + Lv_hat(x_tilde))).astype('longdouble')
-            if inp > 709.0: inp = 709.0
-            return np.exp(inp) #! overflow encountered here, Lv_hat might be bigger than it should be
+            # in discrete setting: 
+            # p_i \propto exp(x_i)
+            # p_i \propto exp(x_i - \sum_i x_i / d)
+            return np.exp(inp)
 
         def pi_hat_star(u, x): # action given state
             # print("pi_hat_star")
@@ -132,25 +136,30 @@ def learningAlgorithm(L, X, psi, Psi_X_tilde, U, reward, timesteps=100, cutoff=8
             # print("compute_2")
 
             eval_pi_hat_star = pi_hat_star(u, x)
-            return (reward(x, u) - (lamb * ln(eval_pi_hat_star))) * eval_pi_hat_star
+            x_tilde = np.append(x, u)
+            return (reward(x, u) - (lamb * ln(eval_pi_hat_star)) + Lv_hat(x_tilde)) * eval_pi_hat_star
 
-        def integral_summation(x):
-            # print("integral_summation")
+        # def integral_summation(x):
+        #     # print("integral_summation")
 
-            summation = 0
-            for ell in range(cutoff):
-                summation += generatorModes[ell] * eigenvalues[ell] * \
-                    integrate.romberg(
-                        lambda u, x: eigenfunctions(ell, psi(np.append(x, u).reshape(-1,1))) * pi_hat_star(u, x),
-                        low, high, args=(x,), divmax=_divmax
-                    )
-            return summation
+        #     summation = 0
+        #     for ell in range(cutoff):
+        #         summation += generatorModes[ell] * eigenvalues[ell] * \
+        #             integrate.romberg(
+        #                 lambda u, x: eigenfunctions(ell, psi(np.append(x, u).reshape(-1,1))) * pi_hat_star(u, x),
+        #                 low, high, args=(x,), divmax=_divmax
+        #             )
+        #     return summation
 
         def V(x):
             # print("V")
 
-            return (integrate.romberg(compute_2, low, high, args=(x,), divmax=_divmax) + \
-                        integral_summation(x))
+            # return (integrate.romberg(compute_2, low, high, args=(x,), divmax=_divmax) + \
+            #             integral_summation(x))
+
+            return integrate.romberg(
+                compute_2, low, high, args=(x,)
+            )
 
         lastV = currentV
         for i in range(currentV.shape[0]):
@@ -165,9 +174,10 @@ def learningAlgorithm(L, X, psi, Psi_X_tilde, U, reward, timesteps=100, cutoff=8
     return currentV, pi_hat_star
 
 #%%
-V, pi = learningAlgorithm(L, X, psi, Psi_X_tilde, np.array([0,1]), cartpoleReward, timesteps=2, lamb=10000)
-print(pi(0, 100))
-print(pi(1, 100))
+# V, pi = learningAlgorithm(L, X, psi, Psi_X_tilde, np.array([0,1]), cartpoleReward, timesteps=4, lamb=10)
+# action = np.array([2.3, 1.0, 10.0, 1.0])
+# print(pi(0, action))
+# print(pi(1, action))
 
 # %%
 # 1. For each new state, x, evaluate the density on two regions [0,0.5) and (0.5,1]. This gives you the piecewise constant density on the two regions.
@@ -215,48 +225,29 @@ print(pi(1, 100))
 
 #%% Algorithm 2
 def rgEDMD(
-    x_tilde,
-    X_tilde,
-    psi,
-    Psi_X_tilde,
-    dpsi,
     dPsi_X_tilde,
+    Psi_X_tilde_m,
     z_m,
     phi_m_inverse
 ):
-    k = dPsi_X_tilde.shape[0]
-    X_tilde = np.append(X_tilde, x_tilde.reshape(-1,1), axis=1)
-    Psi_X_tilde = psi(X_tilde)
-    # dPsi_x_tilde = np.empty(k)
-    # for k in range(k):
-    #     dPsi_x_tilde[k] = dpsi(X_tilde, k, -1)
-    # dPsi_X_tilde = np.append(dPsi_X_tilde, dPsi_x_tilde.reshape(-1,1), axis=1)
-    for l in range(k):
-        dPsi_X_tilde[l, -1] = dpsi(X_tilde, l, -2)
-    dPsi_X_tilde = np.append(dPsi_X_tilde, np.zeros((k,1)), axis=1) #? should this really append 0s?
-
-    Psi_X_tilde_m = Psi_X_tilde[:,-1].reshape(-1,1)
-    Psi_X_tilde_m_T = Psi_X_tilde_m.T #? maybe pinv?
-
     # update z_m
-    z_m = z_m + dPsi_X_tilde[:,-2].reshape(-1,1) @ Psi_X_tilde_m_T
+    z_m = z_m + dPsi_X_tilde[:,-2].reshape(-1,1) @ Psi_X_tilde_m.T
 
     # update \phi_m^{-1}
     phi_m_inverse = phi_m_inverse - \
-                    ((phi_m_inverse @ Psi_X_tilde_m @ Psi_X_tilde_m_T @ phi_m_inverse) / \
-                        (1 + Psi_X_tilde_m_T @ phi_m_inverse @ Psi_X_tilde_m))
+                    ((phi_m_inverse @ Psi_X_tilde_m @ Psi_X_tilde_m.T @ phi_m_inverse) / \
+                        (1 + Psi_X_tilde_m.T @ phi_m_inverse @ Psi_X_tilde_m))
     
     L_m = z_m @ phi_m_inverse
 
-    # updated dPsi_X_tilde, updated z_m, updated \phi_m^{-1}, and approximate generator
-    return dPsi_X_tilde, z_m, phi_m_inverse, L_m
-
-#%%
-# dPsi_X_tilde, z_m, phi_m_inverse, L_m = rgEDMD(X_tilde[:,-1], X_tilde[:,:-1], Psi_X_tilde[:,:-1], dPsi_X_tilde[:,:-1], k)
+    # updated z_m, updated \phi_m^{-1}, and \mathcal{L}_m
+    return z_m, phi_m_inverse, L_m
 
 #%% Algorithm 3
 # running this would take an infeasible amount of time to so instead,
-# comment out line 211 and uncommment line 213 for testing
+# comment out line the learningAlgorithm call in the loop and uncommment
+# the learningAlgorithm call outside of the loop for testing
+@nb.jit(forceobj=True, fastmath=True)
 def onlineKoopmanLearning(X_tilde, Psi_X_tilde, dPsi_X_tilde):
     X_tilde_builder = X_tilde[:,:2]
     Psi_X_tilde_builder = Psi_X_tilde[:,:2]
@@ -265,16 +256,21 @@ def onlineKoopmanLearning(X_tilde, Psi_X_tilde, dPsi_X_tilde):
 
     z_m = np.zeros((k,k))
     phi_m_inverse = np.linalg.inv(np.identity(k))
-    for x_tilde in X_tilde.T:
-        dPsi_X_tilde, z_m, phi_m_inverse, L_m = rgEDMD(
-            x_tilde, X_tilde_builder, Psi_X_tilde_builder, dPsi_X_tilde_builder, k, z_m, phi_m_inverse
+    for x_tilde in X_tilde:
+        x_tilde = x_tilde.reshape(-1,1)
+
+        X_tilde_builder = np.append(X_tilde_builder, x_tilde, axis=1)
+        Psi_X_tilde_builder = np.append(Psi_X_tilde_builder, psi(x_tilde), axis=1)
+        for l in range(k):
+            dPsi_X_tilde_builder[l, -1] = dpsi(X_tilde_builder, l, -2)
+        dPsi_X_tilde_builder = np.append(dPsi_X_tilde_builder, np.zeros((k,1)), axis=1)
+
+        Psi_X_tilde_m = Psi_X_tilde[:,-1].reshape(-1,1)
+
+        z_m, phi_m_inverse, L_m = rgEDMD(
+            dPsi_X_tilde_builder, Psi_X_tilde_m, z_m, phi_m_inverse
         )
         # _, pi = learningAlgorithm(L, X, Psi_X_tilde, np.array([0,1]), cartpoleReward, timesteps=2, lamb=1)
 
     _, pi = learningAlgorithm(L, X, Psi_X_tilde, np.array([0,1]), cartpoleReward, timesteps=2, lamb=1)
     return pi
-    
-#%% YAY!
-# pi_online = onlineKoopmanLearning()
-# print(pi(0, 100))
-# print(pi(1, 100))

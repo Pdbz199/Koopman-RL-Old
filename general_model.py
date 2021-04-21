@@ -105,6 +105,12 @@ class GeneratorModel:
 
         self.pi_with_state = lambda u, x: self.pi(u, )
 
+    def update_policy(self):
+        self.V, self.pi = learningAlgorithm(
+            self.L, self.X, self.Psi_X_tilde,
+            self.U, self.reward, timesteps=2, lamb=0.5
+        )
+
     def update(self, x, u):
         """
         Updates the model to include data about a new point (this assumes only two states/actions were given during the fitting process)
@@ -113,22 +119,27 @@ class GeneratorModel:
                 x: A single state vector
                 u: A single action vector
         """
-        self.dPsi_X_tilde, self.z_m, self.phi_m_inverse, self.L = rgEDMD(
-            np.append(x, u),
-            self.X_tilde,
-            self.psi,
-            self.Psi_X_tilde,
-            dpsi,
+        x = x.reshape(-1,1)
+        self.X = np.append(self.X, x, axis=1)
+
+        x_tilde = np.append(x, u).reshape(-1,1)
+        self.X_tilde = np.append(self.X_tilde, x_tilde, axis=1)
+
+        self.Psi_X_tilde = np.append(self.Psi_X_tilde, psi(x_tilde), axis=1)
+        for l in range(k):
+            self.dPsi_X_tilde[l, -1] = dpsi(self.X_tilde, l, -2)
+        self.dPsi_X_tilde = np.append(self.dPsi_X_tilde, np.zeros((k,1)), axis=1)
+
+        Psi_X_tilde_m = Psi_X_tilde[:,-1].reshape(-1,1)
+
+        self.z_m, self.phi_m_inverse, self.L = rgEDMD(
             self.dPsi_X_tilde,
-            self.k,
+            Psi_X_tilde_m,
             self.z_m,
             self.phi_m_inverse
         )
 
-        self.V, self.pi = learningAlgorithm(
-            self.L, self.X, self.Psi_X_tilde,
-            self.U, self.reward, timesteps=2, lamb=0.5
-        )
+        # self.update_policy()
 
     def sample_action(self, x):
         """

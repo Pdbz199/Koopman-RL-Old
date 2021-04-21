@@ -58,3 +58,6 @@ def rrr(X, Y, rank=8):
     return L
 
 # %%
+@nb.njit(fastmath=True)
+def ridgeRegression(X, y, lamb=0.05):
+    return np.linalg.inv(X.T @ X + (lamb * np.identity(X.shape[1]))) @ X.T @ y
