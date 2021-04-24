@@ -46,7 +46,7 @@ def sample_cartpole_action(pi, x):
     return (y - 0.5 * f1 + 0.5 * f2) / f2
 
 class GeneratorModel:
-    def __init__(self, psi, reward):
+    def __init__(self, psi, reward, L=None):
         """
         Create instance of model
 
@@ -56,6 +56,7 @@ class GeneratorModel:
         """
         self.psi = psi
         self.reward = reward
+        self.L = L
 
     def fit(self, X, U):
         """
