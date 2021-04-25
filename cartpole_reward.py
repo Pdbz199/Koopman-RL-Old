@@ -29,7 +29,7 @@ high = np.array([x_threshold * 2,
                     np.finfo(np.float32).max],
                 dtype=np.float32)
 
-@nb.njit(fastmath=True)
+# @nb.njit(fastmath=True)
 def cartpoleReward(state, action):
     x, x_dot, theta, theta_dot = state
 
@@ -62,7 +62,7 @@ def cartpoleReward(state, action):
     reward = (1 - (x ** 2) / 11.52 - (theta ** 2) / 288)
     return reward
 
-@nb.njit(fastmath=True)
+# @nb.njit(fastmath=True)
 def defaultCartpoleReward(state, action):
     x, x_dot, theta, theta_dot = state
 

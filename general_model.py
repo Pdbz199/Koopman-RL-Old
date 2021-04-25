@@ -27,7 +27,7 @@ def dpsi(X, nablaPsi, nabla2Psi, k, l, t=1):
     term_2 = nablaPsi[k, :, l]
     term_3 = (1/(2*t)) * np.outer(difference, difference)
     term_4 = nabla2Psi[k, :, :, l]
-    return np.dot(term_1, term_2) + nb_einsum(term_3, term_4)
+    return np.dot(term_1, term_2) #+ nb_einsum(term_3, term_4)
 
 def rejection_sampler(p, xbounds, pmax):
     while True:
@@ -46,7 +46,7 @@ def sample_cartpole_action(pi, x):
     return (y - 0.5 * f1 + 0.5 * f2) / f2
 
 class GeneratorModel:
-    def __init__(self, psi, reward, L=None):
+    def __init__(self, psi, reward, action_bounds, L=None):
         """
         Create instance of model
 
@@ -56,6 +56,7 @@ class GeneratorModel:
         """
         self.psi = psi
         self.reward = reward
+        self.action_bounds = action_bounds
         self.L = L
 
     def fit(self, X, U):
@@ -69,8 +70,8 @@ class GeneratorModel:
         """
         self.X = X
         self.U = U
-        self.min_action = np.min(U)
-        self.max_action = np.max(U)
+        # self.min_action = np.min(U)
+        # self.max_action = np.max(U)
 
         self.X_tilde = np.append(X, [U], axis=0) # extended states
         self.d = self.X_tilde.shape[0]
@@ -101,16 +102,18 @@ class GeneratorModel:
 
         self.V, self.pi = learningAlgorithm(
             self.L, self.X, self.psi, self.Psi_X_tilde,
-            self.U, self.reward, timesteps=2, lamb=10
+            self.action_bounds, self.reward,
+            timesteps=2, lamb=10
         )
 
-    def update_policy(self):
+    def update_policy(self, timesteps=2, lamb=10):
         self.V, self.pi = learningAlgorithm(
             self.L, self.X, self.psi, self.Psi_X_tilde,
-            self.U, self.reward, timesteps=2, lamb=10
+            self.action_bounds, self.reward,
+            timesteps, lamb
         )
 
-    def update(self, x, u):
+    def update_model(self, x, u):
         """
         Updates the model to include data about a new point (this assumes only two states/actions were given during the fitting process)
 
@@ -124,12 +127,15 @@ class GeneratorModel:
         x_tilde = np.append(x, u).reshape(-1,1)
         self.X_tilde = np.append(self.X_tilde, x_tilde, axis=1)
 
-        self.Psi_X_tilde = np.append(self.Psi_X_tilde, psi(x_tilde), axis=1)
+        self.Psi_X_tilde = np.append(self.Psi_X_tilde, self.psi(x_tilde), axis=1)
+        k = self.dPsi_X_tilde.shape[0]
         for l in range(k):
-            self.dPsi_X_tilde[l, -1] = dpsi(self.X_tilde, l, -2)
+            self.dPsi_X_tilde[l, -1] = dpsi(
+                self.X_tilde, self.nablaPsi, self.nabla2Psi, l, -2
+            )
         self.dPsi_X_tilde = np.append(self.dPsi_X_tilde, np.zeros((k,1)), axis=1)
 
-        Psi_X_tilde_m = Psi_X_tilde[:,-1].reshape(-1,1)
+        Psi_X_tilde_m = self.Psi_X_tilde[:,-1].reshape(-1,1)
 
         self.z_m, self.phi_m_inverse, self.L = rgEDMD(
             self.dPsi_X_tilde,

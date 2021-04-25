@@ -65,7 +65,7 @@ L = rrr(Psi_X_tilde_T, dPsi_X_tilde_T)
 #%% Algorithm 1
 #? arg for (epsilon=0.1,)?
 # TODO: Make sure np.real() calls are where they need to be
-def learningAlgorithm(L, X, psi, Psi_X_tilde, U, reward, timesteps=100, cutoff=8, lamb=10):
+def learningAlgorithm(L, X, psi, Psi_X_tilde, action_bounds, reward, timesteps=100, cutoff=8, lamb=10):
     _divmax = 30
     Psi_X_tilde_T = Psi_X_tilde.T
 
@@ -73,17 +73,17 @@ def learningAlgorithm(L, X, psi, Psi_X_tilde, U, reward, timesteps=100, cutoff=8
     V = lambda x: x
     pi_hat_star = lambda x: x
 
-    low = np.min(U)
-    high = np.max(U)
+    low = action_bounds[0]
+    high = action_bounds[1]
 
     constant = 1/lamb
 
     eigenvalues, eigenvectors = sp.linalg.eig(L) # L created with X_tilde
     eigenvalues = np.real(eigenvalues)
     eigenvectors = np.real(eigenvectors)
-    @nb.njit(fastmath=True)
-    def eigenfunctions(ell, psi_x_tilde):
-        return np.dot(eigenvectors[ell], psi_x_tilde)[0]
+    # @nb.njit(fastmath=True)
+    # def eigenfunctions(ell, psi_x_tilde):
+    #     return np.dot(eigenvectors[ell], psi_x_tilde)[0]
 
     # eigenvectors_inverse_transpose = sp.linalg.inv(eigenvectors).T # pseudoinverse?
 

@@ -40,10 +40,12 @@ plt.style.use('dark_background')
 plt.plot(xLQR[0], xLQR[1], 'w-')
 plt.plot(xKOOC[0], xKOOC[1], 'r--')
 
+#%%
 plt.plot(tspan, xLQR.T, 'w-')
 plt.plot(tspan, xKOOC.T, 'r--')
 plt.xlim(0, 50)
 
+#%%
 JLQR = np.cumsum(xLQR[0]**2 + xLQR[1]**2 + (C @ np.conjugate(xLQR))**2)
 JKOOC = np.cumsum(xKOOC[0]**2 + xKOOC[1]**2 + (C @ np.conjugate(xKOOC))**2)
 plt.plot(tspan, JLQR, 'w-')
@@ -51,3 +53,4 @@ plt.plot(tspan, JKOOC, 'r--')
 
 plt.grid(True)
 plt.show()
+# %%
