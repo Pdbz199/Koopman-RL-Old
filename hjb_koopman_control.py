@@ -1,4 +1,5 @@
 #%%
+import observables
 import numpy as np
 import scipy as sp
 import numba as nb
@@ -11,13 +12,36 @@ def ln(x):
     return np.log(x)
 
 #%% Dictionary functions
-dictionary_functions = [lambda x: x[0], lambda x: x[1], lambda x: x[0]**2]
+order_five_monomials = [
+    lambda x: 1,
+    lambda x: x[0],
+    lambda x: x[1],
+    lambda x: x[0]**2,
+    lambda x: x[0]*x[1],
+    lambda x: x[1]**2,
+    lambda x: x[0]**3,
+    lambda x: x[0]**2*x[1],
+    lambda x: x[0]*x[1]**2,
+    lambda x: x[1]**3,
+    lambda x: x[0]**4,
+    lambda x: x[0]**3*x[1],
+    lambda x: x[0]**2*x[1]**2,
+    lambda x: x[0]*x[1]**3,
+    lambda x: x[1]**4,
+    lambda x: x[0]**5,
+    lambda x: x[0]**4*x[1],
+    lambda x: x[0]**3*x[1]**2,
+    lambda x: x[0]**2*x[1]**3,
+    lambda x: x[0]*x[1]**4,
+    lambda x: x[1]**5
+]
+
 def psi(X):
     output = []
     for x in X:
         row = []
-        for dictionary in dictionary_functions:
-            row.append(dictionary(x))
+        for function in order_five_monomials:
+            row.append(function(x))
         output.append(row)
     return np.array(output).T
 
@@ -62,11 +86,11 @@ M = np.array([
 # M is applied to extended dictionary space (y_tilde), i.e. [y1, y2, y3, u, u*y1].T
 L = M.T
 # L =
-# [mu,     0,      0       , 0, 0],
-# [0,      lamb,   0       , 0, 0],
-# [0,      -lamb,  2*mu    , 0, 0],
-# [B[0,0], B[1,0], 0       , 0, 0],
-# [0,      0,      2*B[0,0], 0, 0]
+# [mu,     0,      0       ,   0, 0],
+# [0,      lamb,   0       ,   0, 0],
+# [0,      -lamb,  2*mu    ,   0, 0],
+# [B[0,0], B[1,0], 0       ,   0, 0],
+# [0,      0,      2*B[0,0],   0, 0]
 # which is applied to the dictionary space of x (y), i.e. [y1, y2, y3].T
 
 # E @ y_tilde = x
