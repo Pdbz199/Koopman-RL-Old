@@ -2,6 +2,7 @@
 import numpy as np
 import scipy as sp
 import numba as nb
+import mpmath as mp
 from scipy import integrate
 from estimate_L import rrr
 
@@ -20,24 +21,80 @@ def psi(X):
         output.append(row)
     return np.array(output).T
 
-psi([[1,2]])
-
 #%% Variable definitions
 mu = -0.1
 lamb = 1
-L = np.array([
+A = np.array([
     [mu, 0, 0],
     [0, lamb, -lamb],
     [0, 0, 2*mu]
 ])
+B = np.array([
+    [0],
+    [1],
+    [0],
+
+    [0],
+    [0]
+])
 Q = np.identity(2)
 R = 1
+
 x = np.array([
     [-5],
     [5]
 ])
-y = np.append(x, [[25]], axis=0)
-vf = lambda tau, x: L @ x
+y = psi(x.reshape(1,-1))
+
+#%% New formulation
+C = np.array([0,2.4142,-1.4956])
+u = ((-C[0:2] @ x) - (C[2] * x[0]**2))[0]
+y_tilde = np.append(y, [[u], [u*y[0,0]]], axis=0)
+
+M = np.array([
+    [mu, 0, 0, B[0,0], 0],
+    [0, lamb, -lamb, B[1,0], 0],
+    [0, 0, 2*mu, 0, 2*B[0,0]],
+
+    [0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0]
+])
+# M is applied to extended dictionary space (y_tilde), i.e. [y1, y2, y3, u, u*y1].T
+L = M.T
+# L =
+# [mu,     0,      0       , 0, 0],
+# [0,      lamb,   0       , 0, 0],
+# [0,      -lamb,  2*mu    , 0, 0],
+# [B[0,0], B[1,0], 0       , 0, 0],
+# [0,      0,      2*B[0,0], 0, 0]
+# which is applied to the dictionary space of x (y), i.e. [y1, y2, y3].T
+
+# E @ y_tilde = x
+E = np.array([
+    [1, 0, 0, 0, 0],
+    [0, 1, 0, 0, 0]
+])
+
+#%% ODE
+vf = lambda tau, x: ((M @ x.reshape(-1,1)) + B*u)[:,0]
+Y_tilde = integrate.solve_ivp(vf, (0,50), y_tilde[:,0], first_step=0.05, max_step=0.05)
+Y_tilde = Y_tilde.y[:,:-2]
+Y_tilde_dot = vf(0, Y_tilde[:,0])
+
+#%%
+Psi_X_tilde = Y_tilde
+dPsi_X_tilde = Y_tilde_dot
+
+#%%
+# B.T @ Psi = V
+# || V_X - B.T @ Psi_X_tilde ||
+V_X = np.zeros((1,Psi_X_tilde.shape[1]))
+B = rrr(Psi_X_tilde.T, V_X.T)
+
+
+
+
+
 
 #%% Create dataset(s)
 X = np.array([
@@ -57,15 +114,6 @@ X = X[:,1:]
 #     y = L @ y
 #     Y = np.append(Y, y, axis=1)
 
-#%% ODE
-Y = integrate.solve_ivp(vf, (0,50), y[:,0], first_step=0.05, max_step=0.05)
-Y = Y.y[:,:-2]
-Y_dot = vf(0, Y)
-
-#%%
-Psi_X = Y
-dPsi_X = Y_dot
-
 #%% Define a reward function from cost function
 def reward(x, u):
     return -(x.T @ Q @ x + u.T * R * u)
@@ -84,23 +132,13 @@ def learningAlgorithm(L, X, psi, Psi_X, action_bounds, reward, timesteps=100, cu
 
     constant = 1/lamb
 
-    eigenvalues, eigenvectors = sp.linalg.eig(L) # L created with X_tilde
+    eigenvalues, eigenvectors = sp.linalg.eig(L)
     eigenvalues = np.real(eigenvalues)
     eigenvectors = np.real(eigenvectors)
-    # @nb.njit(fastmath=True)
-    # def eigenfunctions(ell, psi_x_tilde):
-    #     return np.dot(eigenvectors[ell], psi_x_tilde)[0]
-
-    # eigenvectors_inverse_transpose = sp.linalg.inv(eigenvectors).T # pseudoinverse?
 
     currentV = np.zeros(X.shape[1]) # V^{\pi*_0}
     lastV = currentV.copy()
-    # G_X_tilde = np.empty((currentV.shape[0], currentV.shape[0]))
 
-    # (abs(V - lastV) > epsilon).any() # there may be a more efficient way with maintaining max
-    # https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.RK45.html
-    # scipy.integrate.RK45(fun, t0, y0, t_bound, max_step=inf, rtol=0.001, atol=1e-06, vectorized=False, first_step=None, **extraneous)
-    # Not really sure how to replace romberg with that...
     t = 0
     while t < timesteps:
         G_X = currentV.copy()
@@ -114,11 +152,7 @@ def learningAlgorithm(L, X, psi, Psi_X, action_bounds, reward, timesteps=100, cu
         def compute(u, x):
             # print("compute")
 
-            inp = (constant * (reward(x, u) + Lv_hat(x))).astype('longdouble')
-            # in discrete setting: 
-            # p_i \propto exp(x_i)
-            # p_i \propto exp(x_i - \sum_i x_i / d)
-            return np.exp(inp)
+            return mp.exp(constant * (reward(x, u) + Lv_hat(x)))
 
         def pi_hat_star(u, x): # action given state
             # print("pi_hat_star")
@@ -151,8 +185,8 @@ def learningAlgorithm(L, X, psi, Psi_X, action_bounds, reward, timesteps=100, cu
     return currentV, pi_hat_star
 
 #%% Learn!
-big = 1000
-action_bounds = np.array([-big, big])
+bound = 1000
+action_bounds = np.array([-bound, bound])
 _, pi = learningAlgorithm(
     L, X, psi, Psi_X, action_bounds, reward, timesteps=4
 )
