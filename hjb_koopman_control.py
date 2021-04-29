@@ -7,9 +7,9 @@ import mpmath as mp
 from scipy import integrate
 from estimate_L import rrr
 
-# @nb.njit(fastmath=True)
+@nb.njit(fastmath=True)
 def ln(x):
-    return mp.log(x)
+    return np.log(x)
 
 #%% Dictionary functions
 psi = observables.monomials(5)
@@ -66,7 +66,7 @@ B = rrr(Psi_X.T, V_X.T)
 
 #%% Define a reward function from cost function
 def reward(x, u):
-    return x @ Q @ x + u * R * u
+    return (x @ Q @ x + u * R * u)
 
 #%% Modified learning algorithm
 def learningAlgorithm(X, psi, Psi_X, action_bounds, reward, timesteps=5, cutoff=8, lamb=10):
@@ -101,7 +101,7 @@ def learningAlgorithm(X, psi, Psi_X, action_bounds, reward, timesteps=5, cutoff=
 
         @nb.jit(forceobj=True, fastmath=True)
         def compute(u, x):
-            return mp.exp(constant * (reward(x, u) + Lv_hat(x, u)))
+            return np.exp(constant * (reward(x, u) + Lv_hat(x, u)))
 
         def pi_hat_star(u, x): # action given state
             numerator = compute(u, x)
@@ -109,7 +109,7 @@ def learningAlgorithm(X, psi, Psi_X, action_bounds, reward, timesteps=5, cutoff=
             return numerator / denominator
 
         def compute_2(u, x):
-            eval_pi_hat_star = pi_hat_star(u, x)
+            eval_pi_hat_star = float(pi_hat_star(u, x))
             return (reward(x, u) - (lamb * ln(eval_pi_hat_star)) + Lv_hat(x, u)) * eval_pi_hat_star
 
         def V(x):
@@ -131,9 +131,9 @@ def learningAlgorithm(X, psi, Psi_X, action_bounds, reward, timesteps=5, cutoff=
 
 #%% Learn!
 bound = 1
-action_bounds = np.array([-bound, bound])
+action_bounds = np.array([0, 1])
 _, pi = learningAlgorithm(
-    X, psi, Psi_X, action_bounds, reward
+    X, psi, Psi_X, action_bounds, reward, lamb=100
 )
 
 #%%
