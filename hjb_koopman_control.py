@@ -2,6 +2,7 @@
 import observables
 import numpy as np
 import scipy as sp
+import quadpy as qp
 import numba as nb
 import mpmath as mp
 from scipy import integrate
@@ -11,12 +12,19 @@ from estimate_L import rrr
 def ln(x):
     return np.log(x)
 
+# @nb.jit(forceobj=True, fastmath=True)
+# def mpexp(array):
+#     result = np.empty(array.shape[0])
+#     for i in range(array.shape[0]):
+#         result[i] = mp.exp(array[i])
+#     return result
+
 #%% Dictionary functions
 psi = observables.monomials(5)
 
 #%% Variable definitions
 mu = -0.1
-lamb = 1
+lamb = -1
 A = np.array([
     [mu, 0],
     [0, lamb]
@@ -69,8 +77,8 @@ def reward(x, u):
     return (x @ Q @ x + u * R * u)
 
 #%% Modified learning algorithm
-def learningAlgorithm(X, psi, Psi_X, action_bounds, reward, timesteps=5, cutoff=8, lamb=10):
-    _divmax = 20
+def learningAlgorithm(X, psi, Psi_X, action_bounds, reward, timesteps=4, cutoff=8, lamb=10):
+    # _divmax = 20
     Psi_X_T = Psi_X.T
 
     # placeholder functions
@@ -105,17 +113,15 @@ def learningAlgorithm(X, psi, Psi_X, action_bounds, reward, timesteps=5, cutoff=
 
         def pi_hat_star(u, x): # action given state
             numerator = compute(u, x)
-            denominator = integrate.romberg(compute, low, high, args=(x,), divmax=_divmax)
+            denominator = qp.quad(compute, low, high, args=(x,))[0]
             return numerator / denominator
 
         def compute_2(u, x):
-            eval_pi_hat_star = float(pi_hat_star(u, x))
+            eval_pi_hat_star = pi_hat_star(u, x)
             return (reward(x, u) - (lamb * ln(eval_pi_hat_star)) + Lv_hat(x, u)) * eval_pi_hat_star
 
         def V(x):
-            return -integrate.romberg(
-                compute_2, low, high, args=(x,), divmax=_divmax
-            )
+            return -qp.quad(compute_2, low, high, args=(x,))[0]
 
         lastV = currentV
         for i in range(currentV.shape[1]):
@@ -125,18 +131,20 @@ def learningAlgorithm(X, psi, Psi_X, action_bounds, reward, timesteps=5, cutoff=
                 print(i)
 
         t+=1
-        print("Completed learning step", t, "\n")
+        print("Completed learning step", t)
     
     return currentV, pi_hat_star
 
 #%% Learn!
-bound = 1
-action_bounds = np.array([0, 1])
+bound = 20
+action_bounds = np.array([-bound, bound])
 _, pi = learningAlgorithm(
-    X, psi, Psi_X, action_bounds, reward, lamb=100
+    X, psi, Psi_X, action_bounds, reward, timesteps=5, lamb=10
 )
 
 #%%
 print(pi(-1, X[:,0]))
 print(pi(-5, X[:,0]))
 print(pi(5, X[:,0]))
+print(pi(-12, X[:,0]))
+print(pi(12, X[:,0]))
