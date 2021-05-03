@@ -22,7 +22,7 @@ def mpexp(X):
     return output
 
 #%% Dictionary functions
-psi = observables.monomials(5)
+psi = observables.monomials(6)
 
 #%% Variable definitions
 mu = -0.1
@@ -53,9 +53,9 @@ x = np.array([
 y = np.append(x, [x[0]**2], axis=0)
 
 #%%
-C = np.array([0.0, 2.4142, -1.4956])
 # C = [0.0, 0.61803399, 0.23445298] when lamb = -0.5
-# C = (lqr(A, B, Q, R)[0])[0]
+C = (lqr(K, D_y, Q2, R)[0])[0]
+# C = np.array([0.0, 2.4142, -1.4956])
 u = ((-C[:2] @ x) - (C[2] * x[0]**2))[0]
 
 # F @ y = x
@@ -73,11 +73,11 @@ Y = np.apply_along_axis(lambda x: np.append(x, [x[0]**2]), axis=0, arr=X)
 
 #%%
 Psi_X = psi(X)
-nablaPsi = psi.diff(X)
+# nablaPsi = psi.diff(X)
 
 #%% \hat{B}
-V_X = np.zeros((1, X.shape[1]))
-B = rrr(Psi_X.T, V_X.T)
+# V_X = np.zeros((1, X.shape[1]))
+# B = rrr(Psi_X.T, V_X.T)
 
 #%% Define a reward function from cost function
 def reward(x, u):
@@ -147,17 +147,20 @@ def learningAlgorithm(X, psi, Psi_X, action_bounds, reward, timesteps=4, cutoff=
 bound = 15
 action_bounds = np.array([-bound, bound])
 _, pi = learningAlgorithm(
-    X, psi, Psi_X, action_bounds, reward, timesteps=6, lamb=1000
+    X, psi, Psi_X, action_bounds, reward, timesteps=5, lamb=100
 )
 
 #%%
 start_state = X[:,0]
-print(pi(2.77, start_state))
-print(pi(-2.77, start_state))
-print(pi(-1, start_state))
-print(pi(-5, start_state))
-print(pi(5, start_state))
-print(pi(-12, start_state))
-print(pi(12, start_state))
-print(pi(8.95, start_state))
-print(pi(-8.95, start_state)) # I think this is the 'right' one
+# possible_actions = [2.77, 1, 5, 12, 8.95]
+possible_actions = np.arange(0, bound+0.5, 0.5)
+for possible_action in possible_actions:
+    print(f"{possible_action}:", pi(possible_action, start_state))
+    print(f"{-possible_action}:", pi(-possible_action, start_state))
+# I think -8.95 is the 'right' one
+
+# %%
+int_pi = qp.quad(pi, action_bounds[0], action_bounds[1], args=(start_state,))[0]
+assert(int_pi == 1.0)
+
+# %%
