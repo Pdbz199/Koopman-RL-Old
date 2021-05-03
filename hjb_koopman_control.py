@@ -6,25 +6,27 @@ import quadpy as qp
 import numba as nb
 import mpmath as mp
 from scipy import integrate
+from scipy import linalg
 from estimate_L import rrr
+from control import lqr
 
 @nb.njit(fastmath=True)
 def ln(x):
     return np.log(x)
 
-# @nb.jit(forceobj=True, fastmath=True)
-# def mpexp(array):
-#     result = np.empty(array.shape[0])
-#     for i in range(array.shape[0]):
-#         result[i] = mp.exp(array[i])
-#     return result
+def mpexp(X):
+    if np.isscalar(X): return float(mp.exp(X))
+    output = []
+    for x in X:
+        output.append(float(mp.exp(x)))
+    return output
 
 #%% Dictionary functions
 psi = observables.monomials(5)
 
 #%% Variable definitions
 mu = -0.1
-lamb = -1
+lamb = -0.5
 A = np.array([
     [mu, 0],
     [0, lamb]
@@ -40,16 +42,21 @@ B = np.array([
 ])
 D_y = np.append(B, [[0]], axis=0)
 Q = np.identity(2)
+Q2 = np.identity(3)
 R = 1
 
+#%%
 x = np.array([
     [-5],
     [5]
 ])
 y = np.append(x, [x[0]**2], axis=0)
 
-C = np.array([0,2.4142,-1.4956])
-u = ((-C[0:2] @ x) - (C[2] * x[0]**2))[0]
+#%%
+C = np.array([0.0, 2.4142, -1.4956])
+# C = [0.0, 0.61803399, 0.23445298] when lamb = -0.5
+# C = (lqr(A, B, Q, R)[0])[0]
+u = ((-C[:2] @ x) - (C[2] * x[0]**2))[0]
 
 # F @ y = x
 F = np.array([
@@ -74,7 +81,7 @@ B = rrr(Psi_X.T, V_X.T)
 
 #%% Define a reward function from cost function
 def reward(x, u):
-    return (x @ Q @ x + u * R * u)
+    return -(x @ Q @ x + u * R * u)
 
 #%% Modified learning algorithm
 def learningAlgorithm(X, psi, Psi_X, action_bounds, reward, timesteps=4, cutoff=8, lamb=10):
@@ -109,7 +116,8 @@ def learningAlgorithm(X, psi, Psi_X, action_bounds, reward, timesteps=4, cutoff=
 
         @nb.jit(forceobj=True, fastmath=True)
         def compute(u, x):
-            return np.exp(constant * (reward(x, u) + Lv_hat(x, u)))
+            inner = constant * (reward(x, u) + Lv_hat(x, u))
+            return mpexp(inner)
 
         def pi_hat_star(u, x): # action given state
             numerator = compute(u, x)
@@ -121,14 +129,14 @@ def learningAlgorithm(X, psi, Psi_X, action_bounds, reward, timesteps=4, cutoff=
             return (reward(x, u) - (lamb * ln(eval_pi_hat_star)) + Lv_hat(x, u)) * eval_pi_hat_star
 
         def V(x):
-            return -qp.quad(compute_2, low, high, args=(x,))[0]
+            return qp.quad(compute_2, low, high, args=(x,))[0]
 
         lastV = currentV
         for i in range(currentV.shape[1]):
             x = X[:,i]
             currentV[:,i] = V(x)
-            if i+1 % 250 == 0:
-                print(i)
+            if (i+1) % 250 == 0:
+                print(i+1)
 
         t+=1
         print("Completed learning step", t)
@@ -136,15 +144,20 @@ def learningAlgorithm(X, psi, Psi_X, action_bounds, reward, timesteps=4, cutoff=
     return currentV, pi_hat_star
 
 #%% Learn!
-bound = 20
+bound = 15
 action_bounds = np.array([-bound, bound])
 _, pi = learningAlgorithm(
-    X, psi, Psi_X, action_bounds, reward, timesteps=5, lamb=10
+    X, psi, Psi_X, action_bounds, reward, timesteps=6, lamb=1000
 )
 
 #%%
-print(pi(-1, X[:,0]))
-print(pi(-5, X[:,0]))
-print(pi(5, X[:,0]))
-print(pi(-12, X[:,0]))
-print(pi(12, X[:,0]))
+start_state = X[:,0]
+print(pi(2.77, start_state))
+print(pi(-2.77, start_state))
+print(pi(-1, start_state))
+print(pi(-5, start_state))
+print(pi(5, start_state))
+print(pi(-12, start_state))
+print(pi(12, start_state))
+print(pi(8.95, start_state))
+print(pi(-8.95, start_state)) # I think this is the 'right' one
