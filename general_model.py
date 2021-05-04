@@ -59,7 +59,7 @@ class GeneratorModel:
         self.action_bounds = action_bounds
         self.L = L
 
-    def fit(self, X, U):
+    def fit(self, X, U, timesteps=2, lamb=10):
         """
         Fits a policy pi to the dataset using Koopman RL
 
@@ -103,17 +103,17 @@ class GeneratorModel:
         self.V, self.pi = learningAlgorithm(
             self.L, self.X, self.psi, self.Psi_X_tilde,
             self.action_bounds, self.reward,
-            timesteps=2, lamb=10
+            timesteps=timesteps, lamb=lamb
         )
 
     def update_policy(self, timesteps=2, lamb=10):
         self.V, self.pi = learningAlgorithm(
             self.L, self.X, self.psi, self.Psi_X_tilde,
             self.action_bounds, self.reward,
-            timesteps, lamb
+            timesteps=timesteps, lamb=lamb
         )
 
-    def update_model(self, x, u):
+    def update_model(self, x, u, update_policy=False):
         """
         Updates the model to include data about a new point (this assumes only two states/actions were given during the fitting process)
 
@@ -144,7 +144,7 @@ class GeneratorModel:
             self.phi_m_inverse
         )
 
-        # self.update_policy()
+        if update_policy: self.update_policy()
 
     def sample_action(self, x):
         """

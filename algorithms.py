@@ -3,57 +3,61 @@ import observables
 import numpy as np
 import scipy as sp
 import numba as nb
+# import quadpy as qp
 from scipy import integrate, interpolate
 from estimate_L import *
-from cartpole_reward import cartpoleReward
+# from cartpole_reward import cartpoleReward
+
 @nb.njit(fastmath=True)
 def ln(x):
+    if x == 0.0: return -100
     return np.log(x)
-@nb.njit(fastmath=True) #parallel=True,
-def nb_einsum(A, B):
-    assert A.shape == B.shape
-    res = 0
-    for i in range(A.shape[0]):
-        for j in range(A.shape[1]):
-            res += A[i,j]*B[i,j]
-    return res
+
+# @nb.njit(fastmath=True) #parallel=True,
+# def nb_einsum(A, B):
+#     assert A.shape == B.shape
+#     res = 0
+#     for i in range(A.shape[0]):
+#         for j in range(A.shape[1]):
+#             res += A[i,j]*B[i,j]
+#     return res
 
 #%%
 # Columns are state vectors
-X = (np.load('random-cartpole-states.npy'))[:5000].T # states
-U = (np.load('random-cartpole-actions.npy'))[:5000].T # actions
-X_tilde = np.append(X, [U], axis=0) # extended states
-d = X_tilde.shape[0]
-m = X_tilde.shape[1]
-s = int(d*(d+1)/2) # number of second order poly terms
+# X = (np.load('random-cartpole-states.npy'))[:5000].T # states
+# U = (np.load('random-cartpole-actions.npy'))[:5000].T # actions
+# X_tilde = np.append(X, [U], axis=0) # extended states
+# d = X_tilde.shape[0]
+# m = X_tilde.shape[1]
+# s = int(d*(d+1)/2) # number of second order poly terms
 
 #%%
-psi = observables.monomials(2)
-Psi_X_tilde = psi(X_tilde)
-Psi_X_tilde_T = Psi_X_tilde.T
-k = Psi_X_tilde.shape[0]
-nablaPsi = psi.diff(X_tilde)
-nabla2Psi = psi.ddiff(X_tilde)
+# psi = observables.monomials(2)
+# Psi_X_tilde = psi(X_tilde)
+# Psi_X_tilde_T = Psi_X_tilde.T
+# k = Psi_X_tilde.shape[0]
+# nablaPsi = psi.diff(X_tilde)
+# nabla2Psi = psi.ddiff(X_tilde)
 
 #%%
-@nb.njit(fastmath=True)
-def dpsi(X, k, l, t=1):
-    difference = X[:, l+1] - X[:, l]
-    term_1 = (1/t) * (difference)
-    term_2 = nablaPsi[k, :, l]
-    term_3 = (1/(2*t)) * np.outer(difference, difference)
-    term_4 = nabla2Psi[k, :, :, l]
-    return np.dot(term_1, term_2) + nb_einsum(term_3, term_4)
+# @nb.njit(fastmath=True)
+# def dpsi(X, k, l, t=1):
+#     difference = X[:, l+1] - X[:, l]
+#     term_1 = (1/t) * (difference)
+#     term_2 = nablaPsi[k, :, l]
+#     term_3 = (1/(2*t)) * np.outer(difference, difference)
+#     term_4 = nabla2Psi[k, :, :, l]
+#     return np.dot(term_1, term_2) + nb_einsum(term_3, term_4)
 
 #%% Construct \text{d}\Psi_X matrix
-dPsi_X_tilde = np.zeros((k, m))
-for row in range(k):
-    for column in range(m-1):
-        dPsi_X_tilde[row, column] = dpsi(X_tilde, row, column)
-dPsi_X_tilde_T = dPsi_X_tilde.T
+# dPsi_X_tilde = np.zeros((k, m))
+# for row in range(k):
+#     for column in range(m-1):
+#         dPsi_X_tilde[row, column] = dpsi(X_tilde, row, column)
+# dPsi_X_tilde_T = dPsi_X_tilde.T
 
 #%%
-L = rrr(Psi_X_tilde_T, dPsi_X_tilde_T)
+# L = rrr(Psi_X_tilde_T, dPsi_X_tilde_T)
 
 #%%
 # @nb.njit
@@ -66,7 +70,7 @@ L = rrr(Psi_X_tilde_T, dPsi_X_tilde_T)
 #? arg for (epsilon=0.1,)?
 # TODO: Make sure np.real() calls are where they need to be
 def learningAlgorithm(L, X, psi, Psi_X_tilde, action_bounds, reward, timesteps=100, cutoff=8, lamb=10):
-    _divmax = 30
+    # _divmax = 25
     Psi_X_tilde_T = Psi_X_tilde.T
 
     # placeholder functions
@@ -78,9 +82,9 @@ def learningAlgorithm(L, X, psi, Psi_X_tilde, action_bounds, reward, timesteps=1
 
     constant = 1/lamb
 
-    eigenvalues, eigenvectors = sp.linalg.eig(L) # L created with X_tilde
-    eigenvalues = np.real(eigenvalues)
-    eigenvectors = np.real(eigenvectors)
+    # eigenvalues, eigenvectors = sp.linalg.eig(L) # L created with X_tilde
+    # eigenvalues = np.real(eigenvalues)
+    # eigenvectors = np.real(eigenvectors)
     # @nb.njit(fastmath=True)
     # def eigenfunctions(ell, psi_x_tilde):
     #     return np.dot(eigenvectors[ell], psi_x_tilde)[0]
@@ -103,7 +107,7 @@ def learningAlgorithm(L, X, psi, Psi_X_tilde, action_bounds, reward, timesteps=1
         # generatorModes = B_v.T @ eigenvectors_inverse_transpose
 
         # @nb.jit(forceobj=True, fastmath=True)
-        def Lv_hat(x_tilde):
+        def Lv_hat(x, u):
             # print("Lv_hat")
 
             # psi_x_tilde = psi(x_tilde.reshape(-1,1))
@@ -112,32 +116,33 @@ def learningAlgorithm(L, X, psi, Psi_X_tilde, action_bounds, reward, timesteps=1
             #     summation += generatorModes[ell] * eigenvalues[ell] * eigenfunctions(ell, psi_x_tilde)
             # return summation
 
+            x_tilde = np.append(x, u)
             return (L @ B_v).T @ psi(x_tilde.reshape(-1,1))
 
         # @nb.jit(forceobj=True, fastmath=True)
         def compute(u, x):
             # print("compute")
 
-            x_tilde = np.append(x, u)
-            inp = (constant * (reward(x, u) + Lv_hat(x_tilde))).astype('longdouble')
-            # in discrete setting: 
-            # p_i \propto exp(x_i)
-            # p_i \propto exp(x_i - \sum_i x_i / d)
-            return np.exp(inp)
+            inner = (constant * (reward(x, u) + Lv_hat(x, u)[0,0]))
+            if inner > 700: inner = 700
+            return np.array(np.exp(inner))
+        # vec_compute = np.vectorize(compute)
+        # vec_compute.excluded.add(1)
 
         def pi_hat_star(u, x): # action given state
             # print("pi_hat_star")
 
             numerator = compute(u, x)
-            denominator = integrate.romberg(compute, low, high, args=(x,), divmax=_divmax)
+            denominator = integrate.quad(compute, low, high, args=(x,))[0]
             return numerator / denominator
 
         def compute_2(u, x):
             # print("compute_2")
 
             eval_pi_hat_star = pi_hat_star(u, x)
-            x_tilde = np.append(x, u)
-            return (reward(x, u) - (lamb * ln(eval_pi_hat_star)) + Lv_hat(x_tilde)) * eval_pi_hat_star
+            return (reward(x, u) - (lamb * ln(eval_pi_hat_star)) + Lv_hat(x, u)[0,0]) * eval_pi_hat_star
+        # vec_compute_2 = np.vectorize(compute_2)
+        # vec_compute_2.excluded.add(1)
 
         # def integral_summation(x):
         #     # print("integral_summation")
@@ -157,19 +162,17 @@ def learningAlgorithm(L, X, psi, Psi_X_tilde, action_bounds, reward, timesteps=1
             # return (integrate.romberg(compute_2, low, high, args=(x,), divmax=_divmax) + \
             #             integral_summation(x))
 
-            return integrate.romberg(
-                compute_2, low, high, args=(x,)
-            )
+            return integrate.quad(compute_2, low, high, args=(x,))[0]
 
         lastV = currentV
         for i in range(currentV.shape[0]):
             x = X[:,i]
             currentV[i] = V(x)
-            if i % 1000 == 0:
-                print(i)
+            if i % 250 == 0:
+                print(i+1)
 
         t+=1
-        print("Completed learning step", t, "\n")
+        print("Completed learning step", t)
     
     return currentV, pi_hat_star
 
