@@ -163,4 +163,63 @@ for possible_action in possible_actions:
 int_pi = qp.quad(pi, action_bounds[0], action_bounds[1], args=(start_state,))[0]
 assert(int_pi == 1.0)
 
+
+
+
+
+
+#%% Dictionary functions
+psi = observables.monomials(6)
+
+#%% Variable definitions
+mu = -0.1
+lamb = 1
+A = np.array([
+    [mu, 0],
+    [0, lamb]
+])
+A2 = np.array([
+    [mu, 0, 0],
+    [0, lamb, -lamb],
+    [0, 0, 2*mu]
+])
+B = np.array([
+    [0],
+    [1]
+])
+D_y = np.append(B, [[0]], axis=0)
+Q = np.identity(2)
+Q2 = np.identity(3)
+R = 1
+
+#%%
+x = np.array([
+    [-5],
+    [5]
+])
+y = np.append(x, [x[0]**2], axis=0)
+
+#%%
+# C = [0.0, 0.61803399, 0.23445298] when lamb = -0.5
+C = lqr(A2, D_y, Q2, R)[0][0]
+# C = np.array([0.0, 2.4142, -1.4956])
+u = ((-C[:2] @ x) - (C[2] * x[0]**2))[0]
+
+# F @ y = x
+F = np.array([
+    [1, 0, 0],
+    [0, 1, 0]
+])
+
+#%% Generate sample data
+vf = lambda tau, x: ((A @ x.reshape(-1,1)) + np.array([[0], [-lamb * x[0]**2]]) + B*u)[:,0]
+X = integrate.solve_ivp(vf, (0,50), x[:,0], first_step=0.05, max_step=0.05)
+X = X.y[:,:-2]
+
+Y = np.apply_along_axis(lambda x: np.append(x, [x[0]**2]), axis=0, arr=X)
+
+#%%
+Psi_X = psi(X)
+
 # %%
+# sp.linalg.expm()
