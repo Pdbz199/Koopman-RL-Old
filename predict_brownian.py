@@ -71,11 +71,15 @@ nabla2Psi = psi.ddiff(data)
 dPsi_X = dPsiMatrix(data, nablaPsi, nabla2Psi, k, m)
 
 #%%
-L = estimate_L.rrr(Psi_X.T, dPsi_X.T)
-# L = estimate_L.SINDy(Psi_X.T, dPsi_X.T, d)
-# neither of these lead to good predictors so I am not sure what to do
+M = (dPsi_X @ Psi_X.T) @ np.linalg.pinv(Psi_X @ Psi_X.T)
+L = M.T
+# The above is from the paper under equation 5 but
+# it did not seem to identify the system well
 
 #%%
 K = sp.linalg.expm(L)
 
 #%%
+predicted_psi_x_prime = K @ psi(X[:,8100].reshape(-1,1))
+psi_x_prime = psi(Z[:,8100].reshape(-1,1))
+# They are very not close
