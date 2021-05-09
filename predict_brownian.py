@@ -1,11 +1,13 @@
 #%%
 import observables
+import domain
 import numpy as np
 import scipy as sp
 import numba as nb
 import estimate_L
 from brownian import brownian
 
+#%%
 @nb.njit(fastmath=True) #, parallel=True)
 def nb_einsum(A, B):
     assert A.shape == B.shape
@@ -38,13 +40,13 @@ def dPsiMatrix(X, nablaPsi, nabla2Psi, k, m):
 # The Wiener process parameter.
 sigma = 1
 # Total time.
-T = 10000
+T = 10
 # Number of steps.
 N = 10000
 # Time step size
 dt = T/N
 # Number of realizations to generate.
-n = 5
+n = 1
 # Create an empty array to store the realizations.
 X = np.empty((n, N+1))
 # Initial values of x.
@@ -62,7 +64,14 @@ m = data.shape[1]
 # s = int(d*(d+1)/2) # number of second order poly terms
 # rtoler=1e-02
 # atoler=1e-02
-psi = observables.monomials(2)
+
+# psi = observables.monomials(10)
+
+bounds = np.array([[-200, 200]])
+boxes = np.array([1000])
+Omega = domain.discretization(bounds, boxes)
+psi = observables.gaussians(Omega, 1)
+
 Psi_X = psi(data)
 Psi_Z = psi(time_delayed_data)
 k = Psi_X.shape[0]
@@ -81,14 +90,15 @@ L = M.T
 #%%
 K = sp.linalg.expm(L)
 
-#%%
-predicted_psi_x_prime = K @ psi(X[:,8100].reshape(-1,1))
-psi_x_prime = psi(Z[:,8100].reshape(-1,1))
-# They are very not close
+
+
+
 
 #%% Klus says to try with Ornstein-Uhlenbeck system
+# This was a success!
 import observables
 import numpy as np
+import scipy as sp
 from systems import vec_ornstein_uhlenbeck
 
 n = 1 # num paths
@@ -120,6 +130,3 @@ L = estimate_L.gedmd(Psi_X.T, dPsi_X.T, rank=11)
 
 #%%
 K = sp.linalg.expm(L)
-# oh yes that worked nicely!
-
-# %%
