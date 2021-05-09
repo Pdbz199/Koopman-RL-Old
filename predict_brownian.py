@@ -120,6 +120,6 @@ L = estimate_L.gedmd(Psi_X.T, dPsi_X.T, rank=11)
 
 #%%
 K = sp.linalg.expm(L)
-# oh yes that worked nicely!!
+# oh yes that worked nicely!
 
 # %%
