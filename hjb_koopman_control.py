@@ -222,4 +222,3 @@ Y = np.apply_along_axis(lambda x: np.append(x, [x[0]**2]), axis=0, arr=X)
 Psi_X = psi(X)
 
 # %%
-# sp.linalg.expm()

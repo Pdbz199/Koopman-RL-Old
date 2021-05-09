@@ -73,31 +73,31 @@ def trap(f, n, lower_bound, upper_bound):
 
 '''========== TEST INTEGRATION FUNCTIONS =========='''
 
-@nb.njit(fastmath=True)
-def simple_test(x):
-    return np.sin(x) / x
+# @nb.njit(fastmath=True)
+# def simple_test(x):
+#     return np.sin(x) / x
 
-result = integral(simple_test, -1, 1)
-print(result)
+# result = integral(simple_test, -1, 1)
+# print(result)
 
-@nb.njit(fastmath=True)
-def double_gaussian(x, y):
-    return np.exp(-(x ** 2 + y ** 2))
+# @nb.njit(fastmath=True)
+# def double_gaussian(x, y):
+#     return np.exp(-(x ** 2 + y ** 2))
 
-result = double_integral(double_gaussian, np.array([-500, 500]), np.array([-500, 500]), precision=50)
-print(result)
+# result = double_integral(double_gaussian, np.array([-500, 500]), np.array([-500, 500]), precision=50)
+# print(result)
 
-@nb.njit(fastmath=True)
-def f(x):
-    return np.exp(-x ** 2)
+# @nb.njit(fastmath=True)
+# def f(x):
+#     return np.exp(-x ** 2)
 
-lower = -10
-upper = 10
-n = 100
+# lower = -10
+# upper = 10
+# n = 100
  
-while(abs(trap(f, n, lower, upper) - trap(f, n * 4, lower * 2, upper * 2)) > 1e-6):
-    n *= 4
-    lower *= 2
-    upper *= 2
+# while(abs(trap(f, n, lower, upper) - trap(f, n * 4, lower * 2, upper * 2)) > 1e-6):
+#     n *= 4
+#     lower *= 2
+#     upper *= 2
 
-print(trap(f, n, lower, upper))
+# print(trap(f, n, lower, upper))

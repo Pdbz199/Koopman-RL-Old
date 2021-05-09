@@ -1,3 +1,4 @@
+#%%
 import observables
 import numpy as np
 import scipy as sp
@@ -63,6 +64,7 @@ m = data.shape[1]
 # atoler=1e-02
 psi = observables.monomials(2)
 Psi_X = psi(data)
+Psi_Z = psi(time_delayed_data)
 k = Psi_X.shape[0]
 nablaPsi = psi.diff(data)
 nabla2Psi = psi.ddiff(data)
@@ -83,3 +85,33 @@ K = sp.linalg.expm(L)
 predicted_psi_x_prime = K @ psi(X[:,8100].reshape(-1,1))
 psi_x_prime = psi(Z[:,8100].reshape(-1,1))
 # They are very not close
+
+#%% Klus says to try with Ornstein-Uhlenbeck system
+import observables
+import numpy as np
+from systems import vec_ornstein_uhlenbeck
+
+n = 1 # num paths
+
+_, X = vec_ornstein_uhlenbeck(np.zeros(n), np.full(n, 2), 10000)
+Z = np.roll(X,-1)[:, :-1]
+X = X[:, :-1]
+
+data = X[:,:8000]
+time_delayed_data = Z[:,:8000]
+
+#%%
+d = data.shape[0]
+m = data.shape[1]
+psi = observables.monomials(10)
+Psi_X = psi(data)
+Psi_Z = psi(time_delayed_data)
+k = Psi_X.shape[0]
+nablaPsi = psi.diff(data)
+nabla2Psi = psi.ddiff(data)
+dPsi_X = dPsiMatrix(data, nablaPsi, nabla2Psi, k, m)
+
+#%%
+M = (dPsi_X @ Psi_X.T) @ np.linalg.pinv(Psi_X @ Psi_X.T)
+L = M.T
+# not working well either ):
