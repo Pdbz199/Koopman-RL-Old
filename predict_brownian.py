@@ -112,6 +112,14 @@ nabla2Psi = psi.ddiff(data)
 dPsi_X = dPsiMatrix(data, nablaPsi, nabla2Psi, k, m)
 
 #%%
-M = (dPsi_X @ Psi_X.T) @ np.linalg.pinv(Psi_X @ Psi_X.T)
-L = M.T
-# not working well either ):
+# M = (dPsi_X @ Psi_X.T) @ np.linalg.pinv(Psi_X @ Psi_X.T)
+# L = M.T
+# L = estimate_L.rrr(Psi_X.T, dPsi_X.T)
+# L = estimate_L.SINDy(Psi_X.T, dPsi_X.T, d)
+L = estimate_L.gedmd(Psi_X.T, dPsi_X.T, rank=11)
+
+#%%
+K = sp.linalg.expm(L)
+# oh yes that worked nicely!!
+
+# %%
