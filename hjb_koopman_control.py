@@ -222,3 +222,62 @@ Y = np.apply_along_axis(lambda x: np.append(x, [x[0]**2]), axis=0, arr=X)
 Psi_X = psi(X)
 
 # %%
+#%% Modified learning algorithm
+def learningAlgorithm(X, psi, Psi_X, action_bounds, reward, timesteps=4, cutoff=8, lamb=10):
+    # _divmax = 20
+    Psi_X_T = Psi_X.T
+
+    # placeholder functions
+    V = lambda x: x
+    pi_hat_star = lambda x: x
+
+    # constants
+    n = Psi_X.shape[0]
+    d = X.shape[0]
+    low, high = action_bounds
+    constant = 1/lamb
+
+    # V^{\pi*_0}
+    currentV = np.zeros((1, X.shape[1]))
+    lastV = currentV.copy()
+
+    t = 0
+    while t < timesteps:
+        V_X = currentV.copy()
+        B = rrr(Psi_X_T, V_X.T)
+
+        @nb.jit(forceobj=True, fastmath=True)
+        def Lv_hat(x, u):
+            nablaPsi_x = psi.diff(x.reshape(-1,1)).reshape((n, d))
+            y = np.append(x, x[0]**2).reshape(-1,1)
+            dy_dt = K @ y + D_y * u
+            return ((nablaPsi_x.T @ B).T @ F @ dy_dt)[0,0]
+
+        @nb.jit(forceobj=True, fastmath=True)
+        def compute(u, x):
+            inner = constant * (reward(x, u) + Lv_hat(x, u))
+            return mpexp(inner)
+
+        def pi_hat_star(u, x): # action given state
+            numerator = compute(u, x)
+            denominator = qp.quad(compute, low, high, args=(x,))[0]
+            return numerator / denominator
+
+        def compute_2(u, x):
+            eval_pi_hat_star = pi_hat_star(u, x)
+            return (reward(x, u) - (lamb * ln(eval_pi_hat_star)) + Lv_hat(x, u)) * eval_pi_hat_star
+
+        def V(x):
+            return qp.quad(compute_2, low, high, args=(x,))[0]
+
+        lastV = currentV
+        for i in range(currentV.shape[1]):
+            x = X[:,i]
+            currentV[:,i] = V(x)
+            if (i+1) % 250 == 0:
+                print(i+1)
+
+        t+=1
+        print("Completed learning step", t)
+    
+    return currentV, pi_hat_star
