@@ -71,4 +71,23 @@ print(B.T @ predicted)
 print()
 print(y_tilde)
 
-#%%
+#%% Predictions with action path
+import gym
+env = gym.make('CartPole-v0')
+
+horizon = 10
+action_path = U[:, data_point_index:data_point_index+horizon][0]
+
+true_state = env.reset()
+predicted_state = true_state.copy()
+for action in action_path:
+    true_x_tilde = np.append(true_state, action)
+    true_state, reward, done, _ = env.step(action)
+    predicted_x_tilde = np.append(predicted_state, action).reshape(-1,1)
+    predicted_state = (B.T @ (K @ psi(predicted_x_tilde)))[:4]
+
+print(predicted_state)
+print()
+print(true_state.reshape(-1,1))
+
+# %%
