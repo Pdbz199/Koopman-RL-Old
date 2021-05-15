@@ -56,11 +56,12 @@ rewards = []
 for episode in range(episodes):
     episode_reward = 0
     current_state = env.reset()
-    states.append(current_state)
     descretized_current_state = discretizer(*current_state)
     done = False
 
     while done == False:
+        states.append(current_state)
+
         action = policy(descretized_current_state)
         actions.append(action)
 
@@ -70,10 +71,9 @@ for episode in range(episodes):
         # if np.random.random() < exploration_rate(episode):
         #     action = env.action_space.sample()
 
-        observation, reward, done, _ = env.step(action)
-        states.append(observation)
+        current_state, reward, done, _ = env.step(action)
         rewards.append(reward)
-        new_state = discretizer(*observation)
+        new_state = discretizer(*current_state)
         episode_reward += reward
 
         # outputs = np.append(outputs, [[*list(new_state), policy(new_state)]], axis=0) if len(outputs) > 0 else np.array([[*list(new_state), policy(new_state)]])
@@ -97,15 +97,15 @@ for episode in range(episodes):
 
     # states.pop()
 
-# states = np.array(states)
-# print(states.shape)
-# actions = np.array(actions)
-# print(actions.shape)
-# rewards = np.array(rewards)
-# print(rewards.shape)
-# np.save('cartpole-states', states)
-# np.save('cartpole-actions', actions)
-# np.save('cartpole-rewards', rewards)
+states = np.array(states)
+print(states.shape)
+actions = np.array(actions)
+print(actions.shape)
+rewards = np.array(rewards)
+print(rewards.shape)
+# np.save('optimal-agent/cartpole-states', states)
+# np.save('optimal-agent/cartpole-actions', actions)
+# np.save('optimal-agent/cartpole-rewards', rewards)
 # print(inputs.shape)
 # print(outputs.shape)
 # np.save('state-action-inputs', inputs)
