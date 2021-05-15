@@ -128,8 +128,8 @@ def nb_einsum(A, B):
     return res
 
 #%%
-X = (np.load('random-cartpole-states.npy'))[:5000].T # states
-U = (np.load('random-cartpole-actions.npy'))[:5000].T # actions
+X = (np.load('random-agent/random-cartpole-states.npy'))[:5000].T # states
+U = (np.load('random-agent/random-cartpole-actions.npy'))[:5000].T # actions
 X_tilde = np.append(X, [U], axis=0) # extended states
 d = X_tilde.shape[0]
 m = X_tilde.shape[1]
