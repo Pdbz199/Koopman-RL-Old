@@ -24,22 +24,25 @@ import numpy as np
 # Y_1 = np.array(Y_1).T
 
 X = np.load('random-agent/cartpole-states.npy').T
-state_dim = X.shape[0]
+U = np.load('random-agent/cartpole-actions.npy').reshape(1,-1)
+
 X_0 = np.load('random-agent/cartpole-states-0.npy').T
 Y_0 = np.load('random-agent/cartpole-next-states-0.npy').T
 X_1 = np.load('random-agent/cartpole-states-1.npy').T
 Y_1 = np.load('random-agent/cartpole-next-states-1.npy').T
 
-U = np.load('random-agent/cartpole-actions.npy').reshape(1,-1)
+state_dim = X.shape[0]
 
 percent_training = 0.8
+train_ind = int(np.around(X.shape[1]*percent_training))
+X_train = X[:,:train_ind]
 train_inds = [
     int(np.around(X_0.shape[1]*percent_training)),
     int(np.around(X_1.shape[1]*percent_training))
 ]
 X_0_train = X_0[:,:train_inds[0]]
-Y_0_train = Y_0[:,:train_inds[0]]
 X_1_train = X_1[:,:train_inds[1]]
+Y_0_train = Y_0[:,:train_inds[0]]
 Y_1_train = Y_1[:,:train_inds[1]]
 
 #%% Median trick
@@ -133,7 +136,8 @@ norms = []
 # action_path = U[0, data_point_index:data_point_index+horizon]
 action_path = U[0, :horizon]
 norms = []
-starting_point = int(np.around(np.random.rand() * X.shape[1]))
+# starting_point = int(np.around(np.random.rand() * X_train.shape[1]))
+starting_point = 1700
 true_state = X[:,starting_point]
 for h in range(horizon):
     action = action_path[h]
@@ -145,6 +149,7 @@ for h in range(horizon):
     norms.append(norm)
 
 #%%
+print("Mean norm:", np.mean(norms))
 plt.plot(norms, marker='.', linestyle='')
 plt.ylabel('L2 Norm')
 plt.xlabel('Timestep')

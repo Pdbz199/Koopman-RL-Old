@@ -23,13 +23,15 @@ for episode in range(episodes):
     for t in range(steps_per_episode):
         # env.render()
 
+        states.append(observation)
+
         action = env.action_space.sample()
 
         if action == 0:
             states_0.append(observation)
         else:
             states_1.append(observation)
-        states.append(observation)
+        
         actions.append(action)
 
         observation, reward, done, _ = env.step(action) # take a random action
