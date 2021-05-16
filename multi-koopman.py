@@ -1,8 +1,6 @@
 #%% Imports
 import algorithms
 import numpy as np
-from sklearn.kernel_approximation import RBFSampler
-from sklearn.linear_model import SGDClassifier
 
 #%% Load data
 X = np.load('optimal-agent/cartpole-states.npy').T
@@ -25,19 +23,29 @@ Y_0 = np.array(Y_0).T
 X_1 = np.array(X_1).T
 Y_1 = np.array(Y_1).T
 
-X_0_train = X_0[:,:1000]
-Y_0_train = Y_0[:,:1000]
-X_1_train = X_1[:,:1000]
-Y_1_train = Y_1[:,:1000]
+train_ind = int(np.around(X.shape[1] * 0.80))
+X_0_train = X_0[:,:train_ind]
+Y_0_train = Y_0[:,:train_ind]
+X_1_train = X_1[:,:train_ind]
+Y_1_train = Y_1[:,:train_ind]
 
 #%% RBF Sampler
-rbf_feature = RBFSampler(gamma=1, random_state=1)
-X_0_features = rbf_feature.fit_transform(X_0)
-X_1_features = rbf_feature.fit_transform(X_1)
+from sklearn.kernel_approximation import RBFSampler
+rbf_feature = RBFSampler(gamma=0.7, random_state=1)
+X_features = rbf_feature.fit_transform(X)
+psi = lambda x: X_features.T @ x.reshape(-1,1)
+# X_0_features = rbf_feature.fit_transform(X_0)
+# X_1_features = rbf_feature.fit_transform(X_1)
 # k_0 = X_0_features.shape[1]
 # k_1 = X_1_features.shape[1]
-psi_0 = lambda x: X_0_features.T @ x.reshape(-1,1)
-psi_1 = lambda x: X_1_features.T @ x.reshape(-1,1)
+# psi_0 = lambda x: X_features.T @ x.reshape(-1,1)
+# psi_1 = lambda x: X_features.T @ x.reshape(-1,1)
+
+#%% Nystroem
+# from sklearn.kernel_approximation import Nystroem
+# feature_map_nystroem = Nystroem(gamma=0.7, random_state=1, n_components=4)
+# data_transformed = feature_map_nystroem.fit_transform(X)
+# psi = lambda x: data_transformed @ x.reshape(-1,1)
 
 #%% Psi matrices
 def getPsiMatrix(psi, X):
@@ -48,10 +56,10 @@ def getPsiMatrix(psi, X):
         matrix[:, col] = psi(X[:, col])[:, 0]
     return matrix
 
-Psi_X_0 = getPsiMatrix(psi_0, X_0_train)
-Psi_Y_0 = getPsiMatrix(psi_0, Y_0_train)
-Psi_X_1 = getPsiMatrix(psi_1, X_1_train)
-Psi_Y_1 = getPsiMatrix(psi_1, Y_1_train)
+Psi_X_0 = getPsiMatrix(psi, X_0_train)
+Psi_Y_0 = getPsiMatrix(psi, Y_0_train)
+Psi_X_1 = getPsiMatrix(psi, X_1_train)
+Psi_Y_1 = getPsiMatrix(psi, Y_1_train)
 
 #%% Koopman
 # || Y         - X B           ||
@@ -69,27 +77,32 @@ B_1 = algorithms.SINDy(Psi_X_1.T, X_1_train.T, X_1_train.shape[0])
 import gym
 env = gym.make('CartPole-v0')
 horizon = 1000
-data_point_index = 2000
-action_path = U[0, data_point_index:data_point_index+horizon]
+# data_point_index = 6000 + int(np.around((np.random.rand() * X.shape[1] - 6000)))
+# print(data_point_index)
+num_trials = 1000
 norms = []
-true_state = env.reset()
-predicted_state = true_state.copy()
-for h in range(horizon):
-    action = action_path[h]
-    if action == 0:
-        predicted_state = B_0.T @ K_0 @ psi_0(predicted_state.reshape(-1,1))
-    else:
-        predicted_state = B_1.T @ K_1 @ psi_1(predicted_state.reshape(-1,1))
-    true_state, ___, __, _ = env.step(action)
-
-    predicted_state_norm = np.linalg.norm(predicted_state)
-    true_state_norm = np.linalg.norm(true_state)
-    norms.append(np.absolute(true_state_norm - predicted_state_norm))
-norms = np.array(norms)
+for i in range(num_trials):
+    # action_path = U[0, data_point_index:data_point_index+horizon]
+    action_path = [np.random.choice([0,1]) for i in range(horizon)]
+    trial_norms = []
+    true_state = env.reset()
+    predicted_state = true_state.copy()
+    for h in range(horizon):
+        action = action_path[h]
+        psi_x = psi(predicted_state.reshape(-1,1))
+        if action == 0:
+            predicted_state = B_0.T @ K_0 @ psi_x
+        else:
+            predicted_state = B_1.T @ K_1 @ psi_x
+        true_state, ___, __, _ = env.step(action)
+        
+        norm = np.sum( np.power( (true_state - predicted_state) , 2 ) )
+        trial_norms.append(norm)
+    norms.append(trial_norms)
 
 # %%
 import matplotlib.pyplot as plt
-plt.plot(norms)
+plt.plot(np.mean(norms, axis=0))
 plt.ylabel('Difference between norms')
 plt.xlabel('Timestep')
 plt.show()
