@@ -25,7 +25,8 @@ def gedmd(X, Y, rank=8):
     return L
 
 #%% (Theta=Psi_X_T, dXdt=dPsi_X_T, lamb=0.05, n=d)
-def SINDy(Theta, dXdt, d, lamb=0.05):
+def SINDy(Theta, dXdt, lamb=0.05):
+    d = dXdt.shape[1]
     Xi = np.linalg.lstsq(Theta, dXdt, rcond=None)[0] # Initial guess: Least-squares
     
     for k in range(10):

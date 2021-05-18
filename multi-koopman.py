@@ -1,5 +1,5 @@
 #%% Imports
-import algorithms
+import estimate_L
 import numpy as np
 
 #%% Load data
@@ -84,6 +84,7 @@ def getPsiMatrix(psi, X):
         matrix[:, col] = psi(X[:, col])[:, 0]
     return matrix
 
+Psi_X = getPsiMatrix(psi, X_train)
 Psi_X_0 = getPsiMatrix(psi, X_0_train)
 Psi_Y_0 = getPsiMatrix(psi, Y_0_train)
 Psi_X_1 = getPsiMatrix(psi, X_1_train)
@@ -94,12 +95,11 @@ Psi_Y_1 = getPsiMatrix(psi, Y_1_train)
 # || Y.T       - B.T X.T       ||
 # || Psi_Y_0   - K Psi_X_0     ||
 # || Psi_Y_0.T - Psi_X_0.T K.T ||
-K_0 = algorithms.rrr(Psi_X_0.T, Psi_Y_0.T).T
-K_1 = algorithms.rrr(Psi_X_1.T, Psi_Y_1.T).T
+K_0 = estimate_L.rrr(Psi_X_0.T, Psi_Y_0.T).T
+K_1 = estimate_L.rrr(Psi_X_1.T, Psi_Y_1.T).T
 
 #%% Find mapping from Psi_X to X
-B_0 = algorithms.SINDy(Psi_X_0.T, X_0_train.T, X_0_train.shape[0])
-B_1 = algorithms.SINDy(Psi_X_1.T, X_1_train.T, X_1_train.shape[0])
+B = estimate_L.SINDy(Psi_X.T, X_train.T)
 
 #%% Prediction compounding error
 import gym
@@ -115,14 +115,13 @@ for i in range(num_trials):
     for h in range(horizon):
         action = action_path[h]
         psi_x = psi(predicted_state)
-        predicted_state = B_0.T @ K_0 @ psi_x if action == 0 else B_1.T @ K_1 @ psi_x
+        predicted_state = B.T @ K_0 @ psi_x if action == 0 else B.T @ K_1 @ psi_x
         true_state, ___, __, _ = env.step(action)
 
         norm = np.sum( np.power( ( true_state.reshape(-1,1) - predicted_state ) , 2 ) )
         trial_norms.append(norm)
     norms.append(trial_norms)
 
-#%%
 import matplotlib.pyplot as plt
 plt.plot(np.mean(norms, axis=0))
 plt.ylabel('L2 Norm')
@@ -135,24 +134,71 @@ horizon = 1000
 norms = []
 # action_path = U[0, data_point_index:data_point_index+horizon]
 action_path = U[0, :horizon]
-norms = []
 # starting_point = int(np.around(np.random.rand() * X_train.shape[1]))
 starting_point = 1700
 true_state = X[:,starting_point]
 for h in range(horizon):
     action = action_path[h]
     psi_x = psi(true_state)
-    predicted_state = B_0.T @ K_0 @ psi_x if action == 0 else B_1.T @ K_1 @ psi_x
+    predicted_state = B.T @ K_0 @ psi_x if action == 0 else B.T @ K_1 @ psi_x
     true_state = X[:,starting_point+h+1]
 
     norm = np.sum( np.power( ( true_state.reshape(-1,1) - predicted_state ) , 2 ) )
     norms.append(norm)
 
-#%%
 print("Mean norm:", np.mean(norms))
 plt.plot(norms, marker='.', linestyle='')
 plt.ylabel('L2 Norm')
 plt.xlabel('Timestep')
 plt.show()
 
-#%%
+#%% Error for psi(x) => x
+# data_point_index = 1000
+horizon = 1000
+norms = []
+# action_path = U[0, data_point_index:data_point_index+horizon]
+action_path = U[0, :horizon]
+# starting_point = int(np.around(np.random.rand() * X_train.shape[1]))
+starting_point = -1000
+true_states = X[:,starting_point:]
+for true_state in true_states.T:
+    true_state = true_state.reshape(-1,1)
+    projected_state = B.T @ psi(true_state)
+
+    norm = np.sum( np.power( ( true_state - projected_state ) , 2 ) )
+    norms.append(norm)
+
+print("Mean norm:", np.mean(norms))
+plt.plot(norms, marker='.', linestyle='')
+plt.ylabel('L2 Norm')
+plt.xlabel('Timestep')
+plt.show()
+
+#%% Error for psi(x) => x'
+
+# Koopman from psi(x) -> x'
+# || Y     - X B           ||
+# || Y_i   - K Psi_X_i     ||
+# || Y_i.T - Psi_X_i.T K.T ||
+K_0 = estimate_L.rrr(Psi_X_0.T, Y_0_train.T).T
+K_1 = estimate_L.rrr(Psi_X_1.T, Y_1_train.T).T
+
+horizon = 1000
+action_path = U[0, -horizon:]
+norms = []
+true_states = X[:, -horizon:]
+for h in range(horizon):
+    action = action_path[h]
+    true_state = true_states[:,h].reshape(-1,1)
+    predicted_state = K_0 @ psi(true_state) if action == 0 else K_1 @ psi(true_state)
+
+    norm = np.sum( np.power( ( true_state - projected_state ) , 2 ) )
+    norms.append(norm)
+
+print("Mean norm:", np.mean(norms))
+plt.plot(norms, marker='.', linestyle='')
+plt.ylabel('L2 Norm')
+plt.xlabel('Timestep')
+plt.show()
+
+# %%
