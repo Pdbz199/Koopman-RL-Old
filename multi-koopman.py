@@ -1,6 +1,12 @@
 #%% Imports
+import gym
 import estimate_L
 import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.kernel_approximation import RBFSampler
+
+def l2_norm(true_state, predicted_state):
+    return np.sum(np.power(( true_state - predicted_state ), 2 ))
 
 #%% Load data
 # X = np.load('optimal-agent/cartpole-states.npy').T
@@ -24,6 +30,7 @@ import numpy as np
 # Y_1 = np.array(Y_1).T
 
 X = np.load('random-agent/cartpole-states.npy').T
+Y = np.append(np.roll(X, -1, axis=1)[:,:-1], np.zeros((X.shape[0],1)), axis=1)
 U = np.load('random-agent/cartpole-actions.npy').reshape(1,-1)
 
 X_0 = np.load('random-agent/cartpole-states-0.npy').T
@@ -36,6 +43,7 @@ state_dim = X.shape[0]
 percent_training = 0.8
 train_ind = int(np.around(X.shape[1]*percent_training))
 X_train = X[:,:train_ind]
+Y_train = Y[:,:train_ind]
 train_inds = [
     int(np.around(X_0.shape[1]*percent_training)),
     int(np.around(X_1.shape[1]*percent_training))
@@ -57,7 +65,6 @@ pairwise_distances = np.array(pairwise_distances)
 gamma = np.quantile(pairwise_distances, 0.9)
 
 #%% RBF Sampler
-from sklearn.kernel_approximation import RBFSampler
 rbf_feature = RBFSampler(gamma=gamma, random_state=1)
 X_features = rbf_feature.fit_transform(X)
 def psi(x):
@@ -85,6 +92,8 @@ def getPsiMatrix(psi, X):
     return matrix
 
 Psi_X = getPsiMatrix(psi, X_train)
+Psi_Y = getPsiMatrix(psi, Y_train)
+
 Psi_X_0 = getPsiMatrix(psi, X_0_train)
 Psi_Y_0 = getPsiMatrix(psi, Y_0_train)
 Psi_X_1 = getPsiMatrix(psi, X_1_train)
@@ -102,7 +111,9 @@ K_1 = estimate_L.rrr(Psi_X_1.T, Psi_Y_1.T).T
 B = estimate_L.SINDy(Psi_X.T, X_train.T)
 
 #%% Prediction compounding error
-import gym
+title = "Prediction compounding error:"
+print(title)
+
 env = gym.make('CartPole-v0')
 horizon = 1000
 num_trials = 1#000
@@ -118,17 +129,20 @@ for i in range(num_trials):
         predicted_state = B.T @ K_0 @ psi_x if action == 0 else B.T @ K_1 @ psi_x
         true_state, ___, __, _ = env.step(action)
 
-        norm = np.sum( np.power( ( true_state.reshape(-1,1) - predicted_state ) , 2 ) )
+        norm = l2_norm(true_state.reshape(-1,1), predicted_state)
         trial_norms.append(norm)
     norms.append(trial_norms)
 
-import matplotlib.pyplot as plt
 plt.plot(np.mean(norms, axis=0))
+plt.title(title)
 plt.ylabel('L2 Norm')
 plt.xlabel('Timestep')
 plt.show()
 
 #%% One-step prediction error
+title = "One-step prediction error:"
+print()
+
 # data_point_index = 1000
 horizon = 1000
 norms = []
@@ -143,16 +157,20 @@ for h in range(horizon):
     predicted_state = B.T @ K_0 @ psi_x if action == 0 else B.T @ K_1 @ psi_x
     true_state = X[:,starting_point+h+1]
 
-    norm = np.sum( np.power( ( true_state.reshape(-1,1) - predicted_state ) , 2 ) )
+    norm = l2_norm(true_state.reshape(-1,1), predicted_state)
     norms.append(norm)
 
 print("Mean norm:", np.mean(norms))
 plt.plot(norms, marker='.', linestyle='')
+plt.title(title)
 plt.ylabel('L2 Norm')
 plt.xlabel('Timestep')
 plt.show()
 
-#%% Error for psi(x) => x
+#%% Error for psi(x) -> x
+title = "Error for psi(x) -> x:"
+print(title)
+
 # data_point_index = 1000
 horizon = 1000
 norms = []
@@ -165,16 +183,19 @@ for true_state in true_states.T:
     true_state = true_state.reshape(-1,1)
     projected_state = B.T @ psi(true_state)
 
-    norm = np.sum( np.power( ( true_state - projected_state ) , 2 ) )
+    norm = l2_norm(true_state, projected_state)
     norms.append(norm)
 
 print("Mean norm:", np.mean(norms))
 plt.plot(norms, marker='.', linestyle='')
+plt.title(title)
 plt.ylabel('L2 Norm')
 plt.xlabel('Timestep')
 plt.show()
 
-#%% Error for psi(x) => x'
+#%% Error for psi(x) -> x'
+title = "Error for psi(x) -> x':"
+print(title)
 
 # Koopman from psi(x) -> x'
 # || Y     - X B           ||
@@ -192,13 +213,51 @@ for h in range(horizon):
     true_state = true_states[:,h].reshape(-1,1)
     predicted_state = K_0 @ psi(true_state) if action == 0 else K_1 @ psi(true_state)
 
-    norm = np.sum( np.power( ( true_state - projected_state ) , 2 ) )
+    norm = l2_norm(true_state, predicted_state)
     norms.append(norm)
 
 print("Mean norm:", np.mean(norms))
 plt.plot(norms, marker='.', linestyle='')
+plt.title("Error for psi(x) -> x':")
 plt.ylabel('L2 Norm')
 plt.xlabel('Timestep')
 plt.show()
 
-# %%
+#%% Residual error
+title = "Residual error:"
+print(title)
+
+# residuals_0 = Psi_Y_0 - Psi_X_0
+# residuals_1 = Psi_Y_1 - Psi_X_1
+residuals = Psi_Y - Psi_X
+# psi(x) -> psi(x') - psi(x)
+# K_0 = estimate_L.rrr(Psi_X_0.T, residuals_0.T).T
+# K_1 = estimate_L.rrr(Psi_X_1.T, residuals_1.T).T
+K = estimate_L.rrr(Psi_X.T, residuals.T).T
+
+horizon = 1000
+action_path = U[0, -horizon:]
+norms = []
+true_states = X_train[:, -horizon:]
+true_states_prime = Y_train[:, -horizon:]
+for h in range(horizon):
+    action = action_path[h]
+
+    true_state = true_states[:,h].reshape(-1,1)
+    psi_x = psi(true_state)
+
+    predicted_residual = K @ psi_x
+    predicted_psi_x_prime = psi_x + predicted_residual
+    predicted_x_prime = B.T @ predicted_psi_x_prime
+
+    true_x_prime = true_states_prime[:,h].reshape(-1,1)
+
+    norm = l2_norm(true_x_prime, predicted_x_prime)
+    norms.append(norm)
+
+print("Mean norm:", np.mean(norms))
+plt.plot(norms, marker='.', linestyle='')
+plt.title(title)
+plt.ylabel('L2 Norm')
+plt.xlabel('Timestep')
+plt.show()
