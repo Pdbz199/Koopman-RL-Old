@@ -261,3 +261,29 @@ plt.title(title)
 plt.ylabel('L2 Norm')
 plt.xlabel('Timestep')
 plt.show()
+
+# Koopman from psi(x) -> psi(x')
+# || Y     - X B               ||
+# || Psi_Y_i   - K Psi_X_i     ||
+# || Psi_Y_i.T - Psi_X_i.T K.T ||
+K_0 = estimate_L.rrr(Psi_X_0.T, Psi_Y_0.T).T
+K_1 = estimate_L.rrr(Psi_X_1.T, Psi_Y_1.T).T
+
+horizon = 1000
+action_path = U[0, -horizon:]
+norms = []
+true_states = X[:, -horizon:]
+for h in range(horizon):
+    action = action_path[h]
+    true_state = true_states[:,h].reshape(-1,1)
+    predicted_state = K_0 @ psi(true_state) if action == 0 else K_1 @ psi(true_state)
+
+    norm = l2_norm(psi(true_state), predicted_state)
+    norms.append(norm)
+
+print("Mean norm:", np.mean(norms))
+plt.plot(norms, marker='.', linestyle='')
+plt.title("Error for psi(x) -> psi(x)':")
+plt.ylabel('L2 Norm')
+plt.xlabel('Timestep')
+plt.show()
