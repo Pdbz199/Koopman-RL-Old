@@ -106,6 +106,22 @@ Psi_Y_1 = getPsiMatrix(psi, Y_1_train)
 # || Psi_Y_0.T - Psi_X_0.T K.T ||
 K_0 = estimate_L.rrr(Psi_X_0.T, Psi_Y_0.T).T
 K_1 = estimate_L.rrr(Psi_X_1.T, Psi_Y_1.T).T
+eigenvalues_0, eigenvectors_0 = np.linalg.eig(K_0)
+eigenvalues_1, eigenvectors_1 = np.linalg.eig(K_1)
+eigenfunction_0 = list(map(lambda psi_x: np.dot(psi_x,eigenvectors_0[:,0]), Psi_X_0.T))
+eigenfunction_1 = list(map(lambda psi_x: np.dot(psi_x,eigenvectors_1[:,0]), Psi_X_1.T))
+
+plt.plot(eigenfunction_0)
+plt.title(title)
+plt.ylabel('Eigenfunction0 Output')
+plt.xlabel('State Snapshots')
+plt.show()
+
+plt.plot(eigenfunction_1)
+plt.title(title)
+plt.ylabel('Eigenfunction1 Output')
+plt.xlabel('State Snapshots')
+plt.show()
 
 #%% Find mapping from Psi_X to X
 B = estimate_L.SINDy(Psi_X.T, X_train.T)
