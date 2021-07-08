@@ -129,7 +129,7 @@ for i in range(num_trials):
         predicted_state = B.T @ K_0 @ psi_x if action == 0 else B.T @ K_1 @ psi_x
         true_state, ___, __, _ = env.step(action)
 
-        norm = l2_norm(true_state.reshape(-1,1), predicted_state)
+        norm = l2_norm(true_state.reshape(-1,1), predicted_state)/l2_norm(true_state.reshape(-1,1), 0)
         trial_norms.append(norm)
     norms.append(trial_norms)
 
@@ -157,7 +157,7 @@ for h in range(horizon):
     predicted_state = B.T @ K_0 @ psi_x if action == 0 else B.T @ K_1 @ psi_x
     true_state = X[:,starting_point+h+1]
 
-    norm = l2_norm(true_state.reshape(-1,1), predicted_state)
+    norm = l2_norm(true_state.reshape(-1,1), predicted_state)/l2_norm(true_state.reshape(-1,1), 0)
     norms.append(norm)
 
 print("Mean norm:", np.mean(norms))
@@ -183,7 +183,7 @@ for true_state in true_states.T:
     true_state = true_state.reshape(-1,1)
     projected_state = B.T @ psi(true_state)
 
-    norm = l2_norm(true_state, projected_state)
+    norm = l2_norm(true_state, projected_state)/l2_norm(true_state, 0)
     norms.append(norm)
 
 print("Mean norm:", np.mean(norms))
@@ -213,7 +213,7 @@ for h in range(horizon):
     true_state = true_states[:,h].reshape(-1,1)
     predicted_state = K_0 @ psi(true_state) if action == 0 else K_1 @ psi(true_state)
 
-    norm = l2_norm(true_state, predicted_state)
+    norm = l2_norm(true_state, predicted_state)/l2_norm(true_state, 0)
     norms.append(norm)
 
 print("Mean norm:", np.mean(norms))
@@ -252,7 +252,7 @@ for h in range(horizon):
 
     true_x_prime = true_states_prime[:,h].reshape(-1,1)
 
-    norm = l2_norm(true_x_prime, predicted_x_prime)
+    norm = l2_norm(true_x_prime, predicted_x_prime)/l2_norm(true_x_prime, 0)
     norms.append(norm)
 
 print("Mean norm:", np.mean(norms))
@@ -278,7 +278,7 @@ for h in range(horizon):
     true_state = true_states[:,h].reshape(-1,1)
     predicted_state = K_0 @ psi(true_state) if action == 0 else K_1 @ psi(true_state)
 
-    norm = l2_norm(psi(true_state), predicted_state)
+    norm = l2_norm(psi(true_state), predicted_state)/l2_norm(psi(true_state), 0)
     norms.append(norm)
 
 print("Mean norm:", np.mean(norms))
