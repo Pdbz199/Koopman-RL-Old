@@ -134,20 +134,35 @@ env = gym.make('CartPole-v0')
 horizon = 1000
 num_trials = 1#000
 norms = []
+vector_field_arrays = []
 for i in range(num_trials):
     action_path = [np.random.choice([0,1]) for i in range(horizon)]
     trial_norms = []
     true_state = env.reset()
     predicted_state = true_state.copy()
+    vector_field_array = [true_state]
     for h in range(horizon):
         action = action_path[h]
         psi_x = psi(predicted_state)
         predicted_state = B.T @ K_0 @ psi_x if action == 0 else B.T @ K_1 @ psi_x
         true_state, ___, __, _ = env.step(action)
-
+        vector_field_array.append(predicted_state.reshape(state_dim))
         norm = l2_norm(true_state.reshape(-1,1), predicted_state)/l2_norm(true_state.reshape(-1,1), 0)
         trial_norms.append(norm)
+    vector_field_arrays.append(vector_field_array)
     norms.append(trial_norms)
+    # Test: try to populate a list with (3,) arrays and then check [:,:,1:]
+
+vector_field_arrays = np.array(vector_field_arrays)
+X = vector_field_arrays[:,:,0]
+Y = vector_field_arrays[:,:,2]
+U = vector_field_arrays[:,:,1]
+V = vector_field_arrays[:,:,3]
+
+plt.figure()
+plt.title("Vector Field of Koopman Predicted State Evolution")
+Q = plt.quiver(X,Y,U,V)
+plt.show()
 
 plt.plot(np.mean(norms, axis=0))
 plt.title(title)
