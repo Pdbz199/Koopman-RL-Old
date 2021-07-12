@@ -112,13 +112,13 @@ eigenfunction_0 = list(map(lambda psi_x: np.dot(psi_x,eigenvectors_0[:,0]), Psi_
 eigenfunction_1 = list(map(lambda psi_x: np.dot(psi_x,eigenvectors_1[:,0]), Psi_X_1.T))
 
 plt.plot(eigenfunction_0)
-plt.title(title)
+plt.title("Eignefunction 1 of Koopman operator for action 0")
 plt.ylabel('Eigenfunction0 Output')
 plt.xlabel('State Snapshots')
 plt.show()
 
 plt.plot(eigenfunction_1)
-plt.title(title)
+plt.title("Eignefunction 1 of Koopman operator for action 1")
 plt.ylabel('Eigenfunction1 Output')
 plt.xlabel('State Snapshots')
 plt.show()
@@ -161,7 +161,7 @@ V = vector_field_arrays[:,:,3]
 
 plt.figure()
 plt.title("Vector Field of Koopman Predicted State Evolution")
-Q = plt.quiver(X,Y,U,V)
+Q = plt.quiver(X, Y, U, V)
 plt.show()
 
 plt.plot(np.mean(norms, axis=0))
