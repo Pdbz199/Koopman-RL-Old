@@ -5,6 +5,9 @@ import numpy as np
 import numba as nb
 import matplotlib.pyplot as plt
 from sklearn.kernel_approximation import RBFSampler
+import scipy as sp
+import auxiliaryFns
+
 
 def l2_norm(true_state, predicted_state):
     return np.sum(np.power(( true_state - predicted_state ), 2 ))
@@ -77,18 +80,6 @@ def psi(x):
 # psi_0 = lambda x: X_features.T @ x.reshape(-1,1)
 # psi_1 = lambda x: X_features.T @ x.reshape(-1,1)
 
-# ExpSineSquared (periodic kernel)
-from sklearn.gaussian_process.kernels import ExpSineSquared
-kernel = ExpSineSquared(length_scale=1, periodicity=1)
-def psi(x):
-    vector = []
-    for state in X_train.T:
-        vector.append(kernel(x.reshape(1,-1), state.reshape(1,-1))[0,0])
-    return np.array(vector)
-
-def getPsiMatrix(psi, X):
-    return kernel(X.T, X_train.T)
-
 #%% Nystroem
 # from sklearn.kernel_approximation import Nystroem
 # feature_map_nystroem = Nystroem(gamma=0.7, random_state=1, n_components=4)
@@ -104,13 +95,13 @@ def getPsiMatrix(psi, X):
 #         matrix[:, col] = psi(X[:, col])[:, 0]
 #     return matrix
 
-Psi_X = getPsiMatrix(psi, X_train)
-Psi_Y = getPsiMatrix(psi, Y_train)
+# Psi_X = getPsiMatrix(psi, X_train)
+# Psi_Y = getPsiMatrix(psi, Y_train)
 
-Psi_X_0 = getPsiMatrix(psi, X_0_train).T
-Psi_Y_0 = getPsiMatrix(psi, Y_0_train).T
-Psi_X_1 = getPsiMatrix(psi, X_1_train).T
-Psi_Y_1 = getPsiMatrix(psi, Y_1_train).T
+# Psi_X_0 = getPsiMatrix(psi, X_0_train).T
+# Psi_Y_0 = getPsiMatrix(psi, Y_0_train).T
+# Psi_X_1 = getPsiMatrix(psi, X_1_train).T
+# Psi_Y_1 = getPsiMatrix(psi, Y_1_train).T
 
 #%% Koopman
 # || Y         - X B           ||
