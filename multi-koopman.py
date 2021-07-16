@@ -2,6 +2,7 @@
 import gym
 import estimate_L
 import numpy as np
+import numba as nb
 import matplotlib.pyplot as plt
 from sklearn.kernel_approximation import RBFSampler
 
@@ -40,7 +41,7 @@ Y_1 = np.load('random-agent/cartpole-next-states-1.npy').T
 
 state_dim = X.shape[0]
 
-percent_training = 0.8
+percent_training = 0.25
 train_ind = int(np.around(X.shape[1]*percent_training))
 X_train = X[:,:train_ind]
 Y_train = Y[:,:train_ind]
@@ -76,6 +77,18 @@ def psi(x):
 # psi_0 = lambda x: X_features.T @ x.reshape(-1,1)
 # psi_1 = lambda x: X_features.T @ x.reshape(-1,1)
 
+# ExpSineSquared (periodic kernel)
+from sklearn.gaussian_process.kernels import ExpSineSquared
+kernel = ExpSineSquared(length_scale=1, periodicity=1)
+def psi(x):
+    vector = []
+    for state in X_train.T:
+        vector.append(kernel(x.reshape(1,-1), state.reshape(1,-1))[0,0])
+    return np.array(vector)
+
+def getPsiMatrix(psi, X):
+    return kernel(X.T, X_train.T)
+
 #%% Nystroem
 # from sklearn.kernel_approximation import Nystroem
 # feature_map_nystroem = Nystroem(gamma=0.7, random_state=1, n_components=4)
@@ -83,21 +96,21 @@ def psi(x):
 # psi = lambda x: data_transformed @ x.reshape(-1,1)
 
 #%% Psi matrices
-def getPsiMatrix(psi, X):
-    k = psi(X[:,0].reshape(-1,1)).shape[0]
-    m = X.shape[1]
-    matrix = np.empty((k,m))
-    for col in range(m):
-        matrix[:, col] = psi(X[:, col])[:, 0]
-    return matrix
+# def getPsiMatrix(psi, X): # for RBF sampler
+#     k = psi(X[:,0]).shape[0]
+#     m = X.shape[1]
+#     matrix = np.empty((k,m))
+#     for col in range(m):
+#         matrix[:, col] = psi(X[:, col])[:, 0]
+#     return matrix
 
 Psi_X = getPsiMatrix(psi, X_train)
 Psi_Y = getPsiMatrix(psi, Y_train)
 
-Psi_X_0 = getPsiMatrix(psi, X_0_train)
-Psi_Y_0 = getPsiMatrix(psi, Y_0_train)
-Psi_X_1 = getPsiMatrix(psi, X_1_train)
-Psi_Y_1 = getPsiMatrix(psi, Y_1_train)
+Psi_X_0 = getPsiMatrix(psi, X_0_train).T
+Psi_Y_0 = getPsiMatrix(psi, Y_0_train).T
+Psi_X_1 = getPsiMatrix(psi, X_1_train).T
+Psi_Y_1 = getPsiMatrix(psi, Y_1_train).T
 
 #%% Koopman
 # || Y         - X B           ||
@@ -121,18 +134,15 @@ plt.show()
 
 plt.plot(eigenfunction_0)
 plt.title("Eigenfunction 0 of Koopman operator for action 0")
-plt.ylabel('Eigenfunction0 Output')
+plt.ylabel('Eigenfunction Output')
 plt.xlabel('State Snapshots')
 plt.show()
 
 plt.plot(eigenfunction_1)
 plt.title("Eigenfunction 0 of Koopman operator for action 1")
-plt.ylabel('Eigenfunction1 Output')
+plt.ylabel('Eigenfunction Output')
 plt.xlabel('State Snapshots')
-plt.show()
-
-#%% Find mapping from Psi_X to X
-B = estimate_L.SINDy(Psi_X.T, X_train.T)
+B = estimate_L.rrr(Psi_X.T, X_train.T, state_dim) # SINDy taking too long
 
 #%% Prediction compounding error
 title = "Prediction compounding error:"
@@ -162,14 +172,14 @@ for i in range(num_trials):
     # Test: try to populate a list with (3,) arrays and then check [:,:,1:]
 
 vector_field_arrays = np.array(vector_field_arrays)
-X = vector_field_arrays[:,:,0]
-Y = vector_field_arrays[:,:,2]
-U = vector_field_arrays[:,:,1]
-V = vector_field_arrays[:,:,3]
+X_plot = vector_field_arrays[:,:,0].reshape((horizon * num_trials)+1) # cart pos
+Y_plot = vector_field_arrays[:,:,2].reshape((horizon * num_trials)+1) # pole angle
+U_plot = vector_field_arrays[:,:,1].reshape((horizon * num_trials)+1) # cart velocity
+V_plot = vector_field_arrays[:,:,3].reshape((horizon * num_trials)+1) # pole angular velocity
 
 plt.figure()
 plt.title("Vector Field of Koopman Predicted State Evolution")
-Q = plt.quiver(X, Y, U, V)
+Q_plot = plt.quiver(X_plot, Y_plot, U_plot, V_plot)
 plt.show()
 
 plt.plot(np.mean(norms, axis=0))
@@ -177,6 +187,9 @@ plt.title(title)
 plt.ylabel('L2 Norm')
 plt.xlabel('Timestep')
 plt.show()
+
+
+"""
 
 #%% One-step prediction error
 title = "One-step prediction error:"
@@ -326,3 +339,5 @@ plt.title("Error for psi(x) -> psi(x)':")
 plt.ylabel('L2 Norm')
 plt.xlabel('Timestep')
 plt.show()
+
+"""
