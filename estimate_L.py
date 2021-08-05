@@ -41,14 +41,14 @@ def SINDy(Theta, dXdt, lamb=0.05):
     return L
 
 #%%
-@nb.njit(fastmath=True)
+# @nb.njit(fastmath=True)
 def ols(X, Y, pinv=True):
     if pinv:
         return np.linalg.pinv(X.T @ X) @ X.T @ Y
     return np.linalg.inv(X.T @ X) @ X.T @ Y
 
 #%% (X=Psi_X_T, Y=dPsi_X_T, rank=8)
-@nb.njit(fastmath=True)
+# @nb.njit(fastmath=True)
 def rrr(X, Y, rank=8):
     B_ols = ols(X, Y) # if infeasible use GD (numpy CG)
     U, S, V = np.linalg.svd(Y.T @ X @ B_ols)
