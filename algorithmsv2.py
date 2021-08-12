@@ -46,6 +46,6 @@ def algorithm2(X, U, phi, psi, K_hat, cost, learning_rate=0.1, epsilon=1):
         w -= learning_rate * nabla_w
 
         BE = bellmanError(w, pi)
-        print(BE) # not decreasing at all
+        print(BE) # not decreasing at all (value is around 19000)
 
     return pi

@@ -5,6 +5,9 @@ import estimate_L
 import algorithmsv2
 env = gym.make("Taxi-v3")
 
+def l2_norm(true_state, predicted_state):
+    return np.sum( np.power( ( true_state - predicted_state ), 2 ) )
+
 #%% Load data
 X = np.load('random-agent/taxi/states.npy').T
 Y = np.append(np.roll(X, -1, axis=1)[:,:-1], np.zeros((X.shape[0],1)), axis=1)
@@ -113,6 +116,38 @@ for i in range(M.shape[0]):
     K[i] = M[i].reshape((num_lifted_state_features, num_lifted_action_features))
 print("K shape:", K.shape)
 
-pi = algorithmsv2.algorithm2(X, U, phi, psi, K, cost)
+def K_u(K, u):
+    return np.einsum('ijz,z->ij', K, psi(u))
 
-print(pi(U[:,0], X[:,0]))
+#%% Test prediction error
+episodes = 1
+norms = []
+for episode in range(episodes):
+    true_state = env.reset()
+    taxi_y,taxi_x,passenger,destination = env.decode(true_state)
+    decoded_true_state = np.array([taxi_y, taxi_x, passenger, destination])
+
+    done = False
+    while not done:
+        action = env.action_space.sample()
+        print("Action:", action)
+
+        print("Decoded state:", decoded_true_state)
+        phi_x_prime = K_u(K, action) @ phi(decoded_true_state)
+        predicted_state = enumerated_states[np.argmax(phi_x_prime)]
+        print("Predicted state:", predicted_state)
+        true_state, _, done, __ = env.step(action)
+
+        taxi_y,taxi_x,passenger,destination = env.decode(true_state)
+        decoded_true_state = np.array([taxi_y, taxi_x, passenger, destination])
+        print("Decoded state:", decoded_true_state)
+
+        norms.append(l2_norm(decoded_true_state, predicted_state))
+
+env.close()
+
+norms = np.array(norms)
+print("Mean norm:", np.mean(norms))
+
+# pi = algorithmsv2.algorithm2(X, U, phi, psi, K, cost)
+# print(pi(U[:,0], X[:,0]))
