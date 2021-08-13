@@ -1,7 +1,7 @@
 #%% Imports
 import importlib
 import gym
-estimate_L = importlib.import_module("estimate-L")
+estimate_L = importlib.import_module("estimate_L")
 import numpy as np
 import numba as nb
 import matplotlib.pyplot as plt
