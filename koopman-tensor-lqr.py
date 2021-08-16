@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import scipy as sp
 import sys
 import auxiliaries
+import algorithmsv2
 
 from control import lqr
 from scipy import integrate
@@ -100,7 +101,7 @@ def phi(x):
     return np.array([1, x[0], x[1], x[0]**2, x[1]**2, x[0]*x[1]])
 
 def psi(u):
-    return np.array([1, u, u**2])
+    return np.array([float(1), float(u), float(u**2)])
 
 def getPhiMatrix(X):
     print(X.shape)
@@ -155,3 +156,20 @@ def K_u(u):
 
 print("Psi U[0,0]:", psi(U[0,0]))
 print("K_u shape:", K_u(U[0,0]).shape)
+
+def l2_norm(true_state, predicted_state):
+    return np.sum( np.power( ( true_state - predicted_state ), 2 ) )
+
+norms = []
+starting_point = 100
+for i in range(10):
+    actual_phi_x_prime = phi(Y[:,starting_point+i])
+    predicted_phi_x_prime = K_u(U[0,starting_point+i]) @ phi(X[:,starting_point+i])
+
+    norms.append(l2_norm(actual_phi_x_prime, predicted_phi_x_prime))
+norms = np.array(norms)
+print(norms)
+print("Mean norm:", norms.mean())
+
+# pi = algorithmsv2.algorithm2(X, U, phi, psi, K, cost)
+# print(pi(U[0,0], X[0,0]))
