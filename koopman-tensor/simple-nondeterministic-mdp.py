@@ -58,7 +58,7 @@ def phi(x):
     return phi_x
 
 #%% Define X, Y, and U
-N = 1000
+N = 10000
 d_phi = 5
 d_psi = 3
 x0 = np.array([[0]])
@@ -114,5 +114,7 @@ for i in range(N):
 norms = np.array(norms)
 
 print("Mean norm on training data:", norms.mean())
+
+print("F-norm between K and P:", l2_norm(P, K))
 
 # %%
