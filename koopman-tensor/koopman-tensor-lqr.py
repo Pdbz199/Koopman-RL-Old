@@ -1,12 +1,13 @@
 #%% Imports
 import importlib
 import gym
-import estimate_L
 import numpy as np
 import numba as nb
 import matplotlib.pyplot as plt
 import scipy as sp
 import sys
+sys.path.append("../")
+import estimate_L
 import auxiliaries
 import algorithmsv2
 
@@ -73,8 +74,10 @@ F = np.array([
     [0, 1, 0]
 ])
 
+U = []
 def vf(tau, x, u):
     returnVal = ((A@x.reshape(-1,1)) + np.array([[0], [-lamb * x[0]**2]]) + B@u.reshape(-1,1)).reshape((2,))
+    U.append(u)
     # print(returnVal)
     return returnVal
 
@@ -82,16 +85,19 @@ def getKoopmanAction(x):
     return ((-C2[:2] @ x) - (C2[2] * x[0]**2))
 
 #%% Standard LQR controlled system
-X = integrate.solve_ivp(lambda tau, x: vf(tau, x, -C@x), (0,50), x[:,0], first_step=0.05, max_step=0.05)
-X = X.y[:,:-2]
-U = (-C@X).reshape(1,-1)
+def C(x):
+    return np.array([np.random.uniform(-10,10), np.random.uniform(-10,10)])
+
+X = integrate.solve_ivp(lambda tau, x: vf(tau, x, -C(x)@x), (0,50), x[:,0], first_step=0.05, max_step=0.05)
+X = X.y[:,:-2] # Look up why
+U = np.array(U).reshape(1,-1)
 Y = np.apply_along_axis(lambda x: np.append(x, [x[0]**2]), axis=0, arr=X)
 
 #%% Koopman LQR controlled system
-X2 = integrate.solve_ivp(lambda tau, x: vf(tau, x, ((-C2[:2] @ x) - (C2[2] * x[0]**2))), (0,50), x[:,0], first_step=0.05, max_step=0.05)
-X2 = X2.y[:,:-2]
-U2 = getKoopmanAction(X2).reshape(1,-1)
-Y2 = np.apply_along_axis(lambda x: np.append(x, [x[0]**2]), axis=0, arr=X)
+# X2 = integrate.solve_ivp(lambda tau, x: vf(tau, x, ((-C2[:2] @ x) - (C2[2] * x[0]**2))), (0,50), x[:,0], first_step=0.05, max_step=0.05)
+# X2 = X2.y[:,:-2]
+# U2 = getKoopmanAction(X2).reshape(1,-1)
+# Y2 = np.apply_along_axis(lambda x: np.append(x, [x[0]**2]), axis=0, arr=X)
 
 def cost(x, u):
     return (x @ Q @ x + u * R * u)
@@ -142,17 +148,18 @@ def getPsiPhiMatrix(Psi_U, Phi_X):
 
 psiPhiMatrix = getPsiPhiMatrix(Psi_U, Phi_X)
 print("PsiPhiMatrix shape:", psiPhiMatrix.shape)
-M = estimate_L.rrr(psiPhiMatrix.T, getPhiMatrix(Y).T).T
+M = estimate_L.ols(psiPhiMatrix.T, getPhiMatrix(Y).T).T
 print("M shape:", M.shape)
 assert M.shape == (num_lifted_state_features, num_lifted_state_features * num_lifted_action_features)
 
 K = np.empty((num_lifted_state_features, num_lifted_state_features, num_lifted_action_features))
 for i in range(M.shape[0]):
-    K[i] = M[i].reshape((num_lifted_state_features, num_lifted_action_features))
+    K[i] = M[i].reshape((num_lifted_state_features, num_lifted_action_features), order='F')
 print("K shape:", K.shape)
 
 def K_u(u):
     return np.einsum('ijz,z->ij', K, psi(u))
+
 
 print("Psi U[0,0]:", psi(U[0,0]))
 print("K_u shape:", K_u(U[0,0]).shape)
@@ -173,3 +180,4 @@ print("Mean norm:", norms.mean())
 
 # pi = algorithmsv2.algorithm2(X, U, phi, psi, K, cost)
 # print(pi(U[0,0], X[0,0]))
+# %%
