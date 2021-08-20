@@ -48,8 +48,8 @@ Q2 = np.array(
 
 #%%
 x = np.array([
-    [-5],
-    [5]
+    [-5.],
+    [5.]
 ])
 y = np.append(x, [x[0]**2], axis=0)
 
@@ -57,7 +57,6 @@ y = np.append(x, [x[0]**2], axis=0)
 C = lqr(A, B, Q, R)[0][0]
 print("Standard LQR:", C)
 # C = np.array([0,2.4142]) when lamb = 1
-# u = ((-C[:2] @ x) - (C[2] * x[0]**2))[0]
 
 #%% Koopman LQR
 # C = [0.0, 0.61803399, 0.23445298] when lamb = -0.5
@@ -66,38 +65,33 @@ print("Koopman LQR:", C2)
 # C = np.array([0.0, 2.4142, -1.4956])
 # u = ((-C[:2] @ x) - (C[2] * x[0]**2))[0]
 
-# F @ y = x
-F = np.array([
-    [1, 0, 0],
-    [0, 1, 0]
-])
-
 def vf(tau, x, u):
-    returnVal = ((A@x.reshape(-1,1)) + np.array([[0], [-lamb * x[0]**2]]) + B@u.reshape(-1,1)).reshape((2,))
-    return returnVal
+    returnVal = ((A @ x.reshape(-1,1)) + np.array([[0], [-lamb * x[0]**2]]) + (B @ u.reshape(-1,1)))
+    return returnVal[:,0]
 
-def getKoopmanAction(x):
-    return ((-C2[:2] @ x) - (C2[2] * x[0]**2))
-
-def C_func(x):
+def C2_func(x):
     np.random.seed( np.abs( int( hash(str(x)) / (10**10) ) ) )
-    return np.array([np.random.uniform(-100,100), np.random.uniform(-100,100)])
+    return np.array([
+        np.random.uniform(-100,100),
+        np.random.uniform(-100,100),
+        np.random.uniform(-100,100)
+    ])
 
 def U_builder(X):
     U = []
     for x in X.T:
-        U.append([-C_func(x)@x])
+        U.append([-C2_func(x)@x])
     return np.array(U).T
 
-#%% Randomly controlled system
-X = integrate.solve_ivp(lambda tau, x: vf(tau, x, -C_func(x)@x), (0,50), x[:,0], first_step=0.05, max_step=0.05)
-X = X.y
-Y = np.roll(X, -1, axis=1)[:,:-1]
-X = X[:,:-1]
-U = U_builder(X)
+#%% Randomly controlled system (currently takes 5-ever to run
+# X = integrate.solve_ivp(lambda tau, x: vf(tau, x, ((-C2_func(x)[:2] @ x) - (C2_func(x)[2] * x[0]**2))), (0,50), x[:,0], first_step=0.05, max_step=0.05)
+# X = X.y
+# Y = np.roll(X, -1, axis=1)[:,:-1]
+# X = X[:,:-1]
+# U = U_builder(X)
 
 #%% Standard LQR controlled system
-X_opt = integrate.solve_ivp(lambda tau, x: vf(tau, x, -C@x), (0,50), x[:,0], first_step=0.05, max_step=0.05)
+X_opt = integrate.solve_ivp(lambda tau, x: vf(tau, x, ((-C2[:2] @ x) - (C2[2] * x[0]**2))), (0,50), x[:,0], first_step=0.05, max_step=0.05)
 X_opt = X_opt.y
 Y_opt = np.roll(X_opt, -1, axis=1)[:,:-1]
 X_opt = X_opt[:,:-1]
@@ -134,8 +128,8 @@ def getPsiMatrix(U):
     return np.array(Psi_U).T
 
 #%%
-Phi_X = getPhiMatrix(X)
-Psi_U = getPsiMatrix(U)
+Phi_X = getPhiMatrix(X_opt)
+Psi_U = getPsiMatrix(U_opt)
 print("Phi_X shape:", Phi_X.shape)
 print("Psi_U shape:", Psi_U.shape)
 
@@ -157,7 +151,7 @@ def getPsiPhiMatrix(Psi_U, Phi_X):
 #%%
 psiPhiMatrix = getPsiPhiMatrix(Psi_U, Phi_X)
 print("PsiPhiMatrix shape:", psiPhiMatrix.shape)
-M = estimate_L.ols(psiPhiMatrix.T, getPhiMatrix(Y).T).T
+M = estimate_L.ols(psiPhiMatrix.T, getPhiMatrix(Y_opt).T).T
 print("M shape:", M.shape)
 assert M.shape == (num_lifted_state_features, num_lifted_state_features * num_lifted_action_features)
 
@@ -169,8 +163,8 @@ print("K shape:", K.shape)
 def K_u(u):
     return np.einsum('ijz,z->ij', K, psi(u))
 
-print("Psi U[0,0]:", psi(U[0,0]))
-print("K_u shape:", K_u(U[0,0]).shape)
+print("Psi U[0,0]:", psi(U_opt[0,0]))
+print("K_u shape:", K_u(U_opt[0,0]).shape)
 
 #%%
 def l2_norm(true_state, predicted_state):
@@ -179,9 +173,9 @@ def l2_norm(true_state, predicted_state):
 #%% Training error
 norms = []
 starting_point = 0
-for i in range(Y.shape[1]):
-    actual_phi_x_prime = phi(Y[:,starting_point+i])
-    predicted_phi_x_prime = K_u(U[0,starting_point+i]) @ phi(X[:,starting_point+i])
+for i in range(Y_opt.shape[1]):
+    actual_phi_x_prime = phi(Y_opt[:,starting_point+i])
+    predicted_phi_x_prime = K_u(U_opt[0,starting_point+i]) @ phi(X_opt[:,starting_point+i])
 
     norms.append(l2_norm(actual_phi_x_prime, predicted_phi_x_prime))
 norms = np.array(norms)
