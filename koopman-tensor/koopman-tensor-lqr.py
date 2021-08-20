@@ -53,8 +53,6 @@ x = np.array([
 ])
 y = np.append(x, [x[0]**2], axis=0)
 
-action_bounds = [-999999, 999999]
-
 #%% Standard LQR
 C = lqr(A, B, Q, R)[0][0]
 print("Standard LQR:", C)
@@ -74,24 +72,36 @@ F = np.array([
     [0, 1, 0]
 ])
 
-U = []
 def vf(tau, x, u):
     returnVal = ((A@x.reshape(-1,1)) + np.array([[0], [-lamb * x[0]**2]]) + B@u.reshape(-1,1)).reshape((2,))
-    U.append(u)
-    # print(returnVal)
     return returnVal
 
 def getKoopmanAction(x):
     return ((-C2[:2] @ x) - (C2[2] * x[0]**2))
 
-#%% Standard LQR controlled system
-def C(x):
-    return np.array([np.random.uniform(-10,10), np.random.uniform(-10,10)])
+def C_func(x):
+    np.random.seed( np.abs( int( hash(str(x)) / (10**10) ) ) )
+    return np.array([np.random.uniform(-100,100), np.random.uniform(-100,100)])
 
-X = integrate.solve_ivp(lambda tau, x: vf(tau, x, -C(x)@x), (0,50), x[:,0], first_step=0.05, max_step=0.05)
-X = X.y[:,:-2] # Look up why
-U = np.array(U).reshape(1,-1)
-Y = np.apply_along_axis(lambda x: np.append(x, [x[0]**2]), axis=0, arr=X)
+def U_builder(X):
+    U = []
+    for x in X.T:
+        U.append([-C_func(x)@x])
+    return np.array(U).T
+
+#%% Randomly controlled system
+X = integrate.solve_ivp(lambda tau, x: vf(tau, x, -C_func(x)@x), (0,50), x[:,0], first_step=0.05, max_step=0.05)
+X = X.y
+Y = np.roll(X, -1, axis=1)[:,:-1]
+X = X[:,:-1]
+U = U_builder(X)
+
+#%% Standard LQR controlled system
+X_opt = integrate.solve_ivp(lambda tau, x: vf(tau, x, -C@x), (0,50), x[:,0], first_step=0.05, max_step=0.05)
+X_opt = X_opt.y
+Y_opt = np.roll(X_opt, -1, axis=1)[:,:-1]
+X_opt = X_opt[:,:-1]
+U_opt = (-C@X_opt).reshape(1,-1)
 
 #%% Koopman LQR controlled system
 # X2 = integrate.solve_ivp(lambda tau, x: vf(tau, x, ((-C2[:2] @ x) - (C2[2] * x[0]**2))), (0,50), x[:,0], first_step=0.05, max_step=0.05)
@@ -110,8 +120,6 @@ def psi(u):
     return np.array([float(1), float(u), float(u**2)])
 
 def getPhiMatrix(X):
-    print(X.shape)
-    
     Phi_X = []
     for x in X.T:
         Phi_X.append(phi(x))
@@ -128,8 +136,8 @@ def getPsiMatrix(U):
 #%%
 Phi_X = getPhiMatrix(X)
 Psi_U = getPsiMatrix(U)
-print(Phi_X.shape)
-print(Psi_U.shape)
+print("Phi_X shape:", Phi_X.shape)
+print("Psi_U shape:", Psi_U.shape)
 
 num_lifted_state_observations = Phi_X.shape[1]
 num_lifted_state_features = Phi_X.shape[0]
@@ -146,6 +154,7 @@ def getPsiPhiMatrix(Psi_U, Phi_X):
 
     return psiPhiMatrix
 
+#%%
 psiPhiMatrix = getPsiPhiMatrix(Psi_U, Phi_X)
 print("PsiPhiMatrix shape:", psiPhiMatrix.shape)
 M = estimate_L.ols(psiPhiMatrix.T, getPhiMatrix(Y).T).T
@@ -160,24 +169,34 @@ print("K shape:", K.shape)
 def K_u(u):
     return np.einsum('ijz,z->ij', K, psi(u))
 
-
 print("Psi U[0,0]:", psi(U[0,0]))
 print("K_u shape:", K_u(U[0,0]).shape)
 
+#%%
 def l2_norm(true_state, predicted_state):
     return np.sum( np.power( ( true_state - predicted_state ), 2 ) )
 
+#%% Training error
 norms = []
-starting_point = 100
-for i in range(10):
+starting_point = 0
+for i in range(Y.shape[1]):
     actual_phi_x_prime = phi(Y[:,starting_point+i])
     predicted_phi_x_prime = K_u(U[0,starting_point+i]) @ phi(X[:,starting_point+i])
 
     norms.append(l2_norm(actual_phi_x_prime, predicted_phi_x_prime))
 norms = np.array(norms)
-print(norms)
-print("Mean norm:", norms.mean())
+# print(norms)
+print("Mean training norm:", norms.mean())
 
-# pi = algorithmsv2.algorithm2(X, U, phi, psi, K, cost)
-# print(pi(U[0,0], X[0,0]))
-# %%
+#%% Single-step prediction error with optimal controller
+norms = []
+starting_point = 0
+for i in range(Y_opt.shape[1]):
+    actual_phi_x_prime = phi(Y_opt[:,starting_point+i])
+    predicted_phi_x_prime = K_u(U_opt[0,starting_point+i]) @ phi(X_opt[:,starting_point+i])
+
+    norms.append(l2_norm(actual_phi_x_prime, predicted_phi_x_prime))
+norms = np.array(norms)
+print("Mean single-step prediction norm:", norms.mean())
+
+#%%
