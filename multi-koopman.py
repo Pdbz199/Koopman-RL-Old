@@ -2,8 +2,12 @@
 import gym
 import estimate_L
 import numpy as np
+import numba as nb
 import matplotlib.pyplot as plt
 from sklearn.kernel_approximation import RBFSampler
+import scipy as sp
+import auxiliaryFns
+
 
 def l2_norm(true_state, predicted_state):
     return np.sum(np.power(( true_state - predicted_state ), 2 ))
@@ -40,7 +44,7 @@ Y_1 = np.load('random-agent/cartpole-next-states-1.npy').T
 
 state_dim = X.shape[0]
 
-percent_training = 0.8
+percent_training = 0.25
 train_ind = int(np.around(X.shape[1]*percent_training))
 X_train = X[:,:train_ind]
 Y_train = Y[:,:train_ind]
@@ -83,21 +87,21 @@ def psi(x):
 # psi = lambda x: data_transformed @ x.reshape(-1,1)
 
 #%% Psi matrices
-def getPsiMatrix(psi, X):
-    k = psi(X[:,0].reshape(-1,1)).shape[0]
-    m = X.shape[1]
-    matrix = np.empty((k,m))
-    for col in range(m):
-        matrix[:, col] = psi(X[:, col])[:, 0]
-    return matrix
+# def getPsiMatrix(psi, X): # for RBF sampler
+#     k = psi(X[:,0]).shape[0]
+#     m = X.shape[1]
+#     matrix = np.empty((k,m))
+#     for col in range(m):
+#         matrix[:, col] = psi(X[:, col])[:, 0]
+#     return matrix
 
-Psi_X = getPsiMatrix(psi, X_train)
-Psi_Y = getPsiMatrix(psi, Y_train)
+# Psi_X = getPsiMatrix(psi, X_train)
+# Psi_Y = getPsiMatrix(psi, Y_train)
 
-Psi_X_0 = getPsiMatrix(psi, X_0_train)
-Psi_Y_0 = getPsiMatrix(psi, Y_0_train)
-Psi_X_1 = getPsiMatrix(psi, X_1_train)
-Psi_Y_1 = getPsiMatrix(psi, Y_1_train)
+# Psi_X_0 = getPsiMatrix(psi, X_0_train).T
+# Psi_Y_0 = getPsiMatrix(psi, Y_0_train).T
+# Psi_X_1 = getPsiMatrix(psi, X_1_train).T
+# Psi_Y_1 = getPsiMatrix(psi, Y_1_train).T
 
 #%% Koopman
 # || Y         - X B           ||
@@ -106,9 +110,30 @@ Psi_Y_1 = getPsiMatrix(psi, Y_1_train)
 # || Psi_Y_0.T - Psi_X_0.T K.T ||
 K_0 = estimate_L.rrr(Psi_X_0.T, Psi_Y_0.T).T
 K_1 = estimate_L.rrr(Psi_X_1.T, Psi_Y_1.T).T
+eigenvalues_0, eigenvectors_0 = np.linalg.eig(K_0)
+eigenvalues_1, eigenvectors_1 = np.linalg.eig(K_1)
+eigenfunction_0 = list(map(lambda psi_x: np.dot(psi_x,eigenvectors_0[:,0]), Psi_X_0.T))
+eigenfunction_1 = list(map(lambda psi_x: np.dot(psi_x,eigenvectors_1[:,0]), Psi_X_1.T))
 
-#%% Find mapping from Psi_X to X
-B = estimate_L.SINDy(Psi_X.T, X_train.T)
+
+plt.plot(eigenvectors_0[:,:3])
+plt.plot(eigenvectors_1[:,:3])
+plt.title("Eigenvectors of Koopman operator for action 0 and 1")
+plt.ylabel('Eigenvector Output')
+plt.xlabel('State Snapshots')
+plt.show()
+
+plt.plot(eigenfunction_0)
+plt.title("Eigenfunction 0 of Koopman operator for action 0")
+plt.ylabel('Eigenfunction Output')
+plt.xlabel('State Snapshots')
+plt.show()
+
+plt.plot(eigenfunction_1)
+plt.title("Eigenfunction 0 of Koopman operator for action 1")
+plt.ylabel('Eigenfunction Output')
+plt.xlabel('State Snapshots')
+B = estimate_L.rrr(Psi_X.T, X_train.T, state_dim) # SINDy taking too long
 
 #%% Prediction compounding error
 title = "Prediction compounding error:"
@@ -118,26 +143,44 @@ env = gym.make('CartPole-v0')
 horizon = 1000
 num_trials = 1#000
 norms = []
+vector_field_arrays = []
 for i in range(num_trials):
     action_path = [np.random.choice([0,1]) for i in range(horizon)]
     trial_norms = []
     true_state = env.reset()
     predicted_state = true_state.copy()
+    vector_field_array = [true_state]
     for h in range(horizon):
         action = action_path[h]
         psi_x = psi(predicted_state)
         predicted_state = B.T @ K_0 @ psi_x if action == 0 else B.T @ K_1 @ psi_x
         true_state, ___, __, _ = env.step(action)
-
-        norm = l2_norm(true_state.reshape(-1,1), predicted_state)
+        vector_field_array.append(predicted_state.reshape(state_dim))
+        norm = l2_norm(true_state.reshape(-1,1), predicted_state)/l2_norm(true_state.reshape(-1,1), 0)
         trial_norms.append(norm)
+    vector_field_arrays.append(vector_field_array)
     norms.append(trial_norms)
+    # Test: try to populate a list with (3,) arrays and then check [:,:,1:]
+
+vector_field_arrays = np.array(vector_field_arrays)
+X_plot = vector_field_arrays[:,:,0].reshape((horizon * num_trials)+1) # cart pos
+Y_plot = vector_field_arrays[:,:,2].reshape((horizon * num_trials)+1) # pole angle
+U_plot = vector_field_arrays[:,:,1].reshape((horizon * num_trials)+1) # cart velocity
+V_plot = vector_field_arrays[:,:,3].reshape((horizon * num_trials)+1) # pole angular velocity
+
+plt.figure()
+plt.title("Vector Field of Koopman Predicted State Evolution")
+Q_plot = plt.quiver(X_plot, Y_plot, U_plot, V_plot)
+plt.show()
 
 plt.plot(np.mean(norms, axis=0))
 plt.title(title)
 plt.ylabel('L2 Norm')
 plt.xlabel('Timestep')
 plt.show()
+
+
+"""
 
 #%% One-step prediction error
 title = "One-step prediction error:"
@@ -157,7 +200,7 @@ for h in range(horizon):
     predicted_state = B.T @ K_0 @ psi_x if action == 0 else B.T @ K_1 @ psi_x
     true_state = X[:,starting_point+h+1]
 
-    norm = l2_norm(true_state.reshape(-1,1), predicted_state)
+    norm = l2_norm(true_state.reshape(-1,1), predicted_state)/l2_norm(true_state.reshape(-1,1), 0)
     norms.append(norm)
 
 print("Mean norm:", np.mean(norms))
@@ -183,7 +226,7 @@ for true_state in true_states.T:
     true_state = true_state.reshape(-1,1)
     projected_state = B.T @ psi(true_state)
 
-    norm = l2_norm(true_state, projected_state)
+    norm = l2_norm(true_state, projected_state)/l2_norm(true_state, 0)
     norms.append(norm)
 
 print("Mean norm:", np.mean(norms))
@@ -213,7 +256,7 @@ for h in range(horizon):
     true_state = true_states[:,h].reshape(-1,1)
     predicted_state = K_0 @ psi(true_state) if action == 0 else K_1 @ psi(true_state)
 
-    norm = l2_norm(true_state, predicted_state)
+    norm = l2_norm(true_state, predicted_state)/l2_norm(true_state, 0)
     norms.append(norm)
 
 print("Mean norm:", np.mean(norms))
@@ -252,7 +295,7 @@ for h in range(horizon):
 
     true_x_prime = true_states_prime[:,h].reshape(-1,1)
 
-    norm = l2_norm(true_x_prime, predicted_x_prime)
+    norm = l2_norm(true_x_prime, predicted_x_prime)/l2_norm(true_x_prime, 0)
     norms.append(norm)
 
 print("Mean norm:", np.mean(norms))
@@ -278,7 +321,7 @@ for h in range(horizon):
     true_state = true_states[:,h].reshape(-1,1)
     predicted_state = K_0 @ psi(true_state) if action == 0 else K_1 @ psi(true_state)
 
-    norm = l2_norm(psi(true_state), predicted_state)
+    norm = l2_norm(psi(true_state), predicted_state)/l2_norm(psi(true_state), 0)
     norms.append(norm)
 
 print("Mean norm:", np.mean(norms))
@@ -287,3 +330,5 @@ plt.title("Error for psi(x) -> psi(x)':")
 plt.ylabel('L2 Norm')
 plt.xlabel('Timestep')
 plt.show()
+
+"""
