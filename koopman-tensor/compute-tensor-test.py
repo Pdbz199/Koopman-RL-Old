@@ -25,6 +25,7 @@ Bhat_1 = estimate_L.ols(XT.T, YT.T)
 
 np.array_equal(Bhat_0, Bhat_1)
 
+# Can we try multiple initial conditions?
 #%% Create large sample
 def f(x, u):
     if u == 0:
@@ -75,6 +76,8 @@ X_1 = X_1[:,:-1]
 krons_0 = np.array(krons_0).T[:,:-1]
 krons_1 = np.array(krons_1).T[:,:-1]
 
+print("Dataset rank: ", np.linalg.matrix_rank(X_0))
+
 K_0 = estimate_L.ols(X_0.T, Y_0.T).T
 K_1 = estimate_L.ols(X_1.T, Y_1.T).T
 
@@ -86,7 +89,7 @@ M =  estimate_L.ols(kronMatrix.T, Phi_prime.T).T
 
 K = np.empty((d_phi, d_phi, d_psi))
 for i in range(d_phi):
-    K[i] = M[i].reshape((d_phi,d_psi), order = 'F')
+    K[i] = M[i].reshape((d_phi,d_psi), order='F')
 
 def K_u(K, u):
     return np.einsum('ijz,z->ij', K, psi(u)[:,0])
