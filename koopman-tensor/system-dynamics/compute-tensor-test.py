@@ -1,7 +1,7 @@
 #%%
 import numpy as np
 import sys 
-sys.path.append('../')
+sys.path.append('../../')
 import estimate_L
 
 XT = np.array(

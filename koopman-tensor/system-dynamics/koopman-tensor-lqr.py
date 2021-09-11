@@ -6,7 +6,7 @@ import numba as nb
 import matplotlib.pyplot as plt
 import scipy as sp
 import sys
-sys.path.append("../")
+sys.path.append("../../")
 import estimate_L
 import auxiliaries
 import algorithmsv2

@@ -1,70 +1,51 @@
-# creating maybe an MDP with, say,
-# 5 states, and 3 actions, with deterministic transition
-
-"""
-state0 - action0 = state1
-state0 - action1 = state2
-state0 - action2 = state3
-
-state1 - action0 = state0
-state1 - action1 = state2
-state1 - action2 = state3
-
-state2 - action0 = state1
-state2 - action1 = state3
-state2 - action2 = state4
-
-state3 - action0 = state1
-state3 - action1 = state2
-state3 - action2 = state4
-
-state4 - action0 = state0
-state4 - action1 = state2
-state4 - action2 = state3
-"""
-
-#%%
+#%% Imports 
 import numpy as np
 import sys
-sys.path.append('../')
+sys.path.append('../../')
 import estimate_L
 
+#%% Transition Tensor
+P = np.array([
+    [
+        [0, 0, 0],
+        [1/2, 1/4, 1/2],
+        [1/4, 1/3, 1/3],
+        [1, 1/4, 0],
+        [0, 0, 1/4]
+    ],
+    [
+        [1/3, 1/2, 1/4],
+        [0, 0, 0],
+        [1/4, 1/3, 0],
+        [0, 1/4, 0],
+        [0, 0, 1/4]
+    ],
+    [
+        [1/3, 0, 1/2],
+        [1/2, 1/4, 0],
+        [0, 0, 0],
+        [0, 1/2, 1],
+        [1, 0, 1/4]
+    ],
+    [
+        [1/3, 1/2, 0],
+        [0, 0, 1/2],
+        [1/4, 0, 1/3],
+        [0, 0, 0],
+        [0, 1, 1/4]
+    ],
+    [
+        [0, 0, 1/4],
+        [0, 1/2, 0],
+        [1/4, 1/3, 1/3],
+        [0, 0, 0],
+        [0, 0, 0]
+    ]
+])
+
+#%%
 def f(x, u):
-    if x == 0:
-        if u == 0:
-            return 1
-        if u == 1:
-            return 2
-        if u == 2:
-            return 3
-    if x == 1:
-        if u == 0:
-            return 0
-        if u == 1:
-            return 2
-        if u == 2:
-            return 3
-    if x == 2:
-        if u == 0:
-            return 1
-        if u == 1:
-            return 3
-        if u == 2:
-            return 4
-    if x == 3:
-        if u == 0:
-            return 1
-        if u == 1:
-            return 2
-        if u == 2:
-            return 4
-    if x == 4:
-        if u == 0:
-            return 0
-        if u == 1:
-            return 2
-        if u == 2:
-            return 3
+    return np.random.choice(np.arange(5), p=P[:,int(x),int(u)])
 
 def psi(u):
     psi_u = np.zeros((3,1))
@@ -77,7 +58,7 @@ def phi(x):
     return phi_x
 
 #%% Define X, Y, and U
-N = 1000
+N = 10000
 d_phi = 5
 d_psi = 3
 x0 = np.array([[0]])
@@ -111,7 +92,7 @@ for i in range(N):
     kronMatrix[:,i] = np.kron(Psi_U[:,i], Phi_X[:,i])
 
 #%% Estimate M
-M =  estimate_L.ols(kronMatrix.T, Phi_Y.T).T
+M = estimate_L.ols(kronMatrix.T, Phi_Y.T).T
 
 #%% Reshape M into K tensor
 K = np.empty((d_phi, d_phi, d_psi))
@@ -119,7 +100,7 @@ for i in range(d_phi):
     K[i] = M[i].reshape((d_phi,d_psi), order='F')
 
 def K_u(K, u):
-    return np.einsum('ijz,z->ij', K, psi(u)[:,0])
+    return np.einsum('ijz,z->ij', K, psi(int(u))[:,0])
 
 #%% Training error
 def l2_norm(true_state, predicted_state):
@@ -128,10 +109,12 @@ def l2_norm(true_state, predicted_state):
 norms = []
 for i in range(N):
     true_phi_x_prime = Phi_Y[:,i]
-    predicted_phi_x_prime = K_u(K, int(U[0,i])) @ Phi_X[:,i]
+    predicted_phi_x_prime = K_u(K, U[0,i]) @ Phi_X[:,i]
     norms.append(l2_norm(true_phi_x_prime, predicted_phi_x_prime))
 norms = np.array(norms)
 
 print("Mean norm on training data:", norms.mean())
+
+print("F-norm between K and P:", l2_norm(P, K))
 
 # %%
