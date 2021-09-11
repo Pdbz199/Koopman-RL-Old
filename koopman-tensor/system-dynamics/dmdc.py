@@ -20,13 +20,21 @@ def K(x):
     u = -1*x[0] + np.random.randn()
     return u.reshape(-1, 1)
 
+# def phi(x):
+#     """ Identity for DMD """
+#     return x
+
+# def psi(u):
+#     """ Identity for DMD """
+#     return u
+
 def phi(x):
-    """ Identity for DMD """
-    return x
+    """ Quadratic dictionary """
+    return np.array([1, x[0], x[1], x[0]**2, x[1]**2, x[0]*x[1]])
 
 def psi(u):
-    """ Identity for DMD """
-    return u
+    """ Quadratic dictionary """
+    return np.array([float(1), float(u), float(u**2)])
 
 # simulate system to generate data matrices
 m = 1000 # number of sample steps from the system.
@@ -54,8 +62,8 @@ X = snapshots[:, :m-1]
 Y = snapshots[:, 1:m]
 
 #%% Build Phi and Psi matrices
-d_phi = n
-d_psi = q
+d_phi = 6
+d_psi = 3
 N = m-1
 
 Phi_X = np.empty((d_phi, N))
