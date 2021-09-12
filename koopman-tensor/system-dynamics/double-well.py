@@ -24,7 +24,7 @@ def sigma(x):
     return y
 
 #%% Define observables
-order = 10
+order = 1
 phi = observables.monomials(order)
 psi = observables.monomials(order)
 
@@ -34,20 +34,33 @@ Y = b(X)
 Z = sigma(X)
 
 #%% Build Phi and Psi matrices
-d_phi = phi(X[:,0]).shape[0]
-d_psi = phi(U[:,0]).shape[0]
+Phi_X = phi(X)
+d_phi = Phi_X[:,0].shape[0]
+# d_psi = phi(U[:,0]).shape[0]
+d_psi = 1
+N = X.shape[1]
 
-Phi_X = np.empty((d_phi,N))
-for i,x in enumerate(X.T):
-    Phi_X[:,i] = phi(int(x[0]))[:,0]
+# Phi_X = np.empty((d_phi,N))
+# for i,x in enumerate(X.T):
+#     Phi_X[:,i] = phi(int(x[0]))[:,0]
 
-Phi_Y = np.empty((d_phi,N))
-for i,y in enumerate(Y.T):
-    Phi_Y[:,i] = phi(int(y[0]))[:,0]
+# Phi_Y = np.empty((d_phi,N))
+# for i,y in enumerate(Y.T):
+#     Phi_Y[:,i] = phi(int(y[0]))[:,0]
 
-Psi_U = np.empty((d_psi,N))
-for i,u in enumerate(U.T):
-    Psi_U[:,i] = psi(int(u[0]))[:,0]
+dPhi_Y = np.einsum('ijk,jk->ik', psi.diff(X), Y)
+if not (Z is None): # stochastic dynamical system
+    n = Phi_X.shape[0] # number of basis functions
+    ddPhi_X = psi.ddiff(X) # second-order derivatives
+    S = np.einsum('ijk,ljk->ilk', Z, Z) # sigma \cdot sigma^T
+    for i in range(n):
+        dPhi_Y[i, :] += 0.5*np.sum( ddPhi_X[i, :, :, :] * S, axis=(0,1) )
+
+# Psi_U = np.empty((d_psi,N))
+# for i,u in enumerate(U.T):
+#     Psi_U[:,i] = psi(int(u[0]))[:,0]
+
+Psi_U = np.ones((d_psi,N))
 
 #%% Build kronMatrix
 kronMatrix = np.empty((d_psi * d_phi, N))
@@ -56,10 +69,30 @@ for i in range(N):
 
 #%% Estimate M
 dPhi_Y = np.einsum('ijk,jk->ik', phi.diff(X), Y)
-M =  estimate_L.ols(kronMatrix.T, dPhi_Y.T).T
+M = estimate_L.ols(kronMatrix.T, dPhi_Y.T).T
 
+#%% Reshape M into K tensor
+K = np.empty((d_phi, d_phi, d_psi))
+for i in range(d_phi):
+    K[i] = M[i].reshape((d_phi,d_psi), order='F')
 
+def K_u(K, u):
+    return np.einsum('ijz,z->ij', K, [u])
 
+#%% Training error (Mean norm on training data: 9053.466240898848)
+def l2_norm(true_state, predicted_state):
+    error = true_state - predicted_state
+    squaredError = np.power(error, 2)
+    return np.sum(squaredError)
+
+norms = []
+for i in range(N):
+    true_phi_x_prime = dPhi_Y[:,i]
+    predicted_phi_x_prime = K_u(K, 1) @ Phi_X[:,i]
+    norms.append(l2_norm(true_phi_x_prime, predicted_phi_x_prime))
+norms = np.array(norms)
+
+print("Mean norm on training data:", norms.mean())
 
 
 

@@ -68,11 +68,11 @@ class discretization(object):
 
         x = _np.zeros([d, nTestPoints]) # for the test points
         for i in range(nBoxes):
-             index = indexS2M(i, self._boxes) # corresponding multi-index
-             lb = self._bounds[:, 0] + _np.multiply(index,    self._h) # lower bounds for box
-             ub = self._bounds[:, 0] + _np.multiply(index +1, self._h) # upper bounds for box
-             for mu in range(d):
-                 x[mu, n*i:n*(i+1)] = randb(n, [lb[mu], ub[mu]])
+            index = indexS2M(i, self._boxes) # corresponding multi-index
+            lb = self._bounds[:, 0] + _np.multiply(index,    self._h) # lower bounds for box
+            ub = self._bounds[:, 0] + _np.multiply(index +1, self._h) # upper bounds for box
+            for mu in range(d):
+                x[mu, n*i:n*(i+1)] = randb(n, [lb[mu], ub[mu]])
         return x
 
     def index(self, x):
