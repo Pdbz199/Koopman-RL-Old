@@ -5,15 +5,15 @@ import numpy as np
 import numba as nb
 import matplotlib.pyplot as plt
 import scipy as sp
+from control import lqr
+from scipy import integrate
+from sklearn.kernel_approximation import RBFSampler
+
 import sys
 sys.path.append("../../")
 import estimate_L
 import auxiliaries
 import algorithmsv2
-
-from control import lqr
-from scipy import integrate
-from sklearn.kernel_approximation import RBFSampler
 
 #%% System variable definitions
 mu = -0.1
@@ -194,3 +194,16 @@ norms = np.array(norms)
 print("Mean single-step prediction norm:", norms.mean())
 
 #%%
+u_bounds = [-np.inf, np.inf]
+# U = np.array([[i] for i in range(-5,6)])
+algos = algorithmsv2.algos(X_opt, U_opt, u_bounds[0], u_bounds[1], phi, psi, K, cost, epsilon=0.0001)
+print("Algorithm 2 output:", algos.algorithm2())
+
+# 8.396373847797
+# 5.69035812501408
+# 62.9375147908342
+# 262.992038646761
+# 1975984.33548684
+# 9607.35529825491
+# 1437.39744728116
+# 8434.3524823486
