@@ -11,6 +11,8 @@ bounds = np.array([[-2, 2], [-1.5, 1.5]])
 boxes = np.array([20, 15])
 Omega = domain.discretization(bounds, boxes)
 
+# make 1-dimensional system
+
 #%% Define system
 def b(x):
     return np.vstack((-4*x[0, :]**3 + 4*x[0, :], -2*x[1, :]))
@@ -24,9 +26,9 @@ def sigma(x):
     return y
 
 #%% Define observables
-order = 1
+order = 10
 phi = observables.monomials(order)
-psi = observables.monomials(order)
+psi = observables.monomials(1)
 
 #%% Generate data
 X = Omega.randPerBox(100)
@@ -48,10 +50,10 @@ N = X.shape[1]
 # for i,y in enumerate(Y.T):
 #     Phi_Y[:,i] = phi(int(y[0]))[:,0]
 
-dPhi_Y = np.einsum('ijk,jk->ik', psi.diff(X), Y)
+dPhi_Y = np.einsum('ijk,jk->ik', phi.diff(X), Y)
 if not (Z is None): # stochastic dynamical system
     n = Phi_X.shape[0] # number of basis functions
-    ddPhi_X = psi.ddiff(X) # second-order derivatives
+    ddPhi_X = phi.ddiff(X) # second-order derivatives
     S = np.einsum('ijk,ljk->ilk', Z, Z) # sigma \cdot sigma^T
     for i in range(n):
         dPhi_Y[i, :] += 0.5*np.sum( ddPhi_X[i, :, :, :] * S, axis=(0,1) )

@@ -51,7 +51,7 @@ def gedmd(X, Y, Z, psi, evs=5, operator='K'):
     d, V = sortEig(A, evs, which='SM')
 
     norms = []
-    for i in range(PsiX.shape[1]):
+    for i in range(PsiX.shape[1]): # PsiX.shape = (rows,columns)
         true_phi_x_prime = dPsiY[:,i]
         predicted_phi_x_prime = A @ PsiX[:,i]
         norms.append(l2_norm(true_phi_x_prime, predicted_phi_x_prime))
@@ -80,7 +80,9 @@ def sigma(x):
 
 # define observables
 order = 10
-psi = observables.monomials(order)
+phi = observables.monomials(order)
+def psi(u):
+    return 1
 
 # generate data
 X = Omega.randPerBox(100)
@@ -101,7 +103,7 @@ def printVector(x, name = None, k = 8):
 
 # apply generator EDMD
 evs = 3 # number of eigenvalues/eigenfunctions to be computed
-K, d, V = gedmd(X, Y, Z, psi, evs=evs, operator='K')
+K, d, V = gedmd(X, Y, Z, phi, evs=evs, operator='K')
 printVector(np.real(d), 'd')
 
 # plot eigenfunctions
@@ -119,7 +121,7 @@ printVector(np.real(d), 'd')
 # import numpy as np
 # import sys
 # sys.path.append('../../')
-# import estimate_L
+import estimate_L
 # import domain
 # import observables
 
@@ -151,11 +153,11 @@ printVector(np.real(d), 'd')
 # Z = sigma(X)
 
 #%% Build Phi and Psi matrices
-# Phi_X = phi(X)
-# d_phi = Phi_X[:,0].shape[0]
+Phi_X = phi(X)
+d_phi = Phi_X[:,0].shape[0]
 # d_psi = phi(U[:,0]).shape[0]
-# d_psi = 1
-# N = X.shape[1]
+d_psi = 1
+N = X.shape[1]
 
 # Phi_X = np.empty((d_phi,N))
 # for i,x in enumerate(X.T):
@@ -177,35 +179,38 @@ printVector(np.real(d), 'd')
 # for i,u in enumerate(U.T):
 #     Psi_U[:,i] = psi(int(u[0]))[:,0]
 
-# Psi_U = np.ones((d_psi,N))
+Psi_U = np.ones((d_psi,N))
 
 #%% Build kronMatrix
-# kronMatrix = np.empty((d_psi * d_phi, N))
-# for i in range(N):
-#     kronMatrix[:,i] = np.kron(Psi_U[:,i], Phi_X[:,i])
+kronMatrix = np.empty((d_psi * d_phi, N))
+for i in range(N):
+    kronMatrix[:,i] = np.kron(Psi_U[:,i], Phi_X[:,i])
 
 #%% Estimate M
-# dPhi_Y = np.einsum('ijk,jk->ik', phi.diff(X), Y)
-# M = estimate_L.ols(kronMatrix.T, dPhi_Y.T).T
+dPhi_Y = np.einsum('ijk,jk->ik', phi.diff(X), Y)
+M = estimate_L.ols(kronMatrix.T, dPhi_Y.T).T
 
 #%% Reshape M into K tensor
-# _K = np.empty((d_phi, d_phi, d_psi))
-# for i in range(d_phi):
-#     _K[i] = M[i].reshape((d_phi,d_psi), order='F')
+_K = np.empty((d_phi, d_phi, d_psi))
+for i in range(d_phi):
+    _K[i] = M[i].reshape((d_phi,d_psi), order='F')
 
-# def K_u(K, u):
-#     return np.einsum('ijz,z->ij', K, [u])
+def K_u(K, u):
+    return np.einsum('ijz,z->ij', K, [u])
 
 
 #%% Error (
 #    Mean norm on training data from gedmd: 2126526417571.602
 #    Mean norm on training data from koopman tensor: 9314.313990558026
 # )
-# print("PRINT K:", K.shape)
-# print("PRINT M:", M.shape)
+print("PRINT K:", K.shape)
+print("PRINT M:", M.shape)
 
-# print(l2_norm(K, M))
-# print(l2_norm(K, M.T))
+print(l2_norm(K, M))
+print(l2_norm(K, M.T))
+
+print(K[:,1])
+print(M.T[:,1])
 
 # norms = []
 # norms_2 = []
