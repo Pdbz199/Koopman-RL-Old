@@ -46,13 +46,16 @@ dim_x = X.shape[0]
 dim_u = U.shape[0]
 
 Y = np.empty(X.shape)
-Z = np.empty(X.shape)
+Z = np.empty((2,2,X.shape[1]))
 for i in range(X.shape[1]):
     s.c = U[0, i]
     # X_prime[:, i] = f(X[:, 0], s.beta, s.c)
     # Y[:, i] = y + s.b(y)*h + s.sigma(y)*np.sqrt(h)*np.random.randn()
     Y[:, i] = s.b(X[:, i])
-    Z[:, i] = s.sigma(X[:, i])
+    Z[0, 0, i] = s.sigma(X[:, i])
+    Z[0, 1, i] = 0
+    Z[1, 1, i] = s.sigma(X[:, i])
+    Z[1, 0, i] = 0
 
 #%% Define observables
 order = 10
@@ -68,10 +71,9 @@ dim_psi = Psi_U[:,0].shape[0]
 
 dPhi_Y = np.einsum('ijk,jk->ik', phi.diff(X), Y)
 ddPhi_X = phi.ddiff(X) # second-order derivatives
-S = Z @ Z.T # sigma sigma^T
+S = np.einsum('ijk,ljk->ilk', Z, Z) # sigma \cdot sigma^T
 for i in range(dim_phi):
-    for j in range(N):
-        dPhi_Y[i, :] += 0.5*np.sum( ddPhi_X[i, :, :, j] * S, axis=(0,1) )
+    dPhi_Y[i, :] += 0.5*np.sum( ddPhi_X[i, :, :, :] * S, axis=(0,1) )
 
 #%% Build kronMatrix
 kronMatrix = np.empty((dim_psi * dim_phi, N))
@@ -92,7 +94,7 @@ def K_u(K, u):
 
 # realizing that the when action is 0 the K_u = [0.] which, I think, means we need a different dictionary
 
-#%% Training error (Mean norm on training data: 9053.466240898848)
+#%% Training error (Mean norm on training data: 556.7067749613773)
 def l2_norm(true_state, predicted_state):
     error = true_state - predicted_state
     squaredError = np.power(error, 2)
@@ -106,3 +108,15 @@ for i in range(N):
 norms = np.array(norms)
 
 print("Mean norm on training data:", norms.mean())
+
+#%% Plotting eigenfunctions
+action_0 = psi(np.array([[0]]))[:,0]
+K_0 = K_u(K, action_0)
+
+w, V = np.linalg.eig(K_0)
+w = np.real(w)
+V = np.real(V)
+eigenfunction_i = lambda i, phi_x: V[:,i].T @ phi_x
+
+eigenfunction_0 = eigenfunction_i(0, Phi_X)
+# print(l2_norm(V, V.T)) # 113.90167782677221
