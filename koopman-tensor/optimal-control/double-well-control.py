@@ -2,8 +2,11 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 np.random.seed(123)
+import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
+from mpl_toolkits import mplot3d
+
 
 import sys
 sys.path.append('../../')
@@ -116,7 +119,57 @@ K_0 = K_u(K, action_0)
 w, V = np.linalg.eig(K_0)
 w = np.real(w)
 V = np.real(V)
+# print(l2_norm(V, V.T)) # 113.90167782677221
 eigenfunction_i = lambda i, phi_x: V[:,i].T @ phi_x
 
-eigenfunction_0 = eigenfunction_i(0, Phi_X)
-# print(l2_norm(V, V.T)) # 113.90167782677221
+# def eigenfn0(x1, x2):
+#     x = np.array([x1], [x2])
+#     phi(x)
+#     eigfn0 = V[:, 0].T @ phi(x)
+#     return eigfn0
+
+# x = np.linspace(-2, 2, 30)
+# y = np.linspace(-2, 2, 30)
+
+# X, Y = np.meshgrid(x, y)
+# Z = eigenfn0(X, Y)
+# fig = plt.figure()
+# ax = plt.axes(projection='3d')
+# ax.contour3D(X, Y, Z, 50, cmap='binary')
+# ax.set_xlabel('x')
+# ax.set_ylabel('y')
+# ax.set_zlabel('z')
+
+random_X = []
+for i in range(100):
+    random_X.append([np.random.uniform(-10,10), np.random.uniform(-10,10)])
+random_X = np.array(random_X).reshape((2,100))
+eigenfunction_0 = eigenfunction_i(0, phi(random_X)).reshape((100,1))
+
+# ax = plt.axes(projection='3d')
+# ax.contour3D(random_X[0, :], random_X[1, :], eigenfunction_0, 50, cmap='binary')
+# ax.set_xlabel('x_1')
+# ax.set_ylabel('x_2')
+# plt.show()
+
+fig = plt.gcf()
+ax = fig.gca(projection='3d')
+ax.plot_surface(random_X[0,:], random_X[1,:], eigenfunction_0, cmap=matplotlib.cm.coolwarm)
+ax.set_xlabel('x_1')
+ax.set_ylabel('x_2')
+plt.show()
+
+# def f(x, y):
+#     return np.sin(np.sqrt(x ** 2 + y ** 2))
+
+# x = np.linspace(-6, 6, 30)
+# y = np.linspace(-6, 6, 30)
+
+# X, Y = np.meshgrid(x, y)
+# Z = f(X, Y)
+# fig = plt.figure()
+# ax = plt.axes(projection='3d')
+# ax.contour3D(X, Y, Z, 50, cmap='binary')
+# ax.set_xlabel('x')
+# ax.set_ylabel('y')
+# ax.set_zlabel('z');
