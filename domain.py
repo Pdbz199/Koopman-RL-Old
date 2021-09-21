@@ -2,9 +2,9 @@
 import numpy as _np
 import scipy as _sp
 
-# import matplotlib
-# import matplotlib.cm
-# import matplotlib.pyplot
+import matplotlib
+import matplotlib.cm
+import matplotlib.pyplot
 
 # from mpl_toolkits.mplot3d import axes3d, Axes3D
 

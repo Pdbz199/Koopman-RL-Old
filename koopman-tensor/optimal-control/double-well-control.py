@@ -1,18 +1,29 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+#%%
 import numpy as np
 np.random.seed(123)
+import scipy as sp
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
 from mpl_toolkits import mplot3d
-
 
 import sys
 sys.path.append('../../')
 import domain
 import estimate_L
 import observables
+
+def sortEig(A, evs=5):
+    '''
+    Computes eigenvalues and eigenvectors of A and sorts them in decreasing lexicographic order.
+
+    :param evs: number of eigenvalues/eigenvectors
+    :return:    sorted eigenvalues and eigenvectors
+    '''
+    n = A.shape[0]
+    d, V = np.linalg.eig(A)
+    ind = d.argsort()[::-1] # [::-1] reverses the list of indices
+    return (d[ind[:evs]], V[:, ind[:evs]])
 
 class DoubleWell():
     def __init__(self, beta, c):
@@ -24,7 +35,7 @@ class DoubleWell():
     
     def sigma(self, x):
         return np.sqrt(2/self.beta)
-    
+
 s = DoubleWell(beta=1, c=0)
 h = 1e-2
 y = 1
@@ -42,6 +53,7 @@ u_bounds = [-2, 2]
 bounds = np.array([u_bounds, [-1.5, 1.5]])
 boxes = np.array([20, 15])
 Omega = domain.discretization(bounds, boxes)
+# I think X and U need to be generated in a different way
 X = Omega.randPerBox(100)
 U = np.random.uniform(u_bounds[0], u_bounds[1], (1, X.shape[1]))
 
@@ -51,7 +63,7 @@ dim_u = U.shape[0]
 Y = np.empty(X.shape)
 Z = np.empty((2,2,X.shape[1]))
 for i in range(X.shape[1]):
-    s.c = U[0, i]
+    s.c = 0#U[0, i]
     # X_prime[:, i] = f(X[:, 0], s.beta, s.c)
     # Y[:, i] = y + s.b(y)*h + s.sigma(y)*np.sqrt(h)*np.random.randn()
     Y[:, i] = s.b(X[:, i])
@@ -63,12 +75,12 @@ for i in range(X.shape[1]):
 #%% Define observables
 order = 10
 phi = observables.monomials(order)
-psi = observables.monomials(order)
+psi = observables.monomials(order) #lambda u: np.array([1])
 
 #%% Build Phi and Psi matrices
 N = X.shape[1]
 Phi_X = phi(X)
-Psi_U = psi(U)
+Psi_U = psi(U) #np.ones((1,N))
 dim_phi = Phi_X[:,0].shape[0]
 dim_psi = Psi_U[:,0].shape[0]
 
@@ -76,7 +88,7 @@ dPhi_Y = np.einsum('ijk,jk->ik', phi.diff(X), Y)
 ddPhi_X = phi.ddiff(X) # second-order derivatives
 S = np.einsum('ijk,ljk->ilk', Z, Z) # sigma \cdot sigma^T
 for i in range(dim_phi):
-    dPhi_Y[i, :] += 0.5*np.sum( ddPhi_X[i, :, :, :] * S, axis=(0,1) )
+    dPhi_Y[i, :] += 0.5*np.sum( ddPhi_X[i,:,:,:] * S, axis=(0,1) )
 
 #%% Build kronMatrix
 kronMatrix = np.empty((dim_psi * dim_phi, N))
@@ -84,7 +96,6 @@ for i in range(N):
     kronMatrix[:,i] = np.kron(Psi_U[:,i], Phi_X[:,i])
 
 #%% Estimate M
-dPhi_Y = np.einsum('ijk,jk->ik', phi.diff(X), Y)
 M = estimate_L.ols(kronMatrix.T, dPhi_Y.T).T
 
 #%% Reshape M into K tensor
@@ -93,11 +104,22 @@ for i in range(dim_phi):
     K[i] = M[i].reshape((dim_phi,dim_psi), order='F')
 
 def K_u(K, u):
-    return np.einsum('ijz,z->ij', K, u)
+    psi_u = psi(u.reshape(-1,1))[:,0]
+    return np.einsum('ijz,z->ij', K, psi_u)
 
-# realizing that the when action is 0 the K_u = [0.] which, I think, means we need a different dictionary
+#%% Get eigenvalues/vectors
+evs = 3
+w, V = sortEig(K_u(K, np.array([0])).T, evs)
 
-#%% Training error (Mean norm on training data: 556.7067749613773)
+#%%
+c = Omega.midpointGrid()
+Phi_c = phi(c)
+for i in range(evs):
+    plt.figure(i+1)
+    plt.clf()
+    Omega.plot(np.real( V[:, i].T @ Phi_c ), mode='3D')
+
+#%% Training error (training error decreases with lower order of monomials)
 def l2_norm(true_state, predicted_state):
     error = true_state - predicted_state
     squaredError = np.power(error, 2)
@@ -106,70 +128,10 @@ def l2_norm(true_state, predicted_state):
 norms = []
 for i in range(N):
     true_phi_x_prime = dPhi_Y[:,i]
-    predicted_phi_x_prime = K_u(K, Psi_U[:,i]) @ Phi_X[:,i]
+    predicted_phi_x_prime = K_u(K, U[:,i]) @ Phi_X[:,i]
     norms.append(l2_norm(true_phi_x_prime, predicted_phi_x_prime))
 norms = np.array(norms)
 
 print("Mean norm on training data:", norms.mean())
 
-#%% Plotting eigenfunctions
-action_0 = psi(np.array([[0]]))[:,0]
-K_0 = K_u(K, action_0)
-
-w, V = np.linalg.eig(K_0)
-w = np.real(w)
-V = np.real(V)
-# print(l2_norm(V, V.T)) # 113.90167782677221
-eigenfunction_i = lambda i, phi_x: V[:,i].T @ phi_x
-
-# def eigenfn0(x1, x2):
-#     x = np.array([x1], [x2])
-#     phi(x)
-#     eigfn0 = V[:, 0].T @ phi(x)
-#     return eigfn0
-
-# x = np.linspace(-2, 2, 30)
-# y = np.linspace(-2, 2, 30)
-
-# X, Y = np.meshgrid(x, y)
-# Z = eigenfn0(X, Y)
-# fig = plt.figure()
-# ax = plt.axes(projection='3d')
-# ax.contour3D(X, Y, Z, 50, cmap='binary')
-# ax.set_xlabel('x')
-# ax.set_ylabel('y')
-# ax.set_zlabel('z')
-
-random_X = []
-for i in range(100):
-    random_X.append([np.random.uniform(-10,10), np.random.uniform(-10,10)])
-random_X = np.array(random_X).reshape((2,100))
-eigenfunction_0 = eigenfunction_i(0, phi(random_X)).reshape((100,1))
-
-# ax = plt.axes(projection='3d')
-# ax.contour3D(random_X[0, :], random_X[1, :], eigenfunction_0, 50, cmap='binary')
-# ax.set_xlabel('x_1')
-# ax.set_ylabel('x_2')
-# plt.show()
-
-fig = plt.gcf()
-ax = fig.gca(projection='3d')
-ax.plot_surface(random_X[0,:], random_X[1,:], eigenfunction_0, cmap=matplotlib.cm.coolwarm)
-ax.set_xlabel('x_1')
-ax.set_ylabel('x_2')
-plt.show()
-
-# def f(x, y):
-#     return np.sin(np.sqrt(x ** 2 + y ** 2))
-
-# x = np.linspace(-6, 6, 30)
-# y = np.linspace(-6, 6, 30)
-
-# X, Y = np.meshgrid(x, y)
-# Z = f(X, Y)
-# fig = plt.figure()
-# ax = plt.axes(projection='3d')
-# ax.contour3D(X, Y, Z, 50, cmap='binary')
-# ax.set_xlabel('x')
-# ax.set_ylabel('y')
-# ax.set_zlabel('z');
+#%%
