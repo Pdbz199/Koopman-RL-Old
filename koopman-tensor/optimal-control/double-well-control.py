@@ -137,7 +137,9 @@ print("Mean norm on training data:", norms.mean())
 
 #%% Define cost function
 def cost(x, u):
-    return x[0,0]**2
+    if x.shape == 2:
+        return x[0,0]**2
+    return x[0]**2
 
 #%% Discretize all controls
 U = []
