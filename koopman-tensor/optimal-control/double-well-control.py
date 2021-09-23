@@ -147,7 +147,8 @@ U = np.array(U)
 
 #%% Control
 algos = algorithmsv2.algos(X, U, u_bounds[0], u_bounds[1], phi, psi, K, cost, epsilon=1)
-pi = algos.algorithm2()
+# pi = algos.algorithm2()
+pi = algos.algorithm3()
 
 #%% Bellman Errors
 # 1184.3180405984

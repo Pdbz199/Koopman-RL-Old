@@ -13,6 +13,8 @@ def rho(u, o='unif', a=0, b=1):
         return np.exp( -u**2 / 2 ) / ( np.sqrt( 2 * np.pi ) )
 
 def K_u(K, psi_u):
+    # if psi_u.shape == 2:
+    #     psi_u = psi_u[:,0]
     return np.einsum('ijz,z->ij', K, psi_u)
 
 class algos:
@@ -124,6 +126,7 @@ class algos:
         # get pi_t
         t = 0
         pi_t = [lambda u,x: self.pi_u(u,x) * rho(u)] # pi_t[0] == pi_0
+        w_t = [self.w]
         # get w from SGD
         phi_x1 = self.phi(x1)[:,0]
         for t in range(1, 1000): #? while something > self.epsilon?
@@ -138,10 +141,12 @@ class algos:
                 phi_x1 - ( self.pi_u(u2, x1) / rho(u2, a=-2, b=2) ) \
                 * K_u(self.K_hat, self.psi(u2)[:,0]) @ phi_x1
             )
-            self.w = self.w - (self.learning_rate * nabla_w)
-            # self.w = self.w - (self.w @ self.phi(x) - (pi_t/rho(u)) * (self.cost(x,u) + self.w @ self.K_hat @ self.phi(x)) * (self.phi(x) - (pi_t/rho(u)) )
             # get w^hat
-            # update pi with softmax (you can do this)
-            pi_t.append(lambda u,x: pi_t[t-1](u) * self.pi_u(u,x))
+            w_t.append(self.w - (self.learning_rate * nabla_w))
+            self.w = w_t[t]
+            # update pi with softmax
+            pi_u = lambda u,x: mp.exp((-self.learning_rate * (self.cost(x, u) + w_t[t] @ K_u(self.K_hat, self.psi(u)[:,0]) @ self.phi(x)))[0])
+            pi_t.append(lambda u,x: pi_t[t-1](u) * pi_u(u,x))
+            print(f"end loop {t}")
 
         return pi_t[-1]
