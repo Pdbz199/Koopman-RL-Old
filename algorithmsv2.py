@@ -1,6 +1,7 @@
 import mpmath as mp
 import numpy as np
 import scipy.integrate as integrate
+import time
 
 # you can pass functions as parameters to jitted functions IF AND ONLY IF they're also jitted
 
@@ -32,67 +33,115 @@ class algos:
     
     # unnormalized optimal policy
     def pi_u(self, u, x):
-       pi_u = mp.exp(-1 * (self.cost(x, u) + self.w @ K_u(self.K_hat, self.psi(u)) @ self.phi(x))) # / Z_x
-       return pi_u
+        K_u_const = K_u(self.K_hat, self.psi(u)[:,0])
+        pi_u = mp.exp((-self.learning_rate * (self.cost(x, u) + self.w @ K_u_const @ self.phi(x)))[0])
+        return pi_u
 
-    def discreteBellmanError(self, x, phi_x):
+    def discreteBellmanError(self):
         """ Equation 3 in writeup """
 
         total = 0
-        for i in range(self.X.shape[1]):
+        for i in range(10000,10025): #self.X.shape[1]
+            x = self.X[:,i].reshape(-1,1)
+            phi_x = self.phi(x)[:,0]
+
             pi_us = []
             for u in self.U:
-                pi_us.append(self.pi_u(u[0], x))
+                u = u.reshape(-1,1)
+                pi_us.append(self.pi_u(u, x))
             Z_x = np.sum(pi_us) # Compute Z_x to use later
 
             expectation_u = 0
             for i,u in enumerate(self.U):
-                u = u[0]
+                u = u.reshape(-1,1)
                 pi = pi_us[i] / Z_x
-                expectation_u += ( self.cost(x, u) - mp.log( pi ) - self.w @ K_u(self.K_hat, self.psi(u)) @ phi_x ) * pi
+                K_u_const = K_u(self.K_hat, self.psi(u)[:,0])
+                expectation_u += ( self.cost(x, u) - mp.log(pi) - self.w @ K_u_const @ phi_x ) * pi
             total += np.power(( self.w @ phi_x - expectation_u ), 2)
         return total
 
-    def continuousBellmanError(self, x, phi_x):
+    def continuousBellmanError(self):
         """ Equation 3 in writeup modified for continuous action """
+
+        pi = (lambda u, x, Z_x: self.pi_u(u, x) / Z_x)
+        def expectation_u_integrand(u, x, phi_x, Z_x):
+            K_u_const = K_u(self.K_hat, self.psi(np.array([[u]]))[:,0])
+            pi_u_const = pi(np.array([[u]]), x, Z_x)
+            return (self.cost(x, u) - mp.log(pi_u_const) - self.w @ K_u_const @ phi_x) * pi_u_const
 
         total = 0
         for i in range(self.X.shape[1]):
+            x = self.X[:,i].reshape(-1,1)
+            phi_x = self.phi(x)[:,0]
+
             Z_x = integrate.quad(self.pi_u, self.u_lower, self.u_upper, (x))[0]
-            pi = (lambda u: self.pi_u(u, x) / Z_x)
-            expectation_u_integrand =  (lambda u: (self.cost(x, u) - mp.log( pi(u) ) - self.w @ K_u(self.K_hat, self.psi(u)) @ phi_x) * pi(u))
-            expectation_u = integrate.quad(expectation_u_integrand, self.u_lower, self.u_upper)[0]
+            expectation_u = integrate.quad(expectation_u_integrand, self.u_lower, self.u_upper, (x, phi_x, Z_x))[0]
+
             total += np.power(( self.w @ phi_x - expectation_u ), 2)
         return total
 
     def algorithm2(self):
         """ Bellman error optimization """
 
-        # Sample initial state x1 from sample of snapshots
-        x1 = self.X[:, int(np.random.uniform(0, self.X.shape[1]))]
-        BE = self.continuousBellmanError(x1, self.phi(x1))
+        BE = self.discreteBellmanError()
 
         while BE > self.epsilon:
-            # These are row vectors
-            u1 = np.random.uniform(-2, 2) #sample from rho --unif(-2,2) for example
-            u2 = np.random.uniform(-2, 2) #sample from rho --unif(-2,2) for example
-            x1 = self.X[:, int(np.random.uniform(0, self.X.shape[1]))]
+            print(BE)
 
-            phi_x1 = self.phi(x1)
+            # These are col vectors
+            u1 = np.array([[np.random.uniform(-2, 2)]]) # sample from rho --unif(-2,2) for example
+            u2 = np.array([[np.random.uniform(-2, 2)]]) # sample from rho --unif(-2,2) for example
+            x1 = self.X[:, int(np.random.uniform(0, self.X.shape[1]))].reshape(-1,1)
+
+            phi_x1 = self.phi(x1)[:,0]
             # Equation 4/5 in writeup
             nabla_w = (
                 self.w @ phi_x1 - (
                     ( self.pi_u(u1, x1) / rho(u1, a=-2, b=2) ) \
                   * ( self.cost(x1, u1) + mp.log( self.pi_u(u1, x1) ) \
-                  + self.w @ K_u(self.K_hat, self.psi(u1)) @ phi_x1 )
+                  + self.w @ K_u(self.K_hat, self.psi(u1)[:,0]) @ phi_x1 )
                 )
             ) * (
                 phi_x1 - ( self.pi_u(u2, x1) / rho(u2, a=-2, b=2) ) \
-              * K_u(self.K_hat, self.psi(u2)) @ phi_x1
+              * K_u(self.K_hat, self.psi(u2)[:,0]) @ phi_x1
             )
 
             # Update weights
             self.w = self.w - (self.learning_rate * nabla_w)
 
-            BE = self.continuousBellmanError(x1, phi_x1)
-            print(BE)
+            BE = self.discreteBellmanError()
+
+    def Q_pi_t(self, x, u):
+            return self.cost(x, u) + self.w @ K_u(self.K_hat, psi(u))
+
+    def algorithm3(self):
+        ''' Policy iteration '''
+        # These are col vectors
+        u1 = np.array([[np.random.uniform(-2, 2)]]) # sample from rho --unif(-2,2) for example
+        u2 = np.array([[np.random.uniform(-2, 2)]]) # sample from rho --unif(-2,2) for example
+        x1 = self.X[:, int(np.random.uniform(0, self.X.shape[1]))].reshape(-1,1)
+
+        # get pi_t
+        t = 0
+        pi_t = [lambda u,x: self.pi_u(u,x) * rho(u)] # pi_t[0] == pi_0
+        # get w from SGD
+        phi_x1 = self.phi(x1)[:,0]
+        for t in range(1, 1000): #? while something > self.epsilon?
+            #? keep log in the nabla_w calculation?
+            nabla_w = (
+                self.w @ phi_x1 - (
+                    ( self.pi_u(u1, x1) / rho(u1, a=-2, b=2) ) \
+                    * ( self.cost(x1, u1) \
+                    + self.w @ K_u(self.K_hat, self.psi(u1)[:,0]) @ phi_x1 )
+                )
+            ) * (
+                phi_x1 - ( self.pi_u(u2, x1) / rho(u2, a=-2, b=2) ) \
+                * K_u(self.K_hat, self.psi(u2)[:,0]) @ phi_x1
+            )
+            self.w = self.w - (self.learning_rate * nabla_w)
+            # self.w = self.w - (self.w @ self.phi(x) - (pi_t/rho(u)) * (self.cost(x,u) + self.w @ self.K_hat @ self.phi(x)) * (self.phi(x) - (pi_t/rho(u)) )
+            # get w^hat
+            # update pi with softmax (you can do this)
+            pi_t.append(lambda u,x: pi_t[t-1](u) * self.pi_u(u,x))
+
+        return pi_t[-1]

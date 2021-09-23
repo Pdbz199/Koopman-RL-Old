@@ -9,6 +9,7 @@ from mpl_toolkits import mplot3d
 
 import sys
 sys.path.append('../../')
+import algorithmsv2
 import domain
 import estimate_L
 import observables
@@ -63,7 +64,7 @@ dim_u = U.shape[0]
 Y = np.empty(X.shape)
 Z = np.empty((2,2,X.shape[1]))
 for i in range(X.shape[1]):
-    s.c = 0#U[0, i]
+    s.c = U[0, i]
     # X_prime[:, i] = f(X[:, 0], s.beta, s.c)
     # Y[:, i] = y + s.b(y)*h + s.sigma(y)*np.sqrt(h)*np.random.randn()
     Y[:, i] = s.b(X[:, i])
@@ -134,4 +135,20 @@ norms = np.array(norms)
 
 print("Mean norm on training data:", norms.mean())
 
-#%%
+#%% Define cost function
+def cost(x, u):
+    return x[0,0]**2
+
+#%% Discretize all controls
+U = []
+for i in range(41):
+    U.append([-2 + (i * 0.1)])
+U = np.array(U)
+
+#%% Control
+algos = algorithmsv2.algos(X, U, u_bounds[0], u_bounds[1], phi, psi, K, cost, epsilon=1)
+pi = algos.algorithm2()
+
+#%% Bellman Errors
+# 1184.3180405984
+# 3508912268.71883
