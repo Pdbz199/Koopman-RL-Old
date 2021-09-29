@@ -36,9 +36,10 @@ def psi(u):
     """ Quadratic dictionary """
     return np.array([float(1), float(u), float(u**2)])
 
+#! check on the H term (integral)
 u_bounds = [-50, 50]
 def cost(x, u, pi):
-    return 0.5 * (x.T @ Q @ x + u.T @ R @ u) + (0.5 * x.T @ Q @ x) - integrate.quad(pi, u_bounds[0], u_bounds[1], (u))
+    return 0.5 * (x.T @ Q @ x + u.T @ R @ u) + (0.5 * x.T @ Q @ x) - integrate.quad(pi, u_bounds[0], u_bounds[1], (x))
 
 # simulate system to generate data matrices
 m = 1000 # number of sample steps from the system.
