@@ -18,7 +18,7 @@ def K_u(K, psi_u):
     return np.einsum('ijz,z->ij', K, psi_u)
 
 class algos:
-    def __init__(self, X, U, u_lower, u_upper, phi, psi, K_hat, cost, learning_rate=0.1, epsilon=1):
+    def __init__(self, X, U, u_lower, u_upper, phi, psi, K_hat, cost, bellmanErrorType=0, learning_rate=0.1, epsilon=1):
         self.X = X # Collection of observations
         self.U = U # U is a collection of all POSSIBLE actions as row vectors
         self.u_lower = u_lower # lower bound on actions
@@ -27,6 +27,7 @@ class algos:
         self.psi = psi # Dictionary function for U
         self.K_hat = K_hat # Estimated Koopman Tensor
         self.cost = cost # Cost function to optimize
+        self.bellmanError = self.discreteBellmanError if bellmanErrorType == 0 else self.continuousBellmanError
         self.learning_rate = learning_rate
         self.epsilon = epsilon
         self.w = np.ones(K_hat.shape[0]) # Default weights of 1s
@@ -85,7 +86,7 @@ class algos:
     def algorithm2(self):
         ''' Bellman error optimization '''
 
-        BE = self.discreteBellmanError()
+        BE = self.bellmanError()
 
         while BE > self.epsilon:
             print(BE)
@@ -111,7 +112,7 @@ class algos:
             # Update weights
             self.w = self.w - (self.learning_rate * nabla_w)
 
-            BE = self.discreteBellmanError()
+            BE = self.bellmanError()
 
     def Q_pi_t(self, x, u):
         return self.cost(x, u) + self.w @ K_u(self.K_hat, psi(u))
