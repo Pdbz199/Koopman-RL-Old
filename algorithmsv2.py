@@ -3,8 +3,6 @@ import numpy as np
 import scipy.integrate as integrate
 import time
 
-# you can pass functions as parameters to jitted functions IF AND ONLY IF they're also jitted
-
 def rho(u, o='unif', a=0, b=1):
     if o == 'unif':
         return 1 / ( b - a )
@@ -13,35 +11,36 @@ def rho(u, o='unif', a=0, b=1):
         return np.exp( -u**2 / 2 ) / ( np.sqrt( 2 * np.pi ) )
 
 def K_u(K, psi_u):
+    ''' Pick out Koopman operator given a particular action '''
+
     # if psi_u.shape == 2:
     #     psi_u = psi_u[:,0]
     return np.einsum('ijz,z->ij', K, psi_u)
 
 class algos:
     def __init__(self, X, U, u_lower, u_upper, phi, psi, K_hat, cost, learning_rate=0.1, epsilon=1):
-        self.X = X
+        self.X = X # Collection of observations
         self.U = U # U is a collection of all POSSIBLE actions as row vectors
-        self.u_lower = u_lower
-        self.u_upper = u_upper
-        self.phi = phi
-        self.psi = psi
-        self.K_hat = K_hat
-        self.num_lifted_state_features = K_hat.shape[0]
-        self.num_lifted_action_features = K_hat.shape[2]
-        self.cost = cost
+        self.u_lower = u_lower # lower bound on actions
+        self.u_upper = u_upper # upper bound on actions
+        self.phi = phi # Dictionary function for X
+        self.psi = psi # Dictionary function for U
+        self.K_hat = K_hat # Estimated Koopman Tensor
+        self.cost = cost # Cost function to optimize
         self.learning_rate = learning_rate
         self.epsilon = epsilon
-        self.w = np.ones(self.num_lifted_state_features)
+        self.w = np.ones(K_hat.shape[0]) # Default weights of 1s
     
-    # unnormalized optimal policy
     def pi_u(self, u, x):
+        ''' Unnormalized optimal policy '''
+
         K_u_const = K_u(self.K_hat, self.psi(u)[:,0])
         print(self.w)
         pi_u = mp.exp((-self.learning_rate * (self.cost(x, u) + self.w @ K_u_const @ self.phi(x)))[0])
         return pi_u
 
     def discreteBellmanError(self):
-        """ Equation 3 in writeup """
+        ''' Equation 3 in writeup '''
 
         total = 0
         for i in range(10000,10025): #self.X.shape[1]
@@ -64,7 +63,7 @@ class algos:
         return total
 
     def continuousBellmanError(self):
-        """ Equation 3 in writeup modified for continuous action """
+        ''' Equation 3 in writeup modified for continuous action '''
 
         pi = (lambda u, x, Z_x: self.pi_u(u, x) / Z_x)
         def expectation_u_integrand(u, x, phi_x, Z_x):
@@ -84,7 +83,7 @@ class algos:
         return total
 
     def algorithm2(self):
-        """ Bellman error optimization """
+        ''' Bellman error optimization '''
 
         BE = self.discreteBellmanError()
 
@@ -115,10 +114,11 @@ class algos:
             BE = self.discreteBellmanError()
 
     def Q_pi_t(self, x, u):
-            return self.cost(x, u) + self.w @ K_u(self.K_hat, psi(u))
+        return self.cost(x, u) + self.w @ K_u(self.K_hat, psi(u))
 
     def algorithm3(self):
         ''' Policy iteration '''
+
         # These are col vectors
         u1 = np.array([[np.random.uniform(-2, 2)]]) # sample from rho --unif(-2,2) for example
         u2 = np.array([[np.random.uniform(-2, 2)]]) # sample from rho --unif(-2,2) for example
