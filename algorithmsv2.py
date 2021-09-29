@@ -36,6 +36,7 @@ class algos:
     # unnormalized optimal policy
     def pi_u(self, u, x):
         K_u_const = K_u(self.K_hat, self.psi(u)[:,0])
+        print(self.w)
         pi_u = mp.exp((-self.learning_rate * (self.cost(x, u) + self.w @ K_u_const @ self.phi(x)))[0])
         return pi_u
 

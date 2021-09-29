@@ -74,7 +74,7 @@ for i in range(X.shape[1]):
     Z[1, 0, i] = 0
 
 #%% Define observables
-order = 10
+order = 6
 phi = observables.monomials(order)
 psi = observables.monomials(order) #lambda u: np.array([1])
 
@@ -142,6 +142,13 @@ def cost(x, u):
     return x[0]**2
 
 #%% Discretize all controls
+def discretize(start, end, num_points):
+    step_size = (np.abs(start) + np.abs(end)) / num_points
+    ret = [start]
+    for i in range(1,num_points):
+        ret.append(ret[i-1] + step_size)
+    return ret
+
 U = []
 for i in range(41):
     U.append([-2 + (i * 0.1)])
@@ -149,8 +156,8 @@ U = np.array(U)
 
 #%% Control
 algos = algorithmsv2.algos(X, U, u_bounds[0], u_bounds[1], phi, psi, K, cost, epsilon=1)
-# pi = algos.algorithm2()
-pi = algos.algorithm3()
+pi = algos.algorithm2()
+# pi = algos.algorithm3()
 
 #%% Bellman Errors
 # 1184.3180405984
