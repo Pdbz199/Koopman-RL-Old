@@ -158,6 +158,6 @@ for i in range(N):
     norms.append(l2_norm(true_phi_x_prime, predicted_phi_x_prime))
 norms = np.array(norms)
 
-print("Mean norm on training data:", norms.mean())
+print("Mean prpediction norm:", norms.mean())
 
 #%%

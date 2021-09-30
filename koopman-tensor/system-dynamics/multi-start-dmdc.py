@@ -17,24 +17,24 @@ def F(x,u):
     return A @ x.reshape(-1, 1) + B @ u.reshape(-1, 1)
 
 def control(x):
-    """ compute state-dependent control variable u """
+    ''' compute state-dependent control variable u '''
     u = -1*x[0] + np.random.randn()
     return u.reshape(-1, 1)
 
 # def phi(x):
-#     """ Identity for DMD """
+#     ''' Identity for DMD '''
 #     return x
 
 # def psi(u):
-#     """ Identity for DMD """
+#     ''' Identity for DMD '''
 #     return u
 
 def phi(x):
-    """ Quadratic dictionary """
+    ''' Quadratic dictionary '''
     return np.array([1, x[0], x[1], x[0]**2, x[1]**2, x[0]*x[1]])
 
 def psi(u):
-    """ Quadratic dictionary """
+    ''' Quadratic dictionary '''
     return np.array([float(1), float(u), float(u**2)])
 
 #%% simulate system to generate data matrices
@@ -43,14 +43,17 @@ n = 2 # dimensionality of state space
 q = 1 # dimensionality of control space
 
 #%% Control snapshotting
-X = 8 + np.random.normal(loc=0, scale=5, size=(n, m*2-1))
+X = np.random.normal(loc=8, scale=5, size=(n, m*2-1))
+# X = np.full((n, m*2-1), np.array([[4],[7]]))
+# X[:,0] = np.array([6,16])
 Y = np.empty((n, m*2-1))
 U = np.empty((q, m*2-1))
 # sys = UnstableSystem1(x0)
-for k in range((m-1)*2):
+for k in range(m*2-1):
     u_k = control(X[:, k])
     U[:, k] = u_k
     y = F(X[:, k], u_k[0])
+    # X[:, k+1] = np.squeeze(y)
     Y[:, k] = np.squeeze(y)
 
 #%% Build Phi and Psi matrices
