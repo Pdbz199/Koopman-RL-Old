@@ -4,6 +4,7 @@ np.random.seed(123)
 import sys
 sys.path.append('../../')
 import estimate_L
+import observables
 
 A = np.array([
     [1.5, 0],
@@ -35,13 +36,17 @@ def nonrandom_control(x):
 #     ''' Identity for DMD '''
 #     return u
 
+monomials = observables.monomials(2)
+
 def phi(x):
     ''' Quadratic dictionary '''
-    return np.array([1, x[0], x[1], x[0]**2, x[1]**2, x[0]*x[1]])
+    if len(x.shape) == 1:
+        return monomials(x.reshape(-1,1))[:,0]
+    return monomials(x)[:,0]
 
 def psi(u):
     ''' Quadratic dictionary '''
-    return np.array([float(1), float(u), float(u**2)])
+    return phi(u)
 
 #%% simulate system to generate data matrices
 m = 500 # number of sample steps from the system.
@@ -78,7 +83,7 @@ for i,y in enumerate(Y.T):
 Psi_U = np.empty((d_psi, N))
 for i,u in enumerate(U.T):
     Psi_U[:,i] = psi(u)
-
+    
 XU = np.append(X, U, axis=0)
 d_phi_xu = phi(XU[:,0]).shape[0]
 Phi_XU = np.empty((d_phi_xu, N))
