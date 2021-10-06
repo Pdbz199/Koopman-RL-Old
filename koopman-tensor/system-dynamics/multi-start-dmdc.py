@@ -17,9 +17,14 @@ B = np.array([
 def F(x,u):
     return A @ x + B @ [u]
 
-def control(x):
+def random_control(x):
+    ''' compute random control variable u '''
+    u = np.random.uniform(high=10.0, low=-10.0)
+    return u
+
+def nonrandom_control(x):
     ''' compute state-dependent control variable u '''
-    u = -1*x[0] + np.random.randn()
+    u = -1*x[0] #+ np.random.randn()
     return u
 
 # def phi(x):
@@ -52,7 +57,7 @@ U = np.empty((q, m*2-1))
 # sys = UnstableSystem1(x0)
 for k in range(m*2-1):
     # separate state and action
-    u_k = control(X[:, k])
+    u_k = random_control(X[:, k])
     U[:, k] = u_k
     y = F(X[:, k], u_k)
     Y[:, k] = np.squeeze(y)
@@ -74,15 +79,14 @@ Psi_U = np.empty((d_psi, N))
 for i,u in enumerate(U.T):
     Psi_U[:,i] = psi(u)
 
-Phi_X_to_X = estimate_L.ols(Phi_Y.T, Y.T)
-
-Phi_X_Psi_U = np.append(Phi_X, Psi_U, axis=0)
-Phi_X_Psi_U_prime = Phi_X_Psi_U[:,1:]
-Phi_X_Psi_U = Phi_X_Psi_U[:,:-1]
+XU = np.append(X, U, axis=0)
+d_phi_xu = phi(XU[:,0]).shape[0]
+Phi_XU = np.empty((d_phi_xu, N))
+for i,xu in enumerate(XU.T):
+    Phi_XU[:,i] = phi(xu)
 
 #%% Concatenated state and action Koopman operator
-# Koopman_operator = estimate_L.ols(Phi_X_Psi_U.T, Y.T).T
-Koopman_operator = estimate_L.ols(Phi_X_Psi_U.T, Phi_X_Psi_U_prime.T).T
+Koopman_operator = estimate_L.ols(Phi_XU[:,:-1].T, Phi_XU[:,1:].T).T
 
 #%% Build kronMatrix
 kronMatrix = np.empty((d_psi * d_phi, N))
@@ -109,14 +113,13 @@ def l2_norm(true_state, predicted_state):
 concatenated_norms = []
 norms = []
 for i in range(N-1):
-    true_phi_x_psi_u_prime = Phi_X_Psi_U_prime[:,i]
-    predicted_phi_x_psi_u_prime = Koopman_operator @ Phi_X_Psi_U[:,i]
-    concatenated_norms.append(l2_norm(true_phi_x_psi_u_prime, predicted_phi_x_psi_u_prime))
+    true_phi_xu_prime = Phi_XU[:,i+1]
+    predicted_phi_xu_prime = Koopman_operator @ Phi_XU[:,i]
+    concatenated_norms.append(l2_norm(true_phi_xu_prime, predicted_phi_xu_prime))
 
-    # true_phi_x_prime = Phi_Y[:,i]
-    true_x_prime = Y[:,i]
-    predicted_x_prime = Phi_X_to_X.T @ K_u(K, U[:,i]) @ Phi_X[:,i]
-    norms.append(l2_norm(true_x_prime, predicted_x_prime))
+    true_phi_x_prime = Phi_Y[:,i]
+    predicted_phi_x_prime = K_u(K, U[:,i]) @ Phi_X[:,i]
+    norms.append(l2_norm(true_phi_x_prime, predicted_phi_x_prime))
 concatenated_norms = np.array(concatenated_norms)
 norms = np.array(norms)
 
@@ -135,7 +138,7 @@ snapshots[:, 0] = np.array([16,10])
 U = np.empty((q, m-1))
 # sys = UnstableSystem1(x0)
 for k in range(m-1):
-    u_k = control(snapshots[:, k])
+    u_k = nonrandom_control(snapshots[:, k])
     y = F(snapshots[:, k], u_k)
     snapshots[:, k+1] = np.squeeze(y)
     U[:, k] = u_k
@@ -161,19 +164,23 @@ Psi_U = np.empty((d_psi, N))
 for i,u in enumerate(U.T):
     Psi_U[:,i] = psi(u)
 
-Phi_X_Psi_U = np.append(Phi_X, Psi_U, axis=0)
+XU = np.append(X, U, axis=0)
+d_phi_xu = phi(XU[:,0]).shape[0]
+Phi_XU = np.empty((d_phi_xu, N))
+for i,xu in enumerate(XU.T):
+    Phi_XU[:,i] = phi(xu)
 
 #%% Prediction error
 concatenated_norms = []
 norms = []
-for i in range(N):
-    true_x_prime = Y[:,i]
-    predicted_x_prime = Koopman_operator @ np.append(Phi_X[:,i], Psi_U[:,i])
-    concatenated_norms.append(l2_norm(true_x_prime, predicted_x_prime))
+for i in range(N-1):
+    true_phi_xu_prime = Phi_XU[:,i+1]
+    predicted_phi_xu_prime = Koopman_operator @ Phi_XU[:,i]
+    concatenated_norms.append(l2_norm(true_phi_xu_prime, predicted_phi_xu_prime))
 
-    # true_phi_x_prime = Phi_Y[:,i]
-    predicted_x_prime = Phi_X_to_X.T @ K_u(K, U[:,i]) @ Phi_X[:,i]
-    norms.append(l2_norm(true_x_prime, predicted_x_prime))
+    true_phi_x_prime = Phi_Y[:,i]
+    predicted_phi_x_prime = K_u(K, U[:,i]) @ Phi_X[:,i]
+    norms.append(l2_norm(true_phi_x_prime, predicted_phi_x_prime))
 concatenated_norms = np.array(concatenated_norms)
 norms = np.array(norms)
 
