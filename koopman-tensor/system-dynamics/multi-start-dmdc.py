@@ -18,15 +18,29 @@ B = np.array([
 def F(x,u):
     return A @ x + B @ [u]
 
+action_bounds = [10.1, -10.0]
 def random_control(x):
     ''' compute random control variable u '''
-    u = np.random.uniform(high=10.0, low=-10.0)
+    u = np.random.uniform(high=action_bounds[0], low=action_bounds[1])
     return u
 
 def nonrandom_control(x):
     ''' compute state-dependent control variable u '''
     u = -1*x[0] #+ np.random.randn()
     return u
+
+action_grid = np.array([i/10 for i in range(-100,101,1)])
+def nearest_action(u):
+    if u > 10.0: return 10.0
+    if u < -10.0: return -10.0
+    return np.round(u, 1)
+def action_to_index(u):
+    return int(np.round((u - action_bounds[1]) / 0.1))
+def index_to_action(i):
+    return i*0.1 + action_bounds[1]
+split_datasets = {}
+for action in action_grid:
+    split_datasets[action] = {"x":[],"x_prime":[]}
 
 # def phi(x):
 #     ''' Identity for DMD '''
@@ -42,7 +56,9 @@ def phi(x):
     ''' Quadratic dictionary '''
     if len(x.shape) == 1:
         return monomials(x.reshape(-1,1))[:,0]
-    return monomials(x)[:,0]
+    if x.shape[0] == 1 or x.shape[1] == 0:
+        return monomials(x)[:,0]
+    return monomials(x)
 
 def psi(u):
     ''' Quadratic dictionary '''
@@ -66,10 +82,12 @@ for k in range(m*2-1):
     U[:, k] = u_k
     y = F(X[:, k], u_k)
     Y[:, k] = np.squeeze(y)
+    split_datasets[nearest_action(u_k)]['x'].append(X[:,k])
+    split_datasets[nearest_action(u_k)]['x_prime'].append(Y[:,k])
 
 #%% Build Phi and Psi matrices
 d_phi = 6
-d_psi = 3
+d_psi = 3 
 N = m*2-1
 
 Phi_X = np.empty((d_phi, N))
@@ -80,18 +98,41 @@ Phi_Y = np.empty((d_phi, N))
 for i,y in enumerate(Y.T):
     Phi_Y[:,i] = phi(y)
 
+for action in split_datasets:
+    split_datasets[action]['x'] = np.array(split_datasets[action]['x']).T
+    split_datasets[action]['x_prime'] = np.array(split_datasets[action]['x_prime']).T
+
+    split_datasets[action]['phi_x'] = phi(split_datasets[action]['x'])
+    split_datasets[action]['phi_x_prime'] = phi(split_datasets[action]['x_prime'])
+
 Psi_U = np.empty((d_psi, N))
 for i,u in enumerate(U.T):
     Psi_U[:,i] = psi(u)
-    
+
+# def phi(x):
+#     return np.array([1, x[0], x[1], x[0]*x[1], x[0]**2, x[1]**2, x[2], x[0]*x[2], x[1]*x[2], x[2]**2])
+
 XU = np.append(X, U, axis=0)
-d_phi_xu = phi(XU[:,0]).shape[0]
+d_phi_xu = phi(XU[:,0]).shape[0] # 6 + (3-1) + 2 = 10
 Phi_XU = np.empty((d_phi_xu, N))
 for i,xu in enumerate(XU.T):
     Phi_XU[:,i] = phi(xu)
 
+Phi_XU_prime = Phi_XU[:,1:]
+Phi_XU = Phi_XU[:,:-1]
+
 #%% Concatenated state and action Koopman operator
-Koopman_operator = estimate_L.ols(Phi_XU[:,:-1].T, Phi_XU[:,1:].T).T
+Koopman_operator = estimate_L.ols(Phi_XU.T, Phi_XU_prime.T).T
+
+#%% Separate Koopman operator per action
+Koopman_operators = [] # np.empty((action_grid.shape[0],d_phi,d_phi))
+for action in split_datasets:
+    if np.array_equal(split_datasets[action]['phi_x'], [1]):
+        Koopman_operators.append(np.zeros((d_phi,d_phi)))
+        continue
+
+    Koopman_operators.append(estimate_L.ols(split_datasets[action]['phi_x'].T, split_datasets[action]['phi_x_prime'].T).T)
+Koopman_operators = np.array(Koopman_operators, dtype=object)
 
 #%% Build kronMatrix
 kronMatrix = np.empty((d_psi * d_phi, N))
@@ -118,22 +159,42 @@ def l2_norm(true_state, predicted_state):
 concatenated_norms = []
 norms = []
 for i in range(N-1):
-    true_phi_xu_prime = Phi_XU[:,i+1]
+    # Concatenated
+    true_phi_xu_prime = Phi_XU_prime[:,i]
     predicted_phi_xu_prime = Koopman_operator @ Phi_XU[:,i]
     concatenated_norms.append(l2_norm(true_phi_xu_prime, predicted_phi_xu_prime))
 
+    # Tensor
     true_phi_x_prime = Phi_Y[:,i]
     predicted_phi_x_prime = K_u(K, U[:,i]) @ Phi_X[:,i]
     norms.append(l2_norm(true_phi_x_prime, predicted_phi_x_prime))
 concatenated_norms = np.array(concatenated_norms)
 norms = np.array(norms)
 
+# Split datasets
+split_datasets_norms = []
+for action in split_datasets:
+    if np.array_equal(split_datasets[action]['phi_x'], [1]):
+        continue
+
+    for i in range(split_datasets[action]['phi_x_prime'].shape[1]):
+        true_phi_x_prime = split_datasets[action]['phi_x_prime'][:,i]
+        predicted_phi_x_prime = Koopman_operators[action_to_index(action)] @ split_datasets[action]['phi_x'][:,i]
+        split_datasets_norms.append(l2_norm(true_phi_x_prime, predicted_phi_x_prime))
+split_datasets_norms = np.array(split_datasets_norms)
+
 print("Concatenated mean norm on training data:", concatenated_norms.mean())
+print("Split datasets mean norm on training data:", split_datasets_norms.mean())
 print("Tensor mean norm on training data:", norms.mean())
 
 
 
 
+
+#%% Reset split datasets
+split_datasets = {}
+for action in action_grid:
+    split_datasets[action] = {"x":[],"x_prime":[]}
 
 #%% State snapshotting
 snapshots = np.empty((n, m))
@@ -150,7 +211,6 @@ for k in range(m-1):
 
 X = snapshots[:, :m-1]
 Y = snapshots[:, 1:m]
-X_concatenated = np.append(X, U, axis=0)
 
 #%% Build Phi and Psi matrices
 d_phi = 6
@@ -177,19 +237,29 @@ for i,xu in enumerate(XU.T):
 
 #%% Prediction error
 concatenated_norms = []
+split_datasets_norms = []
 norms = []
 for i in range(N-1):
+    # Concatenated
     true_phi_xu_prime = Phi_XU[:,i+1]
     predicted_phi_xu_prime = Koopman_operator @ Phi_XU[:,i]
     concatenated_norms.append(l2_norm(true_phi_xu_prime, predicted_phi_xu_prime))
 
+    # Split datasets
+    true_phi_x_prime = Phi_Y[:,i]
+    predicted_phi_x_prime = Koopman_operators[action_to_index(U[0,i])] @ Phi_X[:,i]
+    split_datasets_norms.append(l2_norm(true_phi_x_prime, predicted_phi_x_prime))
+
+    # Tensor
     true_phi_x_prime = Phi_Y[:,i]
     predicted_phi_x_prime = K_u(K, U[:,i]) @ Phi_X[:,i]
     norms.append(l2_norm(true_phi_x_prime, predicted_phi_x_prime))
 concatenated_norms = np.array(concatenated_norms)
+split_datasets_norms = np.array(split_datasets_norms)
 norms = np.array(norms)
 
 print("Concatenated mean norm on prediction data:", concatenated_norms.mean())
+print("Split datasets mean norm on prediction data:", split_datasets_norms.mean())
 print("Tensor mean norm on prediction data:", norms.mean())
 
 #%%
