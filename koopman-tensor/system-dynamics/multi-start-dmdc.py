@@ -23,11 +23,14 @@ def random_control(x):
     ''' compute random control variable u '''
     u = np.random.uniform(high=action_bounds[0], low=action_bounds[1])
     return u
-
 def nonrandom_control(x):
     ''' compute state-dependent control variable u '''
     u = -1*x[0] #+ np.random.randn()
     return u
+def pi_train(x):
+    return 1 * x[0]
+def pi_test(x):
+    return -1 * x[0] - np.random.randn()
 
 action_grid = np.array([i/10 for i in range(-100,101,1)])
 def nearest_action(u):
@@ -35,7 +38,7 @@ def nearest_action(u):
     if u < -10.0: return -10.0
     return np.round(u, 1)
 def action_to_index(u):
-    return int(np.round((u - action_bounds[1]) / 0.1))
+    return int(np.round((nearest_action(u) - action_bounds[1]) / 0.1))
 def index_to_action(i):
     return i*0.1 + action_bounds[1]
 split_datasets = {}
@@ -65,7 +68,7 @@ def psi(u):
     return phi(u)
 
 #%% simulate system to generate data matrices
-m = 500 # number of sample steps from the system.
+m = 10000 #500 # number of sample steps from the system.
 n = 2 # dimensionality of state space
 q = 1 # dimensionality of control space
 
@@ -78,7 +81,7 @@ U = np.empty((q, m*2-1))
 # sys = UnstableSystem1(x0)
 for k in range(m*2-1):
     # separate state and action
-    u_k = random_control(X[:, k])
+    u_k = pi_train(X[:, k]) #random_control(X[:, k])
     U[:, k] = u_k
     y = F(X[:, k], u_k)
     Y[:, k] = np.squeeze(y)
@@ -123,6 +126,7 @@ Phi_XU = Phi_XU[:,:-1]
 
 #%% Concatenated state and action Koopman operator
 Koopman_operator = estimate_L.ols(Phi_XU.T, Phi_XU_prime.T).T
+fun_koopman_operator = estimate_L.ols(Phi_XU.T, Y[:,:-1].T).T
 
 #%% Separate Koopman operator per action
 Koopman_operators = [] # np.empty((action_grid.shape[0],d_phi,d_phi))
@@ -140,11 +144,11 @@ for i in range(N):
     kronMatrix[:,i] = np.kron(Psi_U[:,i], Phi_X[:,i])
 
 #%% Estimate M
-M = estimate_L.ols(kronMatrix.T, Phi_Y.T).T
+M = estimate_L.ols(kronMatrix.T, Y.T).T # Phi_Y.T
 
 #%% Reshape M into K tensor
-K = np.empty((d_phi, d_phi, d_psi))
-for i in range(d_phi):
+K = np.empty((2, d_phi, d_psi))
+for i in range(2):
     K[i] = M[i].reshape((d_phi,d_psi), order='F')
 
 def K_u(K, u):
@@ -156,18 +160,24 @@ def l2_norm(true_state, predicted_state):
     squaredError = np.power(error, 2)
     return np.sum(squaredError)
 
+fun_norms = []
 concatenated_norms = []
 norms = []
 for i in range(N-1):
+    true_phi_x_prime = Y[:,i]
+    predicted_phi_xu_prime = fun_koopman_operator @ Phi_XU[:,i]
+    fun_norms.append(l2_norm(true_phi_x_prime, predicted_phi_xu_prime))
+
     # Concatenated
     true_phi_xu_prime = Phi_XU_prime[:,i]
     predicted_phi_xu_prime = Koopman_operator @ Phi_XU[:,i]
     concatenated_norms.append(l2_norm(true_phi_xu_prime, predicted_phi_xu_prime))
 
     # Tensor
-    true_phi_x_prime = Phi_Y[:,i]
+    true_phi_x_prime = Y[:,i]
     predicted_phi_x_prime = K_u(K, U[:,i]) @ Phi_X[:,i]
     norms.append(l2_norm(true_phi_x_prime, predicted_phi_x_prime))
+fun_norms = np.array(fun_norms)
 concatenated_norms = np.array(concatenated_norms)
 norms = np.array(norms)
 
@@ -183,6 +193,7 @@ for action in split_datasets:
         split_datasets_norms.append(l2_norm(true_phi_x_prime, predicted_phi_x_prime))
 split_datasets_norms = np.array(split_datasets_norms)
 
+print("Fun mean norm on training data:", fun_norms.mean())
 print("Concatenated mean norm on training data:", concatenated_norms.mean())
 print("Split datasets mean norm on training data:", split_datasets_norms.mean())
 print("Tensor mean norm on training data:", norms.mean())
@@ -204,7 +215,7 @@ snapshots[:, 0] = np.array([16,10])
 U = np.empty((q, m-1))
 # sys = UnstableSystem1(x0)
 for k in range(m-1):
-    u_k = nonrandom_control(snapshots[:, k])
+    u_k = pi_test(snapshots[:, k])
     y = F(snapshots[:, k], u_k)
     snapshots[:, k+1] = np.squeeze(y)
     U[:, k] = u_k
@@ -236,10 +247,15 @@ for i,xu in enumerate(XU.T):
     Phi_XU[:,i] = phi(xu)
 
 #%% Prediction error
+fun_norms = []
 concatenated_norms = []
 split_datasets_norms = []
 norms = []
 for i in range(N-1):
+    true_phi_x_prime = Y[:,i]
+    predicted_phi_xu_prime = fun_koopman_operator @ Phi_XU[:,i]
+    fun_norms.append(l2_norm(true_phi_x_prime, predicted_phi_xu_prime))
+
     # Concatenated
     true_phi_xu_prime = Phi_XU[:,i+1]
     predicted_phi_xu_prime = Koopman_operator @ Phi_XU[:,i]
@@ -251,13 +267,15 @@ for i in range(N-1):
     split_datasets_norms.append(l2_norm(true_phi_x_prime, predicted_phi_x_prime))
 
     # Tensor
-    true_phi_x_prime = Phi_Y[:,i]
+    true_phi_x_prime = Y[:,i]
     predicted_phi_x_prime = K_u(K, U[:,i]) @ Phi_X[:,i]
     norms.append(l2_norm(true_phi_x_prime, predicted_phi_x_prime))
+fun_norms = np.array(fun_norms)
 concatenated_norms = np.array(concatenated_norms)
 split_datasets_norms = np.array(split_datasets_norms)
 norms = np.array(norms)
 
+print("Fun mean norm on prediction data:", fun_norms.mean())
 print("Concatenated mean norm on prediction data:", concatenated_norms.mean())
 print("Split datasets mean norm on prediction data:", split_datasets_norms.mean())
 print("Tensor mean norm on prediction data:", norms.mean())
