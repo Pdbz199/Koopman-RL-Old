@@ -77,6 +77,7 @@ extended_B = estimate_L.ols(Phi_XU.T, XU.T)
 kronMatrix = np.empty((dim_psi * dim_phi, N))
 for i in range(N):
     kronMatrix[:,i] = np.kron(Psi_U[:,i], Phi_X[:,i])
+# kronMatrix = np.kron(Psi_U, Phi_X)[:,::N]
 
 #%% Estimate M and B matrices
 M = estimate_L.ols(kronMatrix.T, Phi_Y.T).T
