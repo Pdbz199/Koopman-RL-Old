@@ -1,6 +1,7 @@
 #%% Imports
 import gym
 import numpy as np
+np.random.seed(123)
 import time
 
 import sys
@@ -10,6 +11,8 @@ import observables
 
 def l2_norm(true_state, predicted_state):
     if true_state.shape != predicted_state.shape:
+        print("Shape 1:", true_state.shape)
+        print("Shape 2:", predicted_state.shape)
         raise Exception('The dimensions of the parameters did not match and therefore cannot be compared.')
     
     err = true_state - predicted_state
@@ -19,23 +22,25 @@ def l2_norm(true_state, predicted_state):
 env = gym.make('CartPole-v0')
 
 #%% Load data
-X = np.load('../../random-agent/cartpole-states.npy').T
-Y = np.roll(X, -1, axis=1)[:,:-1]
-X = X[:,:-1]
-U = np.load('../../random-agent/cartpole-actions.npy').reshape(1,-1)[:,:-1]
+X_0 = np.load('../../random-agent/cartpole-states-0.npy').T
+X_1 = np.load('../../random-agent/cartpole-states-1.npy').T
+Y_0 = np.load('../../random-agent/cartpole-next-states-0.npy').T
+Y_1 = np.load('../../random-agent/cartpole-next-states-1.npy').T
+X_data = { 0: X_0, 1: X_1 }
+Y_data = { 0: Y_0, 1: Y_1 }
 
+X = np.append(X_data[0], X_data[1], axis=1)
+Y = np.append(Y_data[0], Y_data[1], axis=1)
+U = np.empty([1,X.shape[1]])
+for i in range(X_data[0].shape[1]):
+    U[:,i] = [0]
+for i in range(X_data[1].shape[1]):
+    U[:,i+X_data[0].shape[1]] = [1]
 XU = np.append(X, U, axis=0) # extended states
 
 dim_x = X.shape[0] # dimension of each data point (snapshot)
 dim_u = U.shape[0] # dimension of each action
 N = X.shape[1] # number of data points (snapshots)
-
-split_datasets = {}
-for action in range(env.action_space.n):
-    split_datasets[action] = {"x":[],"x_prime":[]}
-for x,u,y in zip(X.T,U.T,Y.T):
-    split_datasets[u[0]]['x'].append(x)
-    split_datasets[u[0]]['x_prime'].append(y)
 
 #%% Matrix builder functions
 order = 2
@@ -45,19 +50,12 @@ phi = observables.monomials(order)
 # One-hot encoder
 def psi(u):
     psi_u = np.zeros((env.action_space.n,1))
-    psi_u[u,0] = 1
+    psi_u[int(u),0] = 1
     return psi_u
 
 #%% Compute Phi and Psi matrices + dimensions
 Phi_X = phi(X)
 Phi_Y = phi(Y)
-
-for action in range(env.action_space.n):
-    split_datasets[action]['x'] = np.transpose(split_datasets[action]['x'])
-    split_datasets[action]['x_prime'] = np.transpose(split_datasets[action]['x_prime'])
-
-    split_datasets[action]['phi_x'] = phi(split_datasets[action]['x'])
-    split_datasets[action]['phi_x_prime'] = phi(split_datasets[action]['x_prime'])
 
 Phi_XU = phi(XU)
 
@@ -73,16 +71,13 @@ print("Phi_X shape:", Phi_X.shape)
 print("Psi_U shape:", Psi_U.shape)
 
 #%% Estimate Koopman operator for each action
-# K_0 = estimate_L.ols(Phi_X_0.T, Phi_Y_0.T).T
-# K_1 = estimate_L.ols(Phi_X_1.T, Phi_Y_1.T).T
-Koopman_operators = [] # np.empty((action_grid.shape[0],d_phi,d_phi))
-for action in split_datasets:
-    if np.array_equal(split_datasets[action]['phi_x'], [1]):
-        Koopman_operators.append(np.zeros((dim_phi,dim_phi)))
+Koopman_operators = np.empty((env.action_space.n,dim_phi,dim_phi))
+for action in range(env.action_space.n):
+    if np.array_equal(phi(X_data[action]), [1]):
+        Koopman_operators[action] = np.zeros([dim_phi,dim_phi])
         continue
-
-    Koopman_operators.append(estimate_L.ols(split_datasets[action]['phi_x'].T, split_datasets[action]['phi_x_prime'].T).T)
-Koopman_operators = np.array(Koopman_operators, dtype=object)
+    Koopman_operators[action] = estimate_L.ols(phi(X_data[action]).T, phi(Y_data[action]).T).T
+Koopman_operators = np.array(Koopman_operators)
 
 #%% Estimate extended state Koopman operator
 extended_koopman_operator = estimate_L.ols(Phi_XU[:,:-1].T, Phi_XU[:,1:].T).T
@@ -111,6 +106,11 @@ def K_u(K, u):
         u = u.reshape(-1,1) # assume transposing row vector into column vector
     # u must be column vector
     return np.einsum('ijz,z->ij', K, psi(u)[:,0])
+
+#%% Difference error
+print("Difference between K tensor and separate Koopman operators:")
+for action in range(env.action_space.n):
+    print(l2_norm(K_u(K, np.array([[action]])), Koopman_operators[action]))
 
 #%% Training error
 multi_norms = []
