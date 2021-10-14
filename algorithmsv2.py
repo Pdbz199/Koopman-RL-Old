@@ -2,6 +2,7 @@ import mpmath as mp
 import numpy as np
 import scipy.integrate as integrate
 import time
+import auxiliaries as aux
 
 def rho(u, o='unif', a=0, b=1):
     if o == 'unif':
@@ -18,7 +19,7 @@ def K_u(K, psi_u):
     return np.einsum('ijz,z->ij', K, psi_u)
 
 class algos:
-    def __init__(self, X, U, u_lower, u_upper, phi, psi, K_hat, cost, bellmanErrorType=0, learning_rate=0.1, epsilon=1):
+    def __init__(self, X, U, u_lower, u_upper, phi, psi, K_hat, cost, bellmanErrorType=0, learning_rate=0.1, epsilon=1, weightRegularizationBool = 1, weightRegLambda = 1e-2):
         self.X = X # Collection of observations
         self.U = U # U is a collection of all POSSIBLE actions as row vectors
         self.u_lower = u_lower # lower bound on actions
@@ -31,6 +32,8 @@ class algos:
         self.learning_rate = learning_rate
         self.epsilon = epsilon
         self.w = np.ones(K_hat.shape[0]) # Default weights of 1s
+        self.weightRegularization = weightRegularizationBool #Bool for including weight regularization in Bellman loss functions
+        self.weightRegLambda = weightRegLambda
     
     def pi_u(self, u, x):
         ''' Unnormalized optimal policy '''
@@ -41,7 +44,7 @@ class algos:
         return pi_u
 
     def discreteBellmanError(self):
-        ''' Equation 3 in writeup '''
+        ''' Equation 3 in writeup with weight regularization added to help gradient explosion in Bellman algos'''
 
         total = 0
         for i in range(10000,10025): #self.X.shape[1]
@@ -61,10 +64,14 @@ class algos:
                 K_u_const = K_u(self.K_hat, self.psi(u)[:,0])
                 expectation_u += ( self.cost(x, u) - mp.log(pi) - self.w @ K_u_const @ phi_x ) * pi
             total += np.power(( self.w @ phi_x - expectation_u ), 2)
+
+        #add weight regularization term to help with gradient explosion issues
+        if(self.weightRegularization == 1):
+            total += self.weightRegLambda*(aux.l2_norm(self.w)**2)
         return total
 
     def continuousBellmanError(self):
-        ''' Equation 3 in writeup modified for continuous action '''
+        ''' Equation 3 in writeup modified for continuous action weight regularization added to help gradient explosion in Bellman algos'''
 
         pi = (lambda u, x, Z_x: self.pi_u(u, x) / Z_x)
         def expectation_u_integrand(u, x, phi_x, Z_x):
@@ -81,6 +88,9 @@ class algos:
             expectation_u = integrate.quad(expectation_u_integrand, self.u_lower, self.u_upper, (x, phi_x, Z_x))[0]
 
             total += np.power(( self.w @ phi_x - expectation_u ), 2)
+        #add weight regularization term to help with gradient explosion issues
+        if(self.weightRegularization == 1):
+            total += self.weightRegLambda*(aux.l2_norm(self.w)**2)
         return total
 
     def algorithm2(self):
@@ -110,7 +120,7 @@ class algos:
             )
 
             # Update weights
-            self.w = self.w - (self.learning_rate * nabla_w)
+            self.w = self.w - (self.learning_rate * nabla_w) - 2*self.weightRegLambda*self.w
 
             BE = self.bellmanError()
 
@@ -118,7 +128,9 @@ class algos:
         return self.cost(x, u) + self.w @ K_u(self.K_hat, psi(u))
 
     def algorithm3(self):
-        ''' Policy iteration '''
+        ''' Policy iteration
+        TODO: Include regularization term in PI algo
+         '''
 
         # These are col vectors
         u1 = np.array([[np.random.uniform(-2, 2)]]) # sample from rho --unif(-2,2) for example
