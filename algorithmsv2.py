@@ -34,20 +34,19 @@ class algos:
         self.w = np.ones(K_hat.shape[0]) # Default weights of 1s
         self.weightRegularization = weightRegularizationBool #Bool for including weight regularization in Bellman loss functions
         self.weightRegLambda = weightRegLambda
-    
+        
     def pi_u(self, u, x):
         ''' Unnormalized optimal policy '''
 
         K_u_const = K_u(self.K_hat, self.psi(u)[:,0])
-        print(self.w)
         pi_u = mp.exp((-self.learning_rate * (self.cost(x, u) + self.w @ K_u_const @ self.phi(x)))[0])
         return pi_u
 
     def discreteBellmanError(self):
-        ''' Equation 3 in writeup with weight regularization added to help gradient explosion in Bellman algos'''
+        ''' Equation 3 in writeup with weight regularization added to help gradient explosion in Bellman algos '''
 
         total = 0
-        for i in range(10000,10025): #self.X.shape[1]
+        for i in range(self.X.shape[1]):
             x = self.X[:,i].reshape(-1,1)
             phi_x = self.phi(x)[:,0]
 
@@ -65,13 +64,14 @@ class algos:
                 expectation_u += ( self.cost(x, u) - mp.log(pi) - self.w @ K_u_const @ phi_x ) * pi
             total += np.power(( self.w @ phi_x - expectation_u ), 2)
 
-        #add weight regularization term to help with gradient explosion issues
-        if(self.weightRegularization == 1):
-            total += self.weightRegLambda*(aux.l2_norm(self.w)**2)
+        # add weight regularization term to help with gradient explosion issues
+        # if(self.weightRegularization == 1):
+        #     total += self.weightRegLambda*(aux.l2_norm(self.w)**2)
+
         return total
 
     def continuousBellmanError(self):
-        ''' Equation 3 in writeup modified for continuous action weight regularization added to help gradient explosion in Bellman algos'''
+        ''' Equation 3 in writeup modified for continuous action weight regularization added to help gradient explosion in Bellman algos '''
 
         pi = (lambda u, x, Z_x: self.pi_u(u, x) / Z_x)
         def expectation_u_integrand(u, x, phi_x, Z_x):
@@ -88,9 +88,11 @@ class algos:
             expectation_u = integrate.quad(expectation_u_integrand, self.u_lower, self.u_upper, (x, phi_x, Z_x))[0]
 
             total += np.power(( self.w @ phi_x - expectation_u ), 2)
+
         #add weight regularization term to help with gradient explosion issues
-        if(self.weightRegularization == 1):
-            total += self.weightRegLambda*(aux.l2_norm(self.w)**2)
+        # if(self.weightRegularization == 1):
+        #     total += self.weightRegLambda*(aux.l2_norm(self.w)**2)
+
         return total
 
     def algorithm2(self):
@@ -102,8 +104,8 @@ class algos:
             print(BE)
 
             # These are col vectors
-            u1 = np.array([[np.random.uniform(-2, 2)]]) # sample from rho --unif(-2,2) for example
-            u2 = np.array([[np.random.uniform(-2, 2)]]) # sample from rho --unif(-2,2) for example
+            u1 = np.array([[np.random.uniform(self.u_lower, self.u_upper)]]) # sample from rho --unif(u_lower,u_upper) for example
+            u2 = np.array([[np.random.uniform(self.u_lower, self.u_upper)]]) # sample from rho --unif(u_lower,u_upper) for example
             x1 = self.X[:, int(np.random.uniform(0, self.X.shape[1]))].reshape(-1,1)
 
             phi_x1 = self.phi(x1)[:,0]
