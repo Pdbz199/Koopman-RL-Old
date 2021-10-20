@@ -16,7 +16,7 @@ class DoubleWell():
         return np.sqrt(2/self.beta)
     
 s = DoubleWell(beta=1, c=0)
-h = 1e-2
+h = 1e-2 # step size
 y = 1
 
 x = np.linspace(-2.5, 2.5, 1000)
@@ -68,7 +68,7 @@ def update(val):
     global y, s
     s.beta = beta_slider.val
     s.c    = c_slider.val
-    y = y + s.b(y)*h + s.sigma(y)*np.sqrt(h)*np.random.randn()
+    y = y + s.b(y)*h + s.sigma(y)*np.sqrt(h)*np.random.randn() # reduce step size (h)
     
     line.set_ydata(f(x, beta_slider.val, c_slider.val))
     point.set_xdata(y)
