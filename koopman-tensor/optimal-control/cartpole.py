@@ -111,6 +111,9 @@ def K_u(K, u):
     return np.einsum('ijz,z->ij', K, psi(u)[:,0])
 
 #%% Control setup
+import matplotlib.pyplot as plt
+import tensorflow as tf
+
 All_U = np.array([[0,1]])
 u_bounds = [0,1]
 
@@ -118,9 +121,39 @@ def cost(x,u):
     return -cartpole_reward.defaultCartpoleReward(x,u)
 
 #%% Control
-# algos = algorithmsv2.algos(X, All_U, u_bounds[0], u_bounds[1], phi, psi, K, cost, epsilon=1)
+# algos = algorithmsv2.algos(X, All_U, u_bounds[0], u_bounds[1], phi, psi, K, cost, epsilon=1, bellmanErrorType=0)
 # pi = algos.algorithm2()
+
 algos = tf_algorithmsv2.Algorithms(N, X, All_U, phi, psi, K, cost)
-algos.algorithm2()
+bellmanErrors = algos.algorithm2()
+# plt.plot(bellmanErrors)
+# plt.show()
+
+#%%
+print(algos.w)
+print(algos.pi(tf.stack([[0]]), tf.reshape(X[:,1511], [X[:,0].shape[0],1]), algos.w))
+print(algos.pi(tf.stack([[1]]), tf.reshape(X[:,1511], [X[:,0].shape[0],1]), algos.w))
+
+#%% Run policy in environment
+episodes = 100
+multi_norms = []
+extended_norms = []
+tensor_norms = []
+for episode in range(episodes):
+    observation = env.reset()
+    done = False
+    while not done:
+        env.render()
+        phi_x = phi(observation.reshape(-1,1)) # phi applied to current state
+        reshapenObservation = tf.reshape(observation, [X[:,0].shape[0],1])
+        p = [
+            algos.pi(tf.stack([[0]]), reshapenObservation, algos.w)[0].numpy(),
+            1-algos.pi(tf.stack([[0]]), reshapenObservation, algos.w)[0].numpy()
+        ]
+        action = np.random.choice([0,1], p=p)
+
+        # Take one step forward in environment
+        observation, reward, done, _ = env.step(action)
+env.close()
 
 #%%
