@@ -121,18 +121,19 @@ def cost(x,u):
     return -cartpole_reward.defaultCartpoleReward(x,u)
 
 #%% Control
-# algos = algorithmsv2.algos(X, All_U, u_bounds[0], u_bounds[1], phi, psi, K, cost, epsilon=1, bellmanErrorType=0)
-# pi = algos.algorithm2()
+algos = algorithmsv2.algos(X, All_U, u_bounds[0], u_bounds[1], phi, psi, K, cost, epsilon=1, bellmanErrorType=0)
+pi = algos.algorithm2()
 
-algos = tf_algorithmsv2.Algorithms(N, X, All_U, phi, psi, K, cost)
-bellmanErrors = algos.algorithm2()
+# algos = tf_algorithmsv2.Algorithms(N, X, All_U, phi, psi, K, cost)
+# bellmanErrors = algos.algorithm2()
 # plt.plot(bellmanErrors)
 # plt.show()
 
 #%%
 print(algos.w)
-print(algos.pi(tf.stack([[0]]), tf.reshape(X[:,1511], [X[:,0].shape[0],1]), algos.w))
-print(algos.pi(tf.stack([[1]]), tf.reshape(X[:,1511], [X[:,0].shape[0],1]), algos.w))
+
+# print(algos.pi(tf.stack([[0]]), tf.reshape(X[:,1511], [X[:,0].shape[0],1]), algos.w))
+# print(algos.pi(tf.stack([[1]]), tf.reshape(X[:,1511], [X[:,0].shape[0],1]), algos.w))
 
 #%% Run policy in environment
 episodes = 100
@@ -147,8 +148,8 @@ for episode in range(episodes):
         phi_x = phi(observation.reshape(-1,1)) # phi applied to current state
         reshapenObservation = tf.reshape(observation, [X[:,0].shape[0],1])
         p = [
-            algos.pi(tf.stack([[0]]), reshapenObservation, algos.w)[0].numpy(),
-            1-algos.pi(tf.stack([[0]]), reshapenObservation, algos.w)[0].numpy()
+            pi(tf.stack([[0]]), reshapenObservation),
+            1-pi(tf.stack([[0]]), reshapenObservation)
         ]
         action = np.random.choice([0,1], p=p)
 
