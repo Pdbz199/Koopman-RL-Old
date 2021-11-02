@@ -115,14 +115,14 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 
 All_U = np.array([[0,1]])
-u_bounds = [0,1]
+u_bounds = np.array([0,1])
 
 def cost(x,u):
     return -cartpole_reward.defaultCartpoleReward(x,u)
 
 #%% Control
 algos = algorithmsv2.algos(X, All_U, u_bounds[0], u_bounds[1], phi, psi, K, cost, epsilon=1, bellmanErrorType=0)
-pi = algos.algorithm2()
+algos.algorithm2()
 
 # algos = tf_algorithmsv2.Algorithms(N, X, All_U, phi, psi, K, cost)
 # bellmanErrors = algos.algorithm2()
@@ -147,10 +147,8 @@ for episode in range(episodes):
         env.render()
         phi_x = phi(observation.reshape(-1,1)) # phi applied to current state
         reshapenObservation = tf.reshape(observation, [X[:,0].shape[0],1])
-        p = [
-            pi(tf.stack([[0]]), reshapenObservation),
-            1-pi(tf.stack([[0]]), reshapenObservation)
-        ]
+        p0 = algos.pi_u(tf.stack([[0]]), reshapenObservation)
+        p = [p0, 1-p0]
         action = np.random.choice([0,1], p=p)
 
         # Take one step forward in environment
