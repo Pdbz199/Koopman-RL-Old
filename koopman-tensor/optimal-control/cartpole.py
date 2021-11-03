@@ -136,23 +136,23 @@ print(algos.w)
 # print(algos.pi(tf.stack([[1]]), tf.reshape(X[:,1511], [X[:,0].shape[0],1]), algos.w))
 
 #%% Run policy in environment
-episodes = 100
-multi_norms = []
-extended_norms = []
-tensor_norms = []
-for episode in range(episodes):
-    observation = env.reset()
-    done = False
-    while not done:
-        env.render()
-        phi_x = phi(observation.reshape(-1,1)) # phi applied to current state
-        reshapenObservation = tf.reshape(observation, [X[:,0].shape[0],1])
-        p0 = algos.pi_u(tf.stack([[0]]), reshapenObservation)
-        p = [p0, 1-p0]
-        action = np.random.choice([0,1], p=p)
+# episodes = 100
+# multi_norms = []
+# extended_norms = []
+# tensor_norms = []
+# for episode in range(episodes):
+#     observation = env.reset()
+#     done = False
+#     while not done:
+#         env.render()
+#         phi_x = phi(observation.reshape(-1,1)) # phi applied to current state
+#         reshapenObservation = tf.reshape(observation, [X[:,0].shape[0],1])
+#         p0 = algos.pi_u(tf.stack([[0]]), reshapenObservation)
+#         p = [p0, 1-p0]
+#         action = np.random.choice([0,1], p=p)
 
-        # Take one step forward in environment
-        observation, reward, done, _ = env.step(action)
-env.close()
+#         # Take one step forward in environment
+#         observation, reward, done, _ = env.step(action)
+# env.close()
 
 #%%
