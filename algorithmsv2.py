@@ -9,8 +9,17 @@ def rho(u, o='unif', a=0, b=1):
     if o == 'normal':
         return np.exp( -u**2 / 2 ) / ( np.sqrt( 2 * np.pi ) )
 
+def l2_norm(true_state, predicted_state):
+    if true_state.shape != predicted_state.shape:
+        print("Shape 1:", true_state.shape)
+        print("Shape 2:", predicted_state.shape)
+        raise Exception('The dimensions of the parameters did not match and therefore cannot be compared.')
+    
+    err = true_state - predicted_state
+    return np.sum(np.power(err, 2))
+
 class algos:
-    def __init__(self, X, All_U, u_lower, u_upper, phi, psi, K_hat, cost, bellmanErrorType=0, learning_rate=1e-4, epsilon=1, weightRegularizationBool = 1, weightRegLambda = 1e-2):
+    def __init__(self, X, All_U, u_lower, u_upper, phi, psi, K_hat, cost, bellmanErrorType=0, learning_rate=1e-2, epsilon=1, weightRegularizationBool = 1, weightRegLambda = 1e-2):
         self.X = X # Collection of observations
         self.All_U = All_U # U is a collection of all POSSIBLE actions as row vectors
         self.u_lower = u_lower # lower bound on actions
@@ -64,11 +73,11 @@ class algos:
             for i,u in enumerate(self.All_U.T):
                 u = u.reshape(-1,1)
                 pi = pi_us[i] / Z_x
-                assert pi >= 0
+                # assert pi >= 0
                 pi_sum += pi
                 expectation_u += (self.cost(x, u) + np.log(pi) + self.w.T @ self.K_u(u) @ phi_x) * pi
             total += np.power((self.w.T @ phi_x - expectation_u), 2) #/ self.X.shape[1]
-            assert np.isclose(pi_sum, 1, rtol=1e-3, atol=1e-4)
+            # assert np.isclose(pi_sum, 1, rtol=1e-3, atol=1e-4)
         return total
 
     def continuousBellmanError(self):
@@ -102,6 +111,7 @@ class algos:
 
         BE = self.bellmanError()[0,0]
         bellmanErrors = [BE]
+        gradientNorms = []
         print("Initial Bellman error:", BE)
 
         if not self.bellmanErrorType: # if discrete BE
@@ -116,6 +126,7 @@ class algos:
                     x_batch[:,i] = x
                 phi_x_batch = self.phi(x_batch)
 
+                nabla_w = np.zeros_like(self.w)
                 for x1, phi_x1 in zip(x_batch.T, phi_x_batch.T):
                     x1 = x1.reshape(-1,1)
                     phi_x1 = phi_x1.reshape(-1,1)
@@ -130,10 +141,14 @@ class algos:
                         expectationTerm2 += self.pi_u(u, x1) * K_u @ phi_x1
 
                     # Equation 13/14 in writeup
-                    nabla_w = ((self.w.T @ phi_x1 - expectationTerm1) * (phi_x1 - expectationTerm2)) / batch_size
+                    nabla_w += ((self.w.T @ phi_x1 - expectationTerm1) * (phi_x1 - expectationTerm2))
+
+                nabla_w /= batch_size
+                gradientNorm = l2_norm(nabla_w, np.zeros_like(nabla_w))
+                gradientNorms.append(gradientNorm)
 
                 # Update weights
-                assert self.w.shape == nabla_w.shape
+                # assert self.w.shape == nabla_w.shape
                 self.w = self.w - (self.learning_rate * nabla_w)
                 # print("Current weights:", self.w)
 
@@ -141,7 +156,7 @@ class algos:
                 BE = self.bellmanError()[0,0]
                 bellmanErrors.append(BE)
                 print("Current Bellman error:", BE)
-            return bellmanErrors
+            return bellmanErrors, gradientNorms
         else:
             while BE > self.epsilon:
                 # These are col vectors

@@ -123,8 +123,10 @@ def cost(x,u):
 
 #%% Control
 algos = algorithmsv2.algos(X, All_U, u_bounds[0], u_bounds[1], phi, psi, K, cost, epsilon=1, bellmanErrorType=0)
-bellmanErrors = algos.algorithm2()
+bellmanErrors, gradientNorms = algos.algorithm2()
 plt.plot(np.arange(len(bellmanErrors)), bellmanErrors)
+plt.show()
+plt.plot(np.arange(len(gradientNorms)), gradientNorms)
 plt.show()
 
 # algos = tf_algorithmsv2.Algorithms(N, X, All_U, phi, psi, K, cost)
