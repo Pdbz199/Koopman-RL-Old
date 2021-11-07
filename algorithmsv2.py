@@ -45,8 +45,6 @@ class algos:
         return inner_pi_u
 
     def pi_u(self, u, x):
-        ''' Unnormalized optimal policy '''
-
         inner = self.inner_pi_u(u, x)
         return np.exp(inner)
 
@@ -73,11 +71,11 @@ class algos:
             for i,u in enumerate(self.All_U.T):
                 u = u.reshape(-1,1)
                 pi = pi_us[i] / Z_x
-                # assert pi >= 0
+                assert pi >= 0
                 pi_sum += pi
                 expectation_u += (self.cost(x, u) + np.log(pi) + self.w.T @ self.K_u(u) @ phi_x) * pi
             total += np.power((self.w.T @ phi_x - expectation_u), 2) #/ self.X.shape[1]
-            # assert np.isclose(pi_sum, 1, rtol=1e-3, atol=1e-4)
+            assert np.isclose(pi_sum, 1, rtol=1e-3, atol=1e-4)
         return total
 
     def continuousBellmanError(self):
@@ -116,10 +114,6 @@ class algos:
 
         if not self.bellmanErrorType: # if discrete BE
             while BE > self.epsilon:
-                # These are col vectors
-                #u1 = self.All_U[:, np.random.choice(np.arange(self.All_U.shape[1]))].reshape(-1,1)
-                #u2 = self.All_U[:, np.random.choice(np.arange(self.All_U.shape[1]))].reshape(-1,1)
-                #x1 = self.X[:, np.random.choice(np.arange(self.X.shape[1]))].reshape(-1,1)
                 x_batch = np.empty([self.X.shape[0],batch_size])
                 for i in range(batch_size):
                     x = self.X[:, np.random.choice(np.arange(self.X.shape[1]))]
@@ -131,24 +125,31 @@ class algos:
                     x1 = x1.reshape(-1,1)
                     phi_x1 = phi_x1.reshape(-1,1)
 
-                    expectationTerm1 = 0
-                    expectationTerm2 = 0
+                    inner_pi_us = []
                     for u in self.All_U.T:
                         u = u.reshape(-1,1)
+                        inner_pi_us.append(self.inner_pi_u(u, x1))
+                    inner_pi_us = np.real(inner_pi_us)
+                    max_inner_pi_u = np.max(inner_pi_us)
+                    pi_us = np.exp(inner_pi_us - max_inner_pi_u)
+                    Z_x = np.sum(pi_us)
+
+                    expectationTerm1 = 0
+                    expectationTerm2 = 0
+                    for i,u in enumerate(self.All_U.T):
+                        u = u.reshape(-1,1)
                         K_u = self.K_u(u)
-                        contValue = self.w.T @ K_u @ phi_x1
-                        expectationTerm1 += self.pi_u(u, x1) * (self.cost(x1, u) + np.log(self.pi_u(u, x1)) + self.w.T @ K_u @ phi_x1)
-                        expectationTerm2 += self.pi_u(u, x1) * K_u @ phi_x1
+                        expectationTerm1 += (pi_us[i] / Z_x) * (self.cost(x1, u) + np.log(pi_us[i] / Z_x) + self.w.T @ K_u @ phi_x1)
+                        expectationTerm2 += (pi_us[i] / Z_x) * K_u @ phi_x1
 
                     # Equation 13/14 in writeup
-                    nabla_w += ((self.w.T @ phi_x1 - expectationTerm1) * (phi_x1 - expectationTerm2))
+                    nabla_w += ((self.w.T @ phi_x1 - expectationTerm1) * (phi_x1 - expectationTerm2)) / batch_size
 
-                nabla_w /= batch_size
                 gradientNorm = l2_norm(nabla_w, np.zeros_like(nabla_w))
                 gradientNorms.append(gradientNorm)
 
                 # Update weights
-                # assert self.w.shape == nabla_w.shape
+                assert self.w.shape == nabla_w.shape
                 self.w = self.w - (self.learning_rate * nabla_w)
                 # print("Current weights:", self.w)
 
@@ -156,6 +157,7 @@ class algos:
                 BE = self.bellmanError()[0,0]
                 bellmanErrors.append(BE)
                 print("Current Bellman error:", BE)
+
             return bellmanErrors, gradientNorms
         else:
             while BE > self.epsilon:

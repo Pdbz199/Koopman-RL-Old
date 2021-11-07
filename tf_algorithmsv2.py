@@ -1,7 +1,6 @@
 import math
 import numpy as np
 import tensorflow as tf
-import time
 
 def rho(u, o='unif', a=0, b=1):
     if o == 'unif':
@@ -14,112 +13,105 @@ def rho(u, o='unif', a=0, b=1):
         sqrt_two_pi = tf.math.sqrt(two_pi)
         return tf.divide(tf.math.exp(neg_u_squared_over_2), sqrt_two_pi)
 
-def K_u(K, psi_u):
-    ''' Pick out Koopman operator given a particular action '''
-    return tf.cast(tf.einsum('ijz,z->ij', K, psi_u[:,0]), tf.float32)
 class Algorithms:
-    def __init__(self, N, X, U, phi, psi, K_hat, cost):
-        self.N = N # Number of data points (X.shape[1])
+    def __init__(self, X, All_U, phi, psi, K_hat, cost, epsilon=1e-4):
         self.X = X # Sampled data points
-        self.U = U # Contains all possible actions (if discrete)
-        self.u_bounds = tf.stack([tf.math.reduce_min(U), tf.math.reduce_max(U)])
-        self.num_unique_actions = self.U.shape[1]
+        self.N = X.shape[1]
+        self.All_U = All_U # Contains all possible actions (if discrete)
+        self.u_bounds = tf.stack([tf.math.reduce_min(All_U), tf.math.reduce_max(All_U)])
+        self.num_unique_actions = All_U.shape[1]
         self.phi = phi
         self.psi = psi
         self.K_hat = K_hat # Estimated Koopman Tensor
         self.cost = cost
-        self.w = tf.Variable(tf.ones(K_hat.shape[0]), name='weights') # Default weights of 1s
+        self.epsilon = epsilon
+        self.w = tf.Variable(tf.ones([K_hat.shape[0],1]), name='weights') # Default weights of 1s
         # self.pi = lambda u, x: tf.divide(1, self.num_unique_actions)
 
         self.optimizer = tf.keras.optimizers.SGD()
 
-    def pi(self, u, x, w):
-        phi_x = tf.cast(tf.stack(self.phi(x)), tf.float32)
-        psi_u = tf.cast(tf.stack(self.psi(u)), tf.float32)
+    def K_u(self, u):
+        ''' Pick out Koopman operator given a particular action '''
+        psi_u = self.psi(u)[:,0]
+        return tf.cast(tf.einsum('ijz,z->ij', self.K_hat, psi_u), tf.float32)
 
-        @tf.autograph.experimental.do_not_convert
+    def inner_pi_u(self, u, x):
+        # inner_pi_u = (-(self.cost(x, u) + self.w.T @ self.K_u(u) @ self.phi(x)))[0]
+
+        phi_x = tf.cast(tf.stack(self.phi(x)), tf.float32) # Column vector
+        phi_x_prime = tf.linalg.matmul(self.K_u(u), phi_x) # Column vector
+        weighted_phi_x_prime = tf.linalg.matmul(tf.transpose(self.w), phi_x_prime) # Shape: (1,1)
+        inner = tf.add(self.cost(x, u), weighted_phi_x_prime)
+
+        return -inner
+
+    def pi_u(self, u, x):
+        return tf.math.exp(self.inner_pi_u(u, x))
+
+    def pi(self, u, x, w):
+        # @tf.autograph.experimental.do_not_convert
         def compute_numerator(i):
             u = self.U[:,i]
             u = tf.reshape(u, [tf.shape(u)[0],1])
-            psi_u = tf.cast(tf.stack(self.psi(u)), tf.float32)
+            return self.pi_u(u, x)
 
-            phi_x_prime = tf.tensordot(K_u(self.K_hat, psi_u), phi_x, axes=1)
-            weighted_phi_x_prime = tf.tensordot(w, phi_x_prime, axes=1)
-            inner = tf.add(self.cost(x,u), weighted_phi_x_prime)
-            return tf.math.exp(-inner)
         Z_x = tf.math.reduce_sum(tf.map_fn(fn=compute_numerator, elems=tf.range(self.U.shape[1]), dtype=tf.float32))
 
-        phi_x_prime = tf.tensordot(K_u(self.K_hat, psi_u), phi_x, axes=1)
-        weighted_phi_x_prime = tf.tensordot(w, phi_x_prime, axes=1)
-        inner = tf.add(self.cost(x,u), weighted_phi_x_prime)
-        numerator = tf.math.exp(-inner)
+        numerator = self.pi_u(u, x)
 
         pi_value = tf.divide(numerator, Z_x)
 
         return pi_value
 
-    def discreteBellmanError(self, x, w):
+    def discreteBellmanError(self):
         ''' Equation 12 in writeup '''
 
         @tf.autograph.experimental.do_not_convert
         def computeError(i):
-            phi_x = tf.cast(tf.stack(self.phi(x)), tf.float32)
+            total = 0
 
-            # Sample u1 and u2, get psi_u1 and psi_u2
-            random_index = tf.random.shuffle(tf.range(self.num_unique_actions))[0]
-            u1 = self.U[:,random_index]
-            u1 = tf.reshape(u1, [tf.shape(u1)[0],1])
-            random_index = tf.random.shuffle(tf.range(self.num_unique_actions))[0]
-            u2 = self.U[:,random_index]
-            u2 = tf.reshape(u2, [tf.shape(u2)[0],1])
-            psi_u1 = tf.cast(tf.stack(self.psi(u1)), tf.float32)
-            psi_u2 = tf.cast(tf.stack(self.psi(u2)), tf.float32)
+            x = self.X[:,i].reshape(-1,1)
+            phi_x = self.phi(x)
 
-            # First term of value fn expressed in terms of dictionary
-            inner_part_1 = tf.tensordot(w, phi_x, axes=1)
-            # Computing terms in RHS of Bellman eqn
-            cost_plus_log_pi = tf.cast(
-                tf.add(self.cost(x, u1), tf.math.log(self.pi(u1, x, w))),
-                tf.float32
-            )
-            phi_x_prime = tf.tensordot(K_u(self.K_hat, psi_u2), phi_x, axes=1)
-            weighted_phi_x_prime = tf.tensordot(w, phi_x_prime, axes=1)
+            inner_pi_us = []
+            for u in self.All_U.T:
+                u = u.reshape(-1,1)
+                inner_pi_us.append(self.inner_pi_u(u, x))
+            inner_pi_us = np.real(inner_pi_us)
+            max_inner_pi_u = np.max(inner_pi_us)
+            pi_us = np.exp(inner_pi_us - max_inner_pi_u)
+            Z_x = np.sum(pi_us)
 
-            inner_part_2 = tf.add(cost_plus_log_pi, weighted_phi_x_prime)
-            importanceWeight = tf.cast(
-                tf.multiply(self.pi(u1, x, w), self.num_unique_actions),
-                tf.float32
-            )
-            inner_part_2 = tf.multiply(importanceWeight, inner_part_2)
-            
-            inner_difference = tf.subtract(inner_part_1, inner_part_2)
-            squared_inner = tf.math.square(inner_difference)
-            return squared_inner
+            expectation_u = 0
+            pi_sum = 0
+            for i,u in enumerate(self.All_U.T):
+                u = u.reshape(-1,1)
+                pi = pi_us[i] / Z_x
+                assert pi >= 0
+                pi_sum += pi
+                expectation_u += (self.cost(x, u) + np.log(pi) + tf.transpose(self.w) @ self.K_u(u) @ phi_x) * pi
+            total += np.power((tf.transpose(self.w) @ phi_x - expectation_u), 2)
+            assert np.isclose(pi_sum, 1, rtol=1e-3, atol=1e-4)
 
-        results = tf.map_fn(fn=computeError, elems=tf.range(self.N/100), dtype=tf.float32)
+            return total
+
+        results = tf.map_fn(fn=computeError, elems=tf.range(self.N), dtype=tf.float32)
 
         return tf.math.reduce_sum(results)
 
     def algorithm2(self):
-        x1 = self.X[:, tf.random.shuffle(tf.range(self.N))[0]]
-        x1 = tf.reshape(x1, [tf.shape(x1)[0],1])
-        bellmanError = self.discreteBellmanError(x1, self.w)
+        # Compute initial Bellman error (before any updates)
+        bellmanError = self.discreteBellmanError()
         print("Initial bellman error:", bellmanError)
 
-        while bellmanError >= 1e-4:
-            # Update weights
-            w = self.w
-            # for _ in range(1): # self.N
-            x1 = self.X[:, tf.random.shuffle(tf.range(self.N))[0]]
-            x1 = tf.reshape(x1, [tf.shape(x1)[0],1])
-            with tf.GradientTape() as tape:
-                loss = self.discreteBellmanError(x1, w)
-            grads = tape.gradient(loss, [self.w])
-            self.optimizer.apply_gradients(zip(grads, [self.w]))
+        # Loop until convergence (while weights are not good enough)
+        while bellmanError >= self.epsilon:
+            # Run gradient descent with TensorFlow
+            with tf.GradientTape() as tape: # Tell TensorFlow to remember the computation within for gradient computation
+                loss = self.discreteBellmanError() # Compute Bellman error with current weights
+            grads = tape.gradient(loss, [self.w]) # Compute gradient with respect to weights
+            self.optimizer.apply_gradients(zip(grads, [self.w])) # Descend via back propogation (update weights)
 
-            # Recompute bellman error
-            x1 = self.X[:, tf.random.shuffle(tf.range(self.N))[0]]
-            x1 = tf.reshape(x1, [tf.shape(x1)[0],1])
-            bellmanError = self.discreteBellmanError(x1, self.w)
-
+            # Recompute bellman error with new weights
+            bellmanError = self.discreteBellmanError()
             print("Current bellman error:", bellmanError)
