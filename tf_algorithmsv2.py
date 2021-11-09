@@ -2,9 +2,9 @@ import tensorflow as tf
 
 class Algorithms:
     def __init__(self, X, All_U, phi, psi, K_hat, cost, epsilon=1e-4):
-        self.X = X # Sampled data points
+        self.X = tf.stack(X) # Sampled data points
         self.N = X.shape[1] # Number of data points in dataset
-        self.All_U = All_U # Contains all possible actions (if discrete)
+        self.All_U = tf.stack(All_U) # Contains all possible actions (if discrete)
         self.u_bounds = tf.stack([tf.math.reduce_min(All_U), tf.math.reduce_max(All_U)])
         self.num_unique_actions = All_U.shape[1]
         self.phi = phi # Dictionary function for X
@@ -51,7 +51,7 @@ class Algorithms:
 
         @tf.autograph.experimental.do_not_convert
         def computeError(i):
-            x = self.X[:,i].reshape(-1,1)
+            x = tf.reshape(self.X[:,i], [tf.shape(self.X[:,i])[0],1])
             phi_x = self.phi(x)
 
             inner_pi_us = []
@@ -64,20 +64,18 @@ class Algorithms:
             Z_x = tf.math.reduce_sum(pi_us)
 
             expectation_u = 0
-            pi_sum = 0
             
-            # pis = pi_us / Z_x
+            pis = pi_us / Z_x
 
             for i,u in enumerate(self.All_U.T):
                 u = u.reshape(-1,1)
-                pi = pi_us[i] / Z_x
-                pi_sum += pi
-                expectation_u += (self.cost(x, u) + tf.math.log(pi) + tf.transpose(self.w) @ self.K_u(u) @ phi_x) * pi
+                expectation_u += (self.cost(x, u) + tf.math.log(pis[i]) + tf.transpose(self.w) @ self.K_u(u) @ phi_x) * pis[i]
             error = tf.math.pow((tf.transpose(self.w) @ phi_x - expectation_u), 2)
 
             return error
 
-        totals = tf.map_fn(fn=computeError, elems=tf.range(self.N), dtype=tf.float32)
+        # totals = tf.map_fn(fn=computeError, elems=tf.range(self.N), dtype=tf.float32)
+        totals = tf.vectorized_map(fn=computeError, elems=tf.range(self.N))
 
         return tf.math.reduce_sum(totals)
 

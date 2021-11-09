@@ -10,7 +10,8 @@ sys.path.append('../../')
 import algorithmsv2
 import cartpole_reward
 import estimate_L
-import observables
+import tf_observables as observables
+# import observables
 import tf_algorithmsv2
 
 def l2_norm(true_state, predicted_state):
