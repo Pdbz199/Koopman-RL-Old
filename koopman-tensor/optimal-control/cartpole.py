@@ -71,8 +71,8 @@ Psi_U = psi(U)
 dim_phi = Phi_X.shape[0]
 dim_psi = Psi_U.shape[0]
 
-print("Phi_X shape:", Phi_X.shape)
-print("Psi_U shape:", Psi_U.shape)
+# print("Phi_X shape:", Phi_X.shape)
+# print("Psi_U shape:", Psi_U.shape)
 
 #%% Estimate Koopman operator for each action
 Koopman_operators = np.empty((env.action_space.n,dim_phi,dim_phi))
@@ -94,7 +94,7 @@ for i in range(N):
 
 #%% Estimate M and B matrices
 M = estimate_L.ols(kronMatrix.T, Phi_Y.T).T
-print("M shape:", M.shape)
+# print("M shape:", M.shape)
 assert M.shape == (dim_phi, dim_phi * dim_psi)
 
 B = estimate_L.ols(Phi_X.T, X.T)
@@ -125,7 +125,7 @@ def cost(x,u):
 # algos = algorithmsv2.algos(X, All_U, u_bounds[0], u_bounds[1], phi, psi, K, cost, epsilon=1, bellmanErrorType=0)
 # bellmanErrors, gradientNorms = algos.algorithm2()
 algos = tf_algorithmsv2.Algorithms(X, All_U, phi, psi, K, cost)
-bellmanErrors = algos.algorithm2()
+algos.algorithm2()
 
 #%% Plots
 # plt.plot(np.arange(len(bellmanErrors)), bellmanErrors)
