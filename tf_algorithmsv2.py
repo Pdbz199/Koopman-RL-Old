@@ -14,7 +14,7 @@ class Algorithms:
         self.epsilon = epsilon
         self.w = tf.Variable(tf.ones([K_hat.shape[0],1]), name='weights') # Default weights of 1s
 
-        self.optimizer = tf.keras.optimizers.SGD(learning_rate=1e-4)
+        self.optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
 
     def K_u(self, u):
         ''' Pick out Koopman operator given a particular action '''
@@ -22,8 +22,7 @@ class Algorithms:
         return tf.cast(tf.einsum('ijz,z->ij', self.K_hat, psi_u), tf.float32)
 
     def inner_pi_u(self, u, x):
-        phi_x = self.phi(x) # Column vector
-        phi_x_prime = tf.linalg.matmul(self.K_u(u), phi_x) # Column vector
+        phi_x_prime = tf.linalg.matmul(self.K_u(u), self.phi(x)) # Column vector
         weighted_phi_x_prime = tf.linalg.matmul(tf.transpose(self.w), phi_x_prime) # Shape: (1,1)
         inner = tf.add(self.cost(x, u), weighted_phi_x_prime)
 
@@ -66,7 +65,6 @@ class Algorithms:
 
             expectation_u = 0
             pi_sum = 0
-            error = 0
             
             # pis = pi_us / Z_x
 
@@ -79,9 +77,9 @@ class Algorithms:
 
             return error
 
-        results = tf.map_fn(fn=computeError, elems=tf.range(self.N), dtype=tf.float32)
+        totals = tf.map_fn(fn=computeError, elems=tf.range(self.N), dtype=tf.float32)
 
-        return tf.math.reduce_sum(results)
+        return tf.math.reduce_sum(totals)
 
     def algorithm2(self):
         # Compute initial Bellman error (before any updates)
