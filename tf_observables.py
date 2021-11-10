@@ -32,10 +32,10 @@ class monomials(object):
         [d, m] = x.shape # d = dimension of state space, m = number of test points
         c = allMonomialPowers(d, self.p) # matrix containing all powers for the monomials
         n = c.shape[1] # number of monomials
-        y = tf.ones([n, m])
+        y = [[1.0 for _ in range(d)] for _ in range(n)]
         for i in range(n):
             for j in range(d):
-                y[i, :] = y[i, :] * tf.math.pow(x[j, :], c[j, i])
+                y[i, :] = y[i, :] * tf.math.pow(tf.cast(x[j, :], tf.float32), c[j, i])
         return y
     
     def diff(self, x):
@@ -211,7 +211,6 @@ def nchoosek(n, k):
     Computes binomial coefficients.
     '''
     return tf.math.exp(tf.math.lgamma(float(n+1))) / tf.math.exp(tf.math.lgamma(float(k+1))) / tf.math.exp(tf.math.lgamma(float(n-k+1)))
-    # return math.factorial(n)//math.factorial(k)//math.factorial(n-k) # integer division operator
 
 def nextMonomialPowers(x):
     '''
@@ -248,11 +247,11 @@ def allMonomialPowers(d, p):
     # [[ 0  1  0  0  2  1  1  0  0  0]
     #  [ 0  0  1  0  0  1  0  2  1  0]
     #  [ 0  0  0  1  0  0  1  0  1  2]]
-    n = int(nchoosek(p + d, p)) # number of monomials
-    x = [0 for _ in range(d)] # tf.zeros(d) # vector containing powers for the monomials, initially zero
-    c = [] # tf.zeros([d, n]) # matrix containing all powers for the monomials
+    n = int(tf.round(nchoosek(p + d, p))) # number of monomials
+    x = [0.0 for _ in range(d)] # tf.zeros(d) # vector containing powers for the monomials, initially zero
+    c = [tf.zeros([d])] # tf.zeros([d, n]) # matrix containing all powers for the monomials
     for i in range(1, n):
-        c.append(nextMonomialPowers(x))
+        c.append(tf.cast(nextMonomialPowers(x), tf.float32))
     c = tf.transpose(c)
     c = c[::-1] # flip array in the up/down direction
-    return tf.cast(c, tf.float32)
+    return c
