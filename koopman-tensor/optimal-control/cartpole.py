@@ -10,8 +10,8 @@ sys.path.append('../../')
 import algorithmsv2
 import cartpole_reward
 import estimate_L
-import tf_observables as observables
-# import observables
+# import tf_observables as observables
+import observables
 import tf_algorithmsv2
 
 def l2_norm(true_state, predicted_state):
@@ -114,7 +114,6 @@ def K_u(K, u):
 
 #%% Control setup
 import matplotlib.pyplot as plt
-import tensorflow as tf
 
 All_U = np.array([[0,1]])
 u_bounds = np.array([0,1])

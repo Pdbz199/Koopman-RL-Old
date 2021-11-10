@@ -247,11 +247,13 @@ def allMonomialPowers(d, p):
     # [[ 0  1  0  0  2  1  1  0  0  0]
     #  [ 0  0  1  0  0  1  0  2  1  0]
     #  [ 0  0  0  1  0  0  1  0  1  2]]
-    n = int(tf.round(nchoosek(p + d, p))) # number of monomials
+    n = tf.cast(tf.round(nchoosek(p + d, p)), tf.int32) # number of monomials
     x = [0.0 for _ in range(d)] # tf.zeros(d) # vector containing powers for the monomials, initially zero
-    c = [tf.zeros([d])] # tf.zeros([d, n]) # matrix containing all powers for the monomials
-    for i in range(1, n):
-        c.append(tf.cast(nextMonomialPowers(x), tf.float32))
+    c = [[0 for _ in range(d)]] # tf.zeros([d, n]) # matrix containing all powers for the monomials
+
+    def computeC(i):
+        return tf.cast(nextMonomialPowers(x), tf.float32)
+    c = tf.map_fn(fn=computeC, elems=tf.range(1, n), dtype=tf.float32)
     c = tf.transpose(c)
     c = c[::-1] # flip array in the up/down direction
     return c

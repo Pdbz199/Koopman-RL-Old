@@ -2,19 +2,19 @@ import tensorflow as tf
 
 class Algorithms:
     def __init__(self, X, All_U, phi, psi, K_hat, cost, epsilon=1e-4):
-        self.X = tf.stack(X) # Sampled data points
+        self.X = X # Sampled data points
         self.N = X.shape[1] # Number of data points in dataset
-        self.All_U = tf.stack(All_U) # Contains all possible actions (if discrete)
-        self.u_bounds = tf.stack([tf.math.reduce_min(All_U), tf.math.reduce_max(All_U)])
+        self.All_U = All_U # Contains all possible actions (if discrete)
+        self.u_bounds = [tf.math.reduce_min(All_U), tf.math.reduce_max(All_U)]
         self.num_unique_actions = All_U.shape[1]
         self.phi = phi # Dictionary function for X
         self.psi = psi # Dictionary function for U
         self.K_hat = K_hat # Estimated Koopman Tensor
         self.cost = cost # Cost function to optimize
         self.epsilon = epsilon
-        self.w = tf.Variable(tf.ones([K_hat.shape[0],1]), name='weights') # Default weights of 1s
+        self.w = tf.Variable(tf.fill([K_hat.shape[0],1], 1), name='weights') # Default weights of 1s
 
-        self.optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
+        self.optimizer = tf.keras.optimizers.Adam(learning_rate=1e-2)
 
     def K_u(self, u):
         ''' Pick out Koopman operator given a particular action '''
@@ -51,7 +51,7 @@ class Algorithms:
 
         @tf.autograph.experimental.do_not_convert
         def computeError(i):
-            x = tf.reshape(self.X[:,i], [tf.shape(self.X[:,i])[0],1])
+            x = self.X[:,i].reshape(-1,1)
             phi_x = self.phi(x)
 
             inner_pi_us = []
@@ -74,8 +74,7 @@ class Algorithms:
 
             return error
 
-        # totals = tf.map_fn(fn=computeError, elems=tf.range(self.N), dtype=tf.float32)
-        totals = tf.vectorized_map(fn=computeError, elems=tf.range(self.N))
+        totals = tf.map_fn(fn=computeError, elems=tf.range(self.N), dtype=tf.float32)
 
         return tf.math.reduce_sum(totals)
 
