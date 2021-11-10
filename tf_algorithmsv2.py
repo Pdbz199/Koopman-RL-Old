@@ -12,7 +12,7 @@ class Algorithms:
         self.K_hat = K_hat # Estimated Koopman Tensor
         self.cost = cost # Cost function to optimize
         self.epsilon = epsilon
-        self.w = tf.Variable(tf.fill([K_hat.shape[0],1], 1), name='weights') # Default weights of 1s
+        self.w = tf.Variable(tf.fill([K_hat.shape[0],1], 0.3), name='weights') # Default weights of 1s
 
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=1e-2)
 
@@ -83,6 +83,8 @@ class Algorithms:
         bellmanError = self.discreteBellmanError()
         print("Initial bellman error:", bellmanError)
 
+        bellmanErrors = [bellmanError]
+
         # Loop until convergence (while weights are not good enough)
         while bellmanError >= self.epsilon:
             # Run gradient descent with TensorFlow
@@ -94,3 +96,7 @@ class Algorithms:
             # Recompute bellman error with new weights
             bellmanError = self.discreteBellmanError()
             print("Current bellman error:", bellmanError)
+
+            bellmanErrors.append(bellmanError)
+
+        return bellmanErrors

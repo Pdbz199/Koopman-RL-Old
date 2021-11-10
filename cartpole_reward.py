@@ -29,6 +29,7 @@ high = np.array([x_threshold * 2,
                     np.finfo(np.float32).max],
                 dtype=np.float32)
 
+#%%
 # @nb.njit(fastmath=True)
 def cartpoleReward(state, action):
     x, x_dot, theta, theta_dot = state
@@ -100,4 +101,38 @@ def defaultCartpoleReward(state, action):
         reward = 0.0
 
     return reward
+# %%
+
+def defaultCartpoleRewardMatrix(states, actions):
+    # x, x_dot, theta, theta_dot = state
+
+    forces = np.ones([actions.shape[1]]) * force_mag
+    forces[(actions!=1)[0]] = -force_mag
+    costheta = np.cos(states[2])
+    sintheta = np.sin(states[2])
+
+    # For the interested reader:
+    # https://coneural.org/florian/papers/05_cart_pole.pdf
+    temp = (forces + polemass_length * states[3] ** 2 * sintheta) / total_mass
+    thetaacc = (gravity * sintheta - costheta * temp) / (length * (4.0 / 3.0 - masspole * costheta ** 2 / total_mass))
+    xacc = temp - polemass_length * thetaacc * costheta / total_mass
+
+    if kinematics_integrator == 'euler':
+        x = states[0] + tau * states[1]
+        x_dot = states[1] + tau * xacc
+        theta = states[2] + tau * states[3]
+        theta_dot = states[3] + tau * thetaacc
+    else:  # semi-implicit euler
+        x_dot = states[1] + tau * xacc
+        x = states[0] + tau * x_dot
+        theta_dot = states[3] + tau * thetaacc
+        theta = states[2] + tau * theta_dot
+
+    rewards = np.ones(states.shape[1])
+    rewards[x < -x_threshold] = 0.0
+    rewards[x > x_threshold] = 0.0
+    rewards[theta < -theta_threshold_radians] = 0.0
+    rewards[theta > theta_threshold_radians] = 0.0
+
+    return rewards
 # %%

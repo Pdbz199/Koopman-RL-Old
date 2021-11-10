@@ -1,3 +1,4 @@
+from os import replace
 import auxiliaries as aux
 import numpy as np
 import scipy.integrate as integrate
@@ -37,12 +38,20 @@ class algos:
         self.weightRegLambda = weightRegLambda
 
     def K_u(self, u):
-        ''' Pick out Koopman operator given a particular action '''
+        ''' Pick out Koopman operator given an action '''
         return np.einsum('ijz,zk->ij', self.K_hat, self.psi(u))
+
+    def K_us(self, us):
+        ''' Pick out Koopman operator given a matrix of action column vectors '''
+        return np.einsum('ijz,zk->kij', self.K_hat, self.psi(us))
 
     def inner_pi_u(self, u, x):
         inner_pi_u = (-(self.cost(x, u) + self.w.T @ self.K_u(u) @ self.phi(x)))[0]
         return inner_pi_u
+
+    def inner_pi_us(self, us, x):
+        inner_pi_us = -(self.cost(x, us) + self.w.T @ self.K_us(us) @ self.phi(x))
+        return inner_pi_us[:,0,0]
 
     def pi_u(self, u, x):
         inner = self.inner_pi_u(u, x)
@@ -51,31 +60,27 @@ class algos:
     def discreteBellmanError(self):
         ''' Equation 12 in writeup '''
 
-        # TODO: Vectorize
         total = 0
-        for i in range(self.X.shape[1]):
+        for i in range(self.X.shape[1]): # loop
             x = self.X[:,i].reshape(-1,1)
             phi_x = self.phi(x)
 
-            inner_pi_us = []
-            for u in self.All_U.T:
-                u = u.reshape(-1,1)
-                inner_pi_us.append(self.inner_pi_u(u, x))
+            inner_pi_us = self.inner_pi_us(self.All_U, x)
             inner_pi_us = np.real(inner_pi_us)
             max_inner_pi_u = np.max(inner_pi_us)
             pi_us = np.exp(inner_pi_us - max_inner_pi_u)
             Z_x = np.sum(pi_us)
 
-            expectation_u = 0
-            pi_sum = 0
-            for i,u in enumerate(self.All_U.T):
-                u = u.reshape(-1,1)
-                pi = pi_us[i] / Z_x
-                assert pi >= 0
-                pi_sum += pi
-                expectation_u += (self.cost(x, u) + np.log(pi) + self.w.T @ self.K_u(u) @ phi_x) * pi
-            total += np.power((self.w.T @ phi_x - expectation_u), 2) #/ self.X.shape[1]
-            assert np.isclose(pi_sum, 1, rtol=1e-3, atol=1e-4)
+            pis = pi_us / Z_x
+            # pi_sum = np.sum(pis)
+            # assert np.isclose(pi_sum, 1, rtol=1e-3, atol=1e-4)
+
+            weighted_phi_x_primes = self.w.T @ self.K_us(self.All_U) @ phi_x
+            expectation_us = (self.cost(x * np.ones([x.shape[0],2]), self.All_U) + np.log(pis) + weighted_phi_x_primes[:,0,0]) * pis
+            expectation_u = np.sum(expectation_us)
+
+            total += np.power((self.w.T @ phi_x - expectation_u), 2)
+
         return total
 
     def continuousBellmanError(self):
@@ -114,19 +119,17 @@ class algos:
 
         if not self.bellmanErrorType: # if discrete BE
             while BE > self.epsilon:
-                x_batch = np.empty([self.X.shape[0],batch_size])
-                for i in range(batch_size):
-                    x = self.X[:, np.random.choice(np.arange(self.X.shape[1]))]
-                    x_batch[:,i] = x
+                x_batch_indices = np.random.choice(self.X.shape[1], batch_size, replace=False)
+                x_batch = self.X[:,x_batch_indices]
                 phi_x_batch = self.phi(x_batch)
 
                 nabla_w = np.zeros_like(self.w)
-                for x1, phi_x1 in zip(x_batch.T, phi_x_batch.T):
+                for x1, phi_x1 in zip(x_batch.T, phi_x_batch.T): # loop
                     x1 = x1.reshape(-1,1)
                     phi_x1 = phi_x1.reshape(-1,1)
 
                     inner_pi_us = []
-                    for u in self.All_U.T:
+                    for u in self.All_U.T: # loop
                         u = u.reshape(-1,1)
                         inner_pi_us.append(self.inner_pi_u(u, x1))
                     inner_pi_us = np.real(inner_pi_us)
@@ -136,7 +139,7 @@ class algos:
 
                     expectationTerm1 = 0
                     expectationTerm2 = 0
-                    for i,u in enumerate(self.All_U.T):
+                    for i,u in enumerate(self.All_U.T): # loop
                         u = u.reshape(-1,1)
                         K_u = self.K_u(u)
                         expectationTerm1 += (pi_us[i] / Z_x) * (self.cost(x1, u) + np.log(pi_us[i] / Z_x) + self.w.T @ K_u @ phi_x1)
