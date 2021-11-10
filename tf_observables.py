@@ -32,11 +32,11 @@ class monomials(object):
         [d, m] = x.shape # d = dimension of state space, m = number of test points
         c = allMonomialPowers(d, self.p) # matrix containing all powers for the monomials
         n = c.shape[1] # number of monomials
-        y = [[1.0 for _ in range(d)] for _ in range(n)]
+        y = [[1.0 for _ in range(m)] for _ in range(n)]
         for i in range(n):
             for j in range(d):
-                y[i, :] = y[i, :] * tf.math.pow(tf.cast(x[j, :], tf.float32), c[j, i])
-        return y
+                y[i] = y[i] * tf.math.pow(tf.cast(x[j], tf.float32), c[j, i])
+        return tf.stack(y)
     
     def diff(self, x):
         '''

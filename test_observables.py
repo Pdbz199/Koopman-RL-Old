@@ -8,5 +8,4 @@ order = 3
 phi = observables.monomials(order)
 tf_phi = tf_observables.monomials(order)
 
-phi(x)
-tf_phi(x)
+tf.assert_equal(tf.cast(phi(x), tf.float32), tf_phi(x))
