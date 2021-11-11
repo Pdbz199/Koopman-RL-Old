@@ -62,8 +62,9 @@ class algos:
         ''' Equation 12 in writeup '''
 
         total = 0
-        for i in range(self.X.shape[1]):
-            x = self.X[:,i].reshape(-1,1)
+        for _ in range(int(self.X.shape[1]/100)): # loop
+            # x = self.X[:,i].reshape(-1,1)
+            x = self.X[:, np.random.choice(np.arange(self.X.shape[1]))].reshape(-1,1)
             phi_x = self.phi(x)
 
             inner_pi_us = self.inner_pi_us(self.All_U, x)
@@ -108,10 +109,8 @@ class algos:
 
         return total
 
-    def algorithm2(self):
+    def algorithm2(self, batch_size):
         ''' Bellman error optimization '''
-        
-        batch_size = 256
 
         BE = self.bellmanError()[0,0]
         bellmanErrors = [BE]
@@ -125,7 +124,7 @@ class algos:
                 phi_x_batch = self.phi(x_batch)
 
                 nabla_w = np.zeros_like(self.w)
-                for x1, phi_x1 in zip(x_batch.T, phi_x_batch.T):
+                for x1, phi_x1 in zip(x_batch.T, phi_x_batch.T): # loop
                     x1 = x1.reshape(-1,1)
                     phi_x1 = phi_x1.reshape(-1,1)
 
@@ -144,13 +143,8 @@ class algos:
                     )
                     costs_plus_log_pis = costs + log_pis
 
-                    expectationTerm1 = 0
-                    # expectationTerm2 = np.sum(K_us @ phi_x1 * pis)
-                    expectationTerm2 = 0
-                    for i in range(self.All_U.shape[1]):
-                        K_u = K_us[i]
-                        expectationTerm1 += pis[i] * (costs_plus_log_pis[i] + self.w.T @ K_u @ phi_x1)
-                        expectationTerm2 += pis[i] * K_u @ phi_x1
+                    expectationTerm1 = np.sum(pis.reshape(-1,1) * (costs_plus_log_pis.reshape(-1,1) + (self.w.T @ K_us @ phi_x1).reshape(self.All_U.shape[1],1)))
+                    expectationTerm2 = np.einsum('i, ijk -> jk', pis, K_us @ phi_x1)
 
                     # Equation 13/14 in writeup
                     nabla_w += ((self.w.T @ phi_x1 - expectationTerm1) * (phi_x1 - expectationTerm2)) / batch_size
