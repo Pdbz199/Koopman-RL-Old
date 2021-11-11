@@ -20,7 +20,7 @@ def l2_norm(true_state, predicted_state):
     return np.sum(np.power(err, 2))
 
 class algos:
-    def __init__(self, X, All_U, u_lower, u_upper, phi, psi, K_hat, cost, bellmanErrorType=0, learning_rate=1e-1, epsilon=1, weightRegularizationBool = 1, weightRegLambda = 1e-2):
+    def __init__(self, X, All_U, u_lower, u_upper, phi, psi, K_hat, cost, bellmanErrorType=0, learning_rate=1e-3, epsilon=1, weightRegularizationBool = 1, weightRegLambda = 1e-2):
         self.X = X # Collection of observations
         self.Phi_X = phi(X) # Collection of lifted observations
         self.All_U = All_U # U is a collection of all POSSIBLE actions as row vectors

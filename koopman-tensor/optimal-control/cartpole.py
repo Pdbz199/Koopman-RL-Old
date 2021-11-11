@@ -122,7 +122,7 @@ def cost(xs,us): # states, actions
     return -cartpole_reward.defaultCartpoleRewardMatrix(xs,us)
 
 #%% Control
-algos = algorithmsv2.algos(X, All_U, u_bounds[0], u_bounds[1], phi, psi, K, cost, epsilon=1, bellmanErrorType=0)
+algos = algorithmsv2.algos(X, All_U, u_bounds[0], u_bounds[1], phi, psi, K, cost, epsilon=1, bellmanErrorType=0, learning_rate=1)
 bellmanErrors, gradientNorms = algos.algorithm2()
 # algos = tf_algorithmsv2.Algorithms(X, All_U, phi, psi, K, cost)
 # bellmanErrors = algos.algorithm2()
