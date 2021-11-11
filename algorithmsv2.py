@@ -20,8 +20,9 @@ def l2_norm(true_state, predicted_state):
     return np.sum(np.power(err, 2))
 
 class algos:
-    def __init__(self, X, All_U, u_lower, u_upper, phi, psi, K_hat, cost, bellmanErrorType=0, learning_rate=1e-2, epsilon=1, weightRegularizationBool = 1, weightRegLambda = 1e-2):
+    def __init__(self, X, All_U, u_lower, u_upper, phi, psi, K_hat, cost, bellmanErrorType=0, learning_rate=1e-1, epsilon=1, weightRegularizationBool = 1, weightRegLambda = 1e-2):
         self.X = X # Collection of observations
+        self.Phi_X = phi(X) # Collection of lifted observations
         self.All_U = All_U # U is a collection of all POSSIBLE actions as row vectors
         self.u_lower = u_lower # lower bound on actions
         self.u_upper = u_upper # upper bound on actions
@@ -33,7 +34,7 @@ class algos:
         self.bellmanError = self.discreteBellmanError if bellmanErrorType == 0 else self.continuousBellmanError
         self.learning_rate = learning_rate
         self.epsilon = epsilon
-        self.w = np.ones([K_hat.shape[0],1]) # Default weights of 1s
+        self.w = np.ones([K_hat.shape[0],1]) * 0.1 # Default weights of 0.1s
         self.weightRegularization = weightRegularizationBool #Bool for including weight regularization in Bellman loss functions
         self.weightRegLambda = weightRegLambda
 
@@ -61,7 +62,7 @@ class algos:
         ''' Equation 12 in writeup '''
 
         total = 0
-        for i in range(self.X.shape[1]): # loop
+        for i in range(self.X.shape[1]):
             x = self.X[:,i].reshape(-1,1)
             phi_x = self.phi(x)
 
@@ -124,26 +125,32 @@ class algos:
                 phi_x_batch = self.phi(x_batch)
 
                 nabla_w = np.zeros_like(self.w)
-                for x1, phi_x1 in zip(x_batch.T, phi_x_batch.T): # loop
+                for x1, phi_x1 in zip(x_batch.T, phi_x_batch.T):
                     x1 = x1.reshape(-1,1)
                     phi_x1 = phi_x1.reshape(-1,1)
 
-                    inner_pi_us = []
-                    for u in self.All_U.T: # loop
-                        u = u.reshape(-1,1)
-                        inner_pi_us.append(self.inner_pi_u(u, x1))
+                    inner_pi_us = self.inner_pi_us(self.All_U, x1)
                     inner_pi_us = np.real(inner_pi_us)
                     max_inner_pi_u = np.max(inner_pi_us)
                     pi_us = np.exp(inner_pi_us - max_inner_pi_u)
                     Z_x = np.sum(pi_us)
 
+                    pis = pi_us / Z_x
+                    log_pis = np.log(pis)
+                    K_us = self.K_us(self.All_U)
+                    costs = self.cost(
+                        x1 * np.ones([x1.shape[0],2]),
+                        self.All_U
+                    )
+                    costs_plus_log_pis = costs + log_pis
+
                     expectationTerm1 = 0
+                    # expectationTerm2 = np.sum(K_us @ phi_x1 * pis)
                     expectationTerm2 = 0
-                    for i,u in enumerate(self.All_U.T): # loop
-                        u = u.reshape(-1,1)
-                        K_u = self.K_u(u)
-                        expectationTerm1 += (pi_us[i] / Z_x) * (self.cost(x1, u) + np.log(pi_us[i] / Z_x) + self.w.T @ K_u @ phi_x1)
-                        expectationTerm2 += (pi_us[i] / Z_x) * K_u @ phi_x1
+                    for i in range(self.All_U.shape[1]):
+                        K_u = K_us[i]
+                        expectationTerm1 += pis[i] * (costs_plus_log_pis[i] + self.w.T @ K_u @ phi_x1)
+                        expectationTerm2 += pis[i] * K_u @ phi_x1
 
                     # Equation 13/14 in writeup
                     nabla_w += ((self.w.T @ phi_x1 - expectationTerm1) * (phi_x1 - expectationTerm2)) / batch_size
