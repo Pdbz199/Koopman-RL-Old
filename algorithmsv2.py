@@ -20,12 +20,28 @@ def l2_norm(true_state, predicted_state):
     return np.sum(np.power(err, 2))
 
 class algos:
-    def __init__(self, X, All_U, u_lower, u_upper, phi, psi, K_hat, cost, bellmanErrorType=0, learning_rate=1e-3, epsilon=1, weightRegularizationBool = 1, weightRegLambda = 1e-2):
+    def __init__(
+        self,
+        X,
+        All_U,
+        u_bounds,
+        phi,
+        psi,
+        K_hat,
+        cost,
+        bellmanErrorType=0,
+        learning_rate=1e-3,
+        epsilon=1,
+        weightRegularizationBool=1,
+        weightRegLambda=1e-2,
+        u_batchSize=50
+    ):
         self.X = X # Collection of observations
         self.Phi_X = phi(X) # Collection of lifted observations
         self.All_U = All_U # U is a collection of all POSSIBLE actions as row vectors
-        self.u_lower = u_lower # lower bound on actions
-        self.u_upper = u_upper # upper bound on actions
+        self.u_lower = u_bounds[0] # lower bound on actions in continuous case
+        self.u_upper = u_bounds[1] # upper bound on actions in continuous case
+        self.u_batchSize = u_batchSize
         self.phi = phi # Dictionary function for X
         self.psi = psi # Dictionary function for U
         self.K_hat = K_hat # Estimated Koopman Tensor
@@ -47,11 +63,11 @@ class algos:
         return np.einsum('ijz,zk->kij', self.K_hat, self.psi(us))
 
     def inner_pi_u(self, u, x):
-        inner_pi_u = (-(self.cost(x, u) + self.w.T @ self.K_u(u) @ self.phi(x)))[0]
+    inner_pi_u = (-(self.cost(x, u) + self.w.T @ self.K_u(u) @ self.phi(x)))[0]
         return inner_pi_u
 
     def inner_pi_us(self, us, x):
-        inner_pi_us = -(self.cost(x, us) + self.w.T @ self.K_us(us) @ self.phi(x))
+        inner_pi_us = -(self.cost(x, us) + self.w.T @ self.K_us(us) @ self.phi(x)) #stack cols of x as cols in self.phi(x)
         return inner_pi_us[:,0,0]
 
     def pi_u(self, u, x):
@@ -67,7 +83,7 @@ class algos:
             x = self.X[:, np.random.choice(np.arange(self.X.shape[1]))].reshape(-1,1)
             phi_x = self.phi(x)
 
-            inner_pi_us = self.inner_pi_us(self.All_U, x)
+            inner_pi_us = self.inner_pi_us(self.All_U, x) #vectorize
             inner_pi_us = np.real(inner_pi_us)
             max_inner_pi_u = np.max(inner_pi_us)
             pi_us = np.exp(inner_pi_us - max_inner_pi_u)
@@ -87,25 +103,46 @@ class algos:
 
     def continuousBellmanError(self):
         ''' Equation 3 in writeup modified for continuous action weight regularization added to help gradient explosion in Bellman algos '''
-
-        pi = (lambda u, x, Z_x: np.exp(self.inner_pi_u(u, x)) / Z_x)
-        def expectation_u_integrand(u, x, phi_x, Z_x):
-            pi_u_const = pi(np.array([[u]]), x, Z_x)
-            return (self.cost(x, u) - np.log(pi_u_const) - self.w.T @ self.K_u(np.array([[u]])) @ phi_x) * pi_u_const
-
         total = 0
-        for i in range(self.X.shape[1]):
-            x = self.X[:,i].reshape(-1,1)
+        self.All_U = np.random.uniform(self.u_lower, self.u_upper, [1,self.u_batchSize])
+        for _ in range(int(self.X.shape[1]/100)): # loop
+            # x = self.X[:,i].reshape(-1,1)
+            x = self.X[:, np.random.choice(np.arange(self.X.shape[1]))].reshape(-1,1)
             phi_x = self.phi(x)
 
-            Z_x = integrate.quad(np.exp(self.inner_pi_u), self.u_lower, self.u_upper, (x))[0]
-            expectation_u = integrate.quad(expectation_u_integrand, self.u_lower, self.u_upper, (x, phi_x, Z_x))[0]
+            inner_pi_us = self.inner_pi_us(self.All_U, x) #vectorize
+            inner_pi_us = np.real(inner_pi_us)
+            max_inner_pi_u = np.max(inner_pi_us)
+            pi_us = np.exp(inner_pi_us - max_inner_pi_u)
+            Z_x = np.sum(pi_us)
 
-            total += np.power(( self.w.T @ phi_x - expectation_u ), 2)
+            pis = pi_us / Z_x
+            # pi_sum = np.sum(pis)
+            # assert np.isclose(pi_sum, 1, rtol=1e-3, atol=1e-4)
 
-        #add weight regularization term to help with gradient explosion issues
-        # if self.weightRegularization:
-        #     total += self.weightRegLambda*(aux.l2_norm(self.w)**2)
+            weighted_phi_x_primes = self.w.T @ self.K_us(self.All_U) @ phi_x
+            expectation_us = (self.cost(x * np.ones([x.shape[0],2]), self.All_U) + np.log(pis) + weighted_phi_x_primes[:,0,0]) * pis
+            expectation_u = np.sum(expectation_us)
+
+            total += np.power((self.w.T @ phi_x - expectation_u), 2)
+        # pi = (lambda u, x, Z_x: np.exp(self.inner_pi_u(u, x)) / Z_x)
+        # def expectation_u_integrand(u, x, phi_x, Z_x):
+        #     pi_u_const = pi(np.array([[u]]), x, Z_x)
+        #     return (self.cost(x, u) - np.log(pi_u_const) - self.w.T @ self.K_u(np.array([[u]])) @ phi_x) * pi_u_const
+
+        # total = 0
+        # for i in range(self.X.shape[1]):
+        #     x = self.X[:,i].reshape(-1,1)
+        #     phi_x = self.phi(x)
+
+        #     Z_x = integrate.quad(np.exp(self.inner_pi_u), self.u_lower, self.u_upper, (x))[0]
+        #     expectation_u = integrate.quad(expectation_u_integrand, self.u_lower, self.u_upper, (x, phi_x, Z_x))[0]
+
+        #     total += np.power(( self.w.T @ phi_x - expectation_u ), 2)
+
+        # #add weight regularization term to help with gradient explosion issues
+        # # if self.weightRegularization:
+        # #     total += self.weightRegLambda*(aux.l2_norm(self.w)**2)
 
         return total
 
@@ -165,24 +202,86 @@ class algos:
             return bellmanErrors, gradientNorms
         else:
             while BE > self.epsilon:
-                # These are col vectors
-                u1 = self.All_U[:, np.random.choice(np.arange(self.All_U.shape[1]))].reshape(-1,1)
-                u2 = self.All_U[:, np.random.choice(np.arange(self.All_U.shape[1]))].reshape(-1,1)
-                x1 = self.X[:, np.random.choice(np.arange(self.X.shape[1]))].reshape(-1,1)
-                phi_x1 = self.phi(x1)
-                K_u1 = self.K_u(u1)
-                K_u2 = self.K_u(u2)
+                x_batch_indices = np.random.choice(self.X.shape[1], batch_size, replace=False)
+                x_batch = self.X[:,x_batch_indices]
+                phi_x_batch = self.phi(x_batch)
+                
+                u1_batch = np.random.uniform(self.u_lower, self.u_upper, [1,self.u_batchSize])
+                u2_batch = np.random.uniform(self.u_lower, self.u_upper, [1,self.u_batchSize])
 
-                # Equation 13/14 in writeup
-                nabla_w = (self.w @ phi_x1 - ((self.pi_u(u1, x1) / rho(u1, a=0, b=2)) * (self.cost(x1, u1) + np.log(self.pi_u(u1, x1)) + self.w @ K_u1 @ phi_x1))) \
-                            * (phi_x1 - (self.pi_u(u2, x1) / rho(u2, a=0, b=2)) * K_u2 @ phi_x1)
+                nabla_w = np.zeros_like(self.w)
+                for x1, phi_x1 in zip(x_batch.T, phi_x_batch.T): # loop
+                    x1 = x1.reshape(-1,1)
+                    phi_x1 = phi_x1.reshape(-1,1)
+
+                    inner_pi_us1 = self.inner_pi_us(u1_batch, x1)
+                    inner_pi_us1 = np.real(inner_pi_us1)
+                    max_inner_pi_u1 = np.max(inner_pi_us1)
+                    pi_us1 = np.exp(inner_pi_us1 - max_inner_pi_u1)
+                    Z_x1 = np.sum(pi_us1)
+
+                    pis1 = pi_us1 / Z_x1
+                    log_pis1 = np.log(pis1)
+                    K_us1 = self.K_us(u1_batch)
+                    costs = self.cost(
+                        x1 * np.ones([x1.shape[0],2]),
+                        u1_batch
+                    )
+                    costs_plus_log_pis1 = costs + log_pis1
+
+                    expectationTerm1 = np.sum(pis.reshape(-1,1) * (costs_plus_log_pis1.reshape(-1,1) + (self.w.T @ K_us1 @ phi_x1).reshape(self.All_U.shape[1],1)))
+
+                    inner_pi_us2 = self.inner_pi_us(u2_batch, x1)
+                    inner_pi_us2 = np.real(inner_pi_us2)
+                    max_inner_pi_u2 = np.max(inner_pi_us2)
+                    pi_us2 = np.exp(inner_pi_us2 - max_inner_pi_u2)
+                    Z_x2 = np.sum(pi_us2)
+
+                    pis2 = pi_us2 / Z_x2
+                    log_pis2 = np.log(pis2)
+                    K_us2 = self.K_us(u2_batch)
+                    costs = self.cost(
+                        x1 * np.ones([x1.shape[0],2]),
+                        u2_batch
+                    )
+                    expectationTerm2 = np.einsum('i, ijk -> jk', pis2, K_us2 @ phi_x1)
+
+                    # Equation 13/14 in writeup
+                    nabla_w += ((self.w.T @ phi_x1 - expectationTerm1) * (phi_x1 - expectationTerm2)) / batch_size
+
+                gradientNorm = l2_norm(nabla_w, np.zeros_like(nabla_w))
+                gradientNorms.append(gradientNorm)
 
                 # Update weights
+                assert self.w.shape == nabla_w.shape
                 self.w = self.w - (self.learning_rate * nabla_w)
+                # print("Current weights:", self.w)
 
                 # Recompute Bellman error
-                BE = self.bellmanError()
+                BE = self.bellmanError()[0,0]
+                bellmanErrors.append(BE)
                 print("Current Bellman error:", BE)
+
+            return bellmanErrors, gradientNorms
+            # while BE > self.epsilon:
+            #     # These are col vectors
+            #     u1 = np.random.uniform(self.u_lower, self.u_upper)
+            #     u2 = np.random.uniform(self.u_lower, self.u_upper)
+            #     x1 = self.X[:, np.random.choice(np.arange(self.X.shape[1]))].reshape(-1,1)
+            #     phi_x1 = self.phi(x1)
+            #     K_u1 = self.K_u(u1)
+            #     K_u2 = self.K_u(u2)
+
+            #     # Equation 13/14 in writeup
+            #     nabla_w = (self.w @ phi_x1 - ((self.pi_u(u1, x1) / rho(u1, a=0, b=2)) * (self.cost(x1, u1) + np.log(self.pi_u(u1, x1)) + self.w @ K_u1 @ phi_x1))) \
+            #                 * (phi_x1 - (self.pi_u(u2, x1) / rho(u2, a=0, b=2)) * K_u2 @ phi_x1)
+
+            #     # Update weights
+            #     self.w = self.w - (self.learning_rate * nabla_w)
+
+            #     # Recompute Bellman error
+            #     BE = self.bellmanError()
+            #     print("Current Bellman error:", BE)
 
     def Q_pi_t(self, x, u):
         return self.cost(x, u) + self.w @ self.K_u(u)
