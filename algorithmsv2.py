@@ -63,7 +63,7 @@ class algos:
         return np.einsum('ijz,zk->kij', self.K_hat, self.psi(us))
 
     def inner_pi_u(self, u, x):
-    inner_pi_u = (-(self.cost(x, u) + self.w.T @ self.K_u(u) @ self.phi(x)))[0]
+        inner_pi_u = (-(self.cost(x, u) + self.w.T @ self.K_u(u) @ self.phi(x)))[0]
         return inner_pi_u
 
     def inner_pi_us(self, us, x):
@@ -105,23 +105,26 @@ class algos:
         ''' Equation 3 in writeup modified for continuous action weight regularization added to help gradient explosion in Bellman algos '''
         total = 0
         self.All_U = np.random.uniform(self.u_lower, self.u_upper, [1,self.u_batchSize])
+        print(self.All_U.shape)
         for _ in range(int(self.X.shape[1]/100)): # loop
             # x = self.X[:,i].reshape(-1,1)
             x = self.X[:, np.random.choice(np.arange(self.X.shape[1]))].reshape(-1,1)
             phi_x = self.phi(x)
 
-            inner_pi_us = self.inner_pi_us(self.All_U, x) #vectorize
+            inner_pi_us = self.inner_pi_us(self.All_U, x)
             inner_pi_us = np.real(inner_pi_us)
-            max_inner_pi_u = np.max(inner_pi_us)
+            max_inner_pi_u = 0#np.max(inner_pi_us)
             pi_us = np.exp(inner_pi_us - max_inner_pi_u)
+            print('pi_us arg', inner_pi_us- max_inner_pi_u)
             Z_x = np.sum(pi_us)
 
             pis = pi_us / Z_x
+            print('pis', pis)
             # pi_sum = np.sum(pis)
             # assert np.isclose(pi_sum, 1, rtol=1e-3, atol=1e-4)
 
             weighted_phi_x_primes = self.w.T @ self.K_us(self.All_U) @ phi_x
-            expectation_us = (self.cost(x * np.ones([x.shape[0],2]), self.All_U) + np.log(pis) + weighted_phi_x_primes[:,0,0]) * pis
+            expectation_us = (self.cost(x * np.ones([x.shape[0],self.All_U.shape[1]]), self.All_U) + np.log(pis) + weighted_phi_x_primes[:,0,0]) * pis
             expectation_u = np.sum(expectation_us)
 
             total += np.power((self.w.T @ phi_x - expectation_u), 2)
@@ -224,12 +227,12 @@ class algos:
                     log_pis1 = np.log(pis1)
                     K_us1 = self.K_us(u1_batch)
                     costs = self.cost(
-                        x1 * np.ones([x1.shape[0],2]),
+                        x1 * np.ones([x1.shape[0],self.All_U.shape[1]]),
                         u1_batch
                     )
                     costs_plus_log_pis1 = costs + log_pis1
 
-                    expectationTerm1 = np.sum(pis.reshape(-1,1) * (costs_plus_log_pis1.reshape(-1,1) + (self.w.T @ K_us1 @ phi_x1).reshape(self.All_U.shape[1],1)))
+                    expectationTerm1 = np.sum(pis1.reshape(-1,1) * (costs_plus_log_pis1.reshape(-1,1) + (self.w.T @ K_us1 @ phi_x1).reshape(u1_batch.shape[1],1)))
 
                     inner_pi_us2 = self.inner_pi_us(u2_batch, x1)
                     inner_pi_us2 = np.real(inner_pi_us2)
@@ -238,10 +241,10 @@ class algos:
                     Z_x2 = np.sum(pi_us2)
 
                     pis2 = pi_us2 / Z_x2
-                    log_pis2 = np.log(pis2)
+                    #log_pis2 = np.log(pis2)
                     K_us2 = self.K_us(u2_batch)
                     costs = self.cost(
-                        x1 * np.ones([x1.shape[0],2]),
+                        x1 * np.ones([x1.shape[0],u2_batch.shape[1]]),
                         u2_batch
                     )
                     expectationTerm2 = np.einsum('i, ijk -> jk', pis2, K_us2 @ phi_x1)
