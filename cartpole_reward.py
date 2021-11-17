@@ -101,8 +101,9 @@ def defaultCartpoleReward(state, action):
         reward = 0.0
 
     return reward
-# %%
-
+#%%
+# Could look at current state instead of next state
+# (Might only need to pass states without actions)
 def defaultCartpoleRewardMatrix(states, actions):
     # x, x_dot, theta, theta_dot = state
 
