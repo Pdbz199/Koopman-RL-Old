@@ -26,6 +26,7 @@ if __name__ == '__main__':
 
     #%% Load environment
     env = gym.make('CartPole-v0')
+    env2 = gym.make('CartPole-v0')
 
     #%% Load data
     X_0 = np.load('../../random-agent/cartpole-states-0.npy').T
@@ -123,41 +124,55 @@ if __name__ == '__main__':
         return -cartpole_reward.defaultCartpoleRewardMatrix(xs,us)
 
     #%% Control
-    algos = algorithmsv2.algos(X, All_U, u_bounds[0], u_bounds[1], phi, psi, K, cost, epsilon=7065.0, bellmanErrorType=0, learning_rate=1e-1)
+    algos = algorithmsv2.algos(X, All_U, u_bounds, phi, psi, K, cost, epsilon=8000.0, bellmanErrorType=0, learning_rate=1e-1)
     bellmanErrors, gradientNorms = algos.algorithm2(batch_size=256)
     # algos = tf_algorithmsv2.Algorithms(X, All_U, phi, psi, K, cost)
     # bellmanErrors = algos.algorithm2()
 
     #%% Plots
-    # plt.plot(np.arange(len(bellmanErrors)), bellmanErrors)
-    # plt.show()
-    # plt.plot(np.arange(len(gradientNorms)), gradientNorms)
-    # plt.show()
+    plt.plot(np.arange(len(bellmanErrors)), bellmanErrors)
+    plt.show()
+    plt.plot(np.arange(len(gradientNorms)), gradientNorms)
+    plt.show()
 
     #%%
     print(algos.w)
 
-    # print(algos.pi(tf.stack([[0]]), tf.reshape(X[:,1511], [X[:,0].shape[0],1]), algos.w))
-    # print(algos.pi(tf.stack([[1]]), tf.reshape(X[:,1511], [X[:,0].shape[0],1]), algos.w))
-
     #%% Run policy in environment
-    # episodes = 100
-    # multi_norms = []
-    # extended_norms = []
-    # tensor_norms = []
-    # for episode in range(episodes):
-    #     observation = env.reset()
-    #     done = False
-    #     while not done:
-    #         env.render()
-    #         phi_x = phi(observation.reshape(-1,1)) # phi applied to current state
-    #         reshapenObservation = tf.reshape(observation, [X[:,0].shape[0],1])
-    #         p0 = algos.pi_u(tf.stack([[0]]), reshapenObservation)
-    #         p = [p0, 1-p0]
-    #         action = np.random.choice([0,1], p=p)
+    episodes = 1000
+    rewards_0 = []
+    rewards_1 = []
+    for episode in range(episodes):
+        observation_0 = env.reset()
+        observation_1 = env2.reset()
 
-    #         # Take one step forward in environment
-    #         observation, reward, done, _ = env.step(action)
-    # env.close()
+        done_0 = False
+        while not done_0:
+            # env.render() # using policy from bellman error minimization
+            # env2.render() # using random policy
 
-    #%%
+            x_0 = observation_0.reshape(-1,1)
+
+            # Compute pi's for all actions
+            inner_pi_us = algos.inner_pi_us(All_U, x_0)
+            inner_pi_us = np.real(inner_pi_us)
+            max_inner_pi_u = np.max(inner_pi_us)
+            pi_us = np.exp(inner_pi_us - max_inner_pi_u)
+            Z_x = np.sum(pi_us)
+            pis = pi_us / Z_x
+
+            action_0 = np.random.choice([0,1], p=pis)
+            action_1 = env.action_space.sample()
+
+            # Take one step forward in environment
+            observation_0, reward_0, done_0, _ = env.step(action_0)
+            observation_1, reward_1, done_1, _ = env2.step(action_1)
+
+            rewards_0.append(reward_0)
+            rewards_1.append(0 if done_1 else reward_1)
+    env.close()
+
+print("Average reward with policy from bellman error minimization:", np.mean(rewards_0))
+print("Average reward with random policy:", np.mean(rewards_1))
+
+#%%
