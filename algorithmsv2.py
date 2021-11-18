@@ -219,6 +219,7 @@ class algos:
                 
                 u1_batch = np.random.uniform(self.u_lower, self.u_upper, [1,self.u_batchSize])
                 u2_batch = np.random.uniform(self.u_lower, self.u_upper, [1,self.u_batchSize])
+                normalization = 4*20 # 4 for uniform dist on u and 20 for minibatch on u's
 
                 nabla_w = np.zeros_like(self.w)
                 for x1, phi_x1 in zip(x_batch.T, phi_x_batch.T): # loop
@@ -231,7 +232,7 @@ class algos:
                     pi_us1 = np.exp(inner_pi_us1 - max_inner_pi_u1)
                     Z_x1 = np.sum(pi_us1)
 
-                    pis1 = pi_us1 / Z_x1
+                    pis1 = pi_us1 / (Z_x1*normalization)
                     log_pis1 = np.log(pis1)
                     K_us1 = self.K_us(u1_batch)
                     costs = self.cost(
@@ -248,7 +249,7 @@ class algos:
                     pi_us2 = np.exp(inner_pi_us2 - max_inner_pi_u2)
                     Z_x2 = np.sum(pi_us2)
 
-                    pis2 = pi_us2 / Z_x2
+                    pis2 = pi_us2 / (Z_x2 *normalization)
                     #log_pis2 = np.log(pis2)
                     K_us2 = self.K_us(u2_batch)
                     costs = self.cost(
@@ -258,6 +259,7 @@ class algos:
                     expectationTerm2 = np.einsum('i, ijk -> jk', pis2, K_us2 @ phi_x1)
 
                     # Equation 13/14 in writeup
+                    #! Can we just replace first term in multiplication with call to BE method?
                     nabla_w += ((self.w.T @ phi_x1 - expectationTerm1) * (phi_x1 - expectationTerm2)) / batch_size
 
                 gradientNorm = l2_norm(nabla_w, np.zeros_like(nabla_w))

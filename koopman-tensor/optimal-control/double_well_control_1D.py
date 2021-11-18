@@ -153,7 +153,7 @@ for i in range(41):
 U = np.array(U)
 
 #%% Control
-algos = algorithmsv2.algos(X, U, u_bounds[0], phi, psi, K, cost, epsilon=1, bellmanErrorType=1,u_batchSize=20)
+algos = algorithmsv2.algos(X, U, u_bounds[0], phi, psi, K, cost, epsilon=1e-2, bellmanErrorType=1,u_batchSize=20)
 pi = algos.algorithm2(batch_size=50)
 # pi = algos.algorithm3()
 
