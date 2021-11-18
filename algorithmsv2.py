@@ -116,12 +116,13 @@ class algos:
 
             inner_pi_us = self.inner_pi_us(self.All_U, x)
             inner_pi_us = np.real(inner_pi_us)
-            max_inner_pi_u = 0#np.max(inner_pi_us)
+            max_inner_pi_u = np.max(inner_pi_us)
             pi_us = np.exp(inner_pi_us - max_inner_pi_u)
             print('pi_us arg', inner_pi_us- max_inner_pi_u)
             Z_x = np.sum(pi_us)
 
-            pis = pi_us / Z_x
+            normalization = 4*20 # 4 for uniform dist on u and 20 for minibatch on u's
+            pis = pi_us / (Z_x*normalization)
             print('pis', pis)
             # pi_sum = np.sum(pis)
             # assert np.isclose(pi_sum, 1, rtol=1e-3, atol=1e-4)

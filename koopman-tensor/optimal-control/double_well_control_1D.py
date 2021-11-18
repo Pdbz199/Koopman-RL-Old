@@ -52,14 +52,17 @@ def f(x, beta, c):
 # Define initial parameters
 init_beta = 1
 init_c = 0
-u_bounds = [-2, 2]
-bounds = np.array([u_bounds, [-1.5, 1.5]])
-boxes = np.array([20, 15])
-Omega = domain.discretization(bounds, boxes)
+u_bounds = np.array([[-2, 2]])
+x_bounds = np.array([[-1.5, 1.5]])
+#bounds_u = np.array([u_bounds])
+u_boxes = np.array([20])
+x_boxes = np.array([15])
+Omega_u = domain.discretization(u_bounds, u_boxes)
+Omega_x = domain.discretization(x_bounds, x_boxes)
 # I think X and U need to be generated in a different way
-X = Omega.randPerBox(100)[0].reshape(1,-1)
+X = Omega_x.randPerBox(100)
 # U = np.random.uniform(u_bounds[0], u_bounds[1], (1, X.shape[1]))
-U = Omega.randPerBox(100)[1].reshape(1,-1)
+U = Omega_u.randPerBox(100)
 
 dim_x = X.shape[0]
 dim_u = U.shape[0]
@@ -79,7 +82,7 @@ Psi_U = psi(U) #np.ones((1,N))
 dim_phi = Phi_X[:,0].shape[0]
 dim_psi = Psi_U[:,0].shape[0]
 
-dPhi_Y = np.einsum('ijk,jk->ik', phi.diff(X), Y)
+dPhi_Y = phi.diff(X)[:,0,:]*Y #np.einsum('ijk,jk->ik', phi.diff(X), Y)
 ddPhi_X = phi.ddiff(X) # second-order derivatives
 #S = np.einsum('ijk,ljk->ilk', Z, Z) # sigma \cdot sigma^T
 S = Z * Z
@@ -108,12 +111,12 @@ evs = 3
 w, V = sortEig(K_u(K, np.array([0])).T, evs)
 
 #%%
-c = Omega.midpointGrid()
+c = Omega_u.midpointGrid()
 Phi_c = phi(c)
 for i in range(evs):
     plt.figure(i+1)
     plt.clf()
-    Omega.plot(np.real( V[:, i].T @ Phi_c ), mode='3D')
+    Omega_u.plot(np.real( V[:, i].T @ Phi_c ), mode='3D')
 
 #%% Training error (training error decreases with lower order of monomials)
 def l2_norm(true_state, predicted_state):
@@ -150,7 +153,7 @@ for i in range(41):
 U = np.array(U)
 
 #%% Control
-algos = algorithmsv2.algos(X, U, u_bounds, phi, psi, K, cost, epsilon=1, bellmanErrorType=1,u_batchSize=2)
+algos = algorithmsv2.algos(X, U, u_bounds[0], phi, psi, K, cost, epsilon=1, bellmanErrorType=1,u_batchSize=20)
 pi = algos.algorithm2(batch_size=50)
 # pi = algos.algorithm3()
 
