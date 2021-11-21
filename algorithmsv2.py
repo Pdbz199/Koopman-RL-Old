@@ -1,7 +1,7 @@
 from os import replace
 import auxiliaries as aux
 import numpy as np
-import pymp
+# import pymp
 import scipy.integrate as integrate
 import time
 
@@ -35,14 +35,14 @@ class algos:
         epsilon=1,
         weightRegularizationBool=1,
         weightRegLambda=1e-2,
-        u_batchSize=50
+        u_batch_size=50
     ):
         self.X = X # Collection of observations
         self.Phi_X = phi(X) # Collection of lifted observations
         self.All_U = All_U # U is a collection of all POSSIBLE actions as row vectors
         self.u_lower = u_bounds[0] # lower bound on actions in continuous case
         self.u_upper = u_bounds[1] # upper bound on actions in continuous case
-        self.u_batchSize = u_batchSize
+        self.u_batch_size = u_batch_size
         self.phi = phi # Dictionary function for X
         self.psi = psi # Dictionary function for U
         self.K_hat = K_hat # Estimated Koopman Tensor
@@ -78,37 +78,38 @@ class algos:
     def discreteBellmanError(self):
         ''' Equation 12 in writeup '''
 
-        total = pymp.shared.array((1,1), dtype='float32')
-        with pymp.Parallel(8) as p:
-            for i in p.range(0, self.X.shape[1]): # loop
-                x = self.X[:,i].reshape(-1,1)
-                # x = self.X[:, np.random.choice(np.arange(self.X.shape[1]))].reshape(-1,1)
-                phi_x = self.phi(x)
+        total = 0
+        # total = pymp.shared.array((1,1), dtype='float32')
+        # with pymp.Parallel(8) as p:
+        for i in range(0, self.X.shape[1]): # loop
+            x = self.X[:,i].reshape(-1,1)
+            # x = self.X[:, np.random.choice(np.arange(self.X.shape[1]))].reshape(-1,1)
+            phi_x = self.phi(x)
 
-                inner_pi_us = self.inner_pi_us(self.All_U, x) #vectorize
-                inner_pi_us = np.real(inner_pi_us)
-                max_inner_pi_u = np.max(inner_pi_us)
-                pi_us = np.exp(inner_pi_us - max_inner_pi_u)
-                Z_x = np.sum(pi_us)
+            inner_pi_us = self.inner_pi_us(self.All_U, x) #vectorize
+            inner_pi_us = np.real(inner_pi_us)
+            max_inner_pi_u = np.max(inner_pi_us)
+            pi_us = np.exp(inner_pi_us - max_inner_pi_u)
+            Z_x = np.sum(pi_us)
 
-                pis = pi_us / Z_x
-                # pi_sum = np.sum(pis)
-                # assert np.isclose(pi_sum, 1, rtol=1e-3, atol=1e-4)
+            pis = pi_us / Z_x
+            # pi_sum = np.sum(pis)
+            # assert np.isclose(pi_sum, 1, rtol=1e-3, atol=1e-4)
 
-                weighted_phi_x_primes = self.w.T @ self.K_us(self.All_U) @ phi_x
-                expectation_us = (self.cost(x * np.ones([x.shape[0],2]), self.All_U) + np.log(pis) + weighted_phi_x_primes[:,0,0]) * pis
-                expectation_u = np.sum(expectation_us)
+            weighted_phi_x_primes = self.w.T @ self.K_us(self.All_U) @ phi_x
+            expectation_us = (self.cost(x * np.ones([x.shape[0],2]), self.All_U) + np.log(pis) + weighted_phi_x_primes[:,0,0]) * pis
+            expectation_u = np.sum(expectation_us)
 
-                with p.lock:
-                    total += np.power((self.w.T @ phi_x - expectation_u), 2)
+            # with p.lock:
+            total += np.power((self.w.T @ phi_x - expectation_u), 2)
                 
         return total
 
     def continuousBellmanError(self):
         ''' Equation 3 in writeup modified for continuous action weight regularization added to help gradient explosion in Bellman algos '''
         total = 0
-        self.All_U = np.random.uniform(self.u_lower, self.u_upper, [1,self.u_batchSize])
-        print(self.All_U.shape)
+        self.All_U = np.random.uniform(self.u_lower, self.u_upper, [1,self.u_batch_size])
+        # print(self.All_U.shape)
         for _ in range(int(self.X.shape[1]/100)): # loop
             # x = self.X[:,i].reshape(-1,1)
             x = self.X[:, np.random.choice(np.arange(self.X.shape[1]))].reshape(-1,1)
@@ -118,12 +119,10 @@ class algos:
             inner_pi_us = np.real(inner_pi_us)
             max_inner_pi_u = np.max(inner_pi_us)
             pi_us = np.exp(inner_pi_us - max_inner_pi_u)
-            print('pi_us arg', inner_pi_us- max_inner_pi_u)
             Z_x = np.sum(pi_us)
 
-            normalization = 4*20 # 4 for uniform dist on u and 20 for minibatch on u's
+            normalization = 4*self.u_batch_size # 4 for uniform dist on u and 20 for minibatch on u's
             pis = pi_us / (Z_x*normalization)
-            print('pis', pis)
             # pi_sum = np.sum(pis)
             # assert np.isclose(pi_sum, 1, rtol=1e-3, atol=1e-4)
 
@@ -167,35 +166,35 @@ class algos:
                 x_batch = self.X[:,x_batch_indices]
                 phi_x_batch = self.phi(x_batch)
 
-                # nabla_w = np.zeros_like(self.w)
-                nabla_w = pymp.shared.array(self.w.shape, dtype='float32')
-                with pymp.Parallel(8) as p:
-                    for i in p.range(0, x_batch.shape[1]):
-                    # for x1, phi_x1 in zip(x_batch.T, phi_x_batch.T): # loop
-                        x = x_batch[:,i].reshape(-1,1)
-                        phi_x = phi_x_batch[:,i].reshape(-1,1)
+                nabla_w = np.zeros_like(self.w)
+                # nabla_w = pymp.shared.array(self.w.shape, dtype='float32')
+                # with pymp.Parallel(8) as p:
+                for i in range(0, x_batch.shape[1]):
+                # for x1, phi_x1 in zip(x_batch.T, phi_x_batch.T): # loop
+                    x = x_batch[:,i].reshape(-1,1)
+                    phi_x = phi_x_batch[:,i].reshape(-1,1)
 
-                        inner_pi_us = self.inner_pi_us(self.All_U, x)
-                        inner_pi_us = np.real(inner_pi_us)
-                        max_inner_pi_u = np.max(inner_pi_us)
-                        pi_us = np.exp(inner_pi_us - max_inner_pi_u)
-                        Z_x = np.sum(pi_us)
+                    inner_pi_us = self.inner_pi_us(self.All_U, x)
+                    inner_pi_us = np.real(inner_pi_us)
+                    max_inner_pi_u = np.max(inner_pi_us)
+                    pi_us = np.exp(inner_pi_us - max_inner_pi_u)
+                    Z_x = np.sum(pi_us)
 
-                        pis = pi_us / Z_x
-                        log_pis = np.log(pis)
-                        K_us = self.K_us(self.All_U)
-                        costs = self.cost(
-                            x * np.ones([x.shape[0],2]),
-                            self.All_U
-                        )
-                        costs_plus_log_pis = costs + log_pis
+                    pis = pi_us / Z_x
+                    log_pis = np.log(pis)
+                    K_us = self.K_us(self.All_U)
+                    costs = self.cost(
+                        x * np.ones([x.shape[0],2]),
+                        self.All_U
+                    )
+                    costs_plus_log_pis = costs + log_pis
 
-                        expectationTerm1 = np.sum(pis.reshape(-1,1) * (costs_plus_log_pis.reshape(-1,1) + (self.w.T @ K_us @ phi_x).reshape(self.All_U.shape[1],1)))
-                        expectationTerm2 = np.einsum('i, ijk -> jk', pis, K_us @ phi_x)
+                    expectationTerm1 = np.sum(pis.reshape(-1,1) * (costs_plus_log_pis.reshape(-1,1) + (self.w.T @ K_us @ phi_x).reshape(self.All_U.shape[1],1)))
+                    expectationTerm2 = np.einsum('i, ijk -> jk', pis, K_us @ phi_x)
 
-                        # Equation 13/14 in writeup
-                        with p.lock:
-                            nabla_w += ((self.w.T @ phi_x - expectationTerm1) * (phi_x - expectationTerm2)) / batch_size
+                    # Equation 13/14 in writeup
+                    # with p.lock:
+                    nabla_w += ((self.w.T @ phi_x - expectationTerm1) * (phi_x - expectationTerm2)) / batch_size
 
                 gradientNorm = l2_norm(nabla_w, np.zeros_like(nabla_w))
                 gradientNorms.append(gradientNorm)
@@ -217,9 +216,9 @@ class algos:
                 x_batch = self.X[:,x_batch_indices]
                 phi_x_batch = self.phi(x_batch)
                 
-                u1_batch = np.random.uniform(self.u_lower, self.u_upper, [1,self.u_batchSize])
-                u2_batch = np.random.uniform(self.u_lower, self.u_upper, [1,self.u_batchSize])
-                normalization = 4*20 # 4 for uniform dist on u and 20 for minibatch on u's
+                u1_batch = np.random.uniform(self.u_lower, self.u_upper, [1,self.u_batch_size])
+                u2_batch = np.random.uniform(self.u_lower, self.u_upper, [1,self.u_batch_size])
+                normalization = 4*self.u_batch_size # 4 for uniform dist on u and 20 for minibatch on u's
 
                 nabla_w = np.zeros_like(self.w)
                 for x1, phi_x1 in zip(x_batch.T, phi_x_batch.T): # loop
