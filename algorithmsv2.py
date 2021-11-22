@@ -86,7 +86,7 @@ class algos:
             # x = self.X[:, np.random.choice(np.arange(self.X.shape[1]))].reshape(-1,1)
             phi_x = self.phi(x)
 
-            inner_pi_us = self.inner_pi_us(self.All_U, x) #vectorize
+            inner_pi_us = self.inner_pi_us(self.All_U, x)
             inner_pi_us = np.real(inner_pi_us)
             max_inner_pi_u = np.max(inner_pi_us)
             pi_us = np.exp(inner_pi_us - max_inner_pi_u)
@@ -110,9 +110,9 @@ class algos:
         total = 0
         self.All_U = np.random.uniform(self.u_lower, self.u_upper, [1,self.u_batch_size])
         # print(self.All_U.shape)
-        for _ in range(int(self.X.shape[1]/100)): # loop
-            # x = self.X[:,i].reshape(-1,1)
-            x = self.X[:, np.random.choice(np.arange(self.X.shape[1]))].reshape(-1,1)
+        for i in range(0, self.X.shape[1]): # loop
+            x = self.X[:,i].reshape(-1,1)
+            # x = self.X[:, np.random.choice(np.arange(self.X.shape[1]))].reshape(-1,1)
             phi_x = self.phi(x)
 
             inner_pi_us = self.inner_pi_us(self.All_U, x)

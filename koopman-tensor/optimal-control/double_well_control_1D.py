@@ -140,23 +140,11 @@ def cost(x, u):
     return (x[0]**2) #Tried to normalize this by 10000 for overflow issues, but didn't help
 
 #%% Discretize all controls
-def discretize(start, end, num_points):
-    step_size = (np.abs(start) + np.abs(end)) / num_points
-    ret = [start]
-    for i in range(1,num_points):
-        ret.append(ret[i-1] + step_size)
-    return ret
-
-U = []
-for i in range(41):
-    U.append([-2 + (i * 0.1)])
-U = np.array(U)
+step_size = 0.1
+All_U = np.arange(start=u_bounds[0,0], stop=u_bounds[0,1]+step_size, step=0.1).reshape(-1,1)
 
 #%% Control
-algos = algorithmsv2.algos(X, U, u_bounds[0], phi, psi, K, cost, epsilon=1e-2, bellmanErrorType=1, u_batch_size=20)
+algos = algorithmsv2.algos(X, All_U, u_bounds[0], phi, psi, K, cost, epsilon=1e-2, bellmanErrorType=1, u_batch_size=20)
 bellmanErrors, gradientNorms = algos.algorithm2(batch_size=64)
-# pi = algos.algorithm3()
 
-#%% Bellman Errors
-# 1184.3180405984
-# 3508912268.71883
+#%%
