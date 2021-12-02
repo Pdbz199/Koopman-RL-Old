@@ -11,9 +11,9 @@ import observables
 
 def l2_norm(true_state, predicted_state):
     if true_state.shape != predicted_state.shape:
-        print("Shape 1:", true_state.shape)
-        print("Shape 2:", predicted_state.shape)
-        raise Exception('The dimensions of the parameters did not match and therefore cannot be compared.')
+        # print("Shape 1:", true_state.shape)
+        # print("Shape 2:", predicted_state.shape)
+        raise Exception(f'The dimensions of the parameters did not match ({true_state.shape} and {predicted_state.shape}) and therefore cannot be compared.')
     
     err = true_state - predicted_state
     return np.sum(np.power(err, 2))
@@ -114,7 +114,7 @@ K_rrrs = np.empty((num_ranks, dim_phi, dim_phi, dim_psi))
 for i in range(num_ranks):
     K_rrr = np.empty((dim_phi, dim_phi, dim_psi))
     for j in range(dim_phi):
-        K_rrr[j] = K_rrr[j].reshape((dim_phi,dim_psi), order='F')
+        K_rrr[j] = M_rrrs[i,j].reshape((dim_phi,dim_psi), order='F')
     K_rrrs[i] = K_rrr
 
 def K_u(K, u):
@@ -146,7 +146,7 @@ for i in range(N):
     tensor_prediction = B.T @ K_u(K, np.array([[action]])) @ phi_x
     tensor_prediction_2 = B.T @ K_u(K_2, np.array([[action]])) @ phi_x
 
-    tensor_predictions_rrr = np.empty((num_ranks, dim_phi, 1))
+    tensor_predictions_rrr = np.empty((num_ranks, dim_x, 1))
     for j in range(num_ranks):
         tensor_predictions_rrr[j] = B.T @ K_u(K_rrrs[j], np.array([[action]])) @ phi_x
 
@@ -158,7 +158,7 @@ for i in range(N):
     tensor_norms[i] = l2_norm(true_x_prime, tensor_prediction[:,0])
     tensor_norms_2[i] = l2_norm(true_x_prime, tensor_prediction_2[:,0])
     for j in range(num_ranks):
-        tensor_norms_rrr[j,i] = l2_norm(true_x_prime, tensor_predictions_rrr[:,0])
+        tensor_norms_rrr[j,i] = l2_norm(true_x_prime, tensor_predictions_rrr[j,:,0])
 print("Multi Koopman mean training error:", np.mean(multi_norms))
 print("Extended mean training error:", np.mean(extended_norms))
 print("Tensor mean training error (OLS):", np.mean(tensor_norms))
@@ -167,7 +167,7 @@ for i in range(num_ranks):
     print(f"Tensor mean training error (RRR, rank={i+1}):", np.mean(tensor_norms_rrr[i]))
 
 #%% Run environment for prediction error
-episodes = 1000
+episodes = 10
 multi_norms = []
 extended_norms = []
 tensor_norms = []
@@ -189,6 +189,7 @@ for episode in range(episodes):
         tensor_predictions_rrr = []
         for i in range(num_ranks):
             tensor_predictions_rrr.append(B.T @ K_u(K_rrrs[i], np.array([[action]])) @ phi_x)
+        print(nptensor_predictions_rrr)
 
         # Take one step forward in environment
         observation, reward, done, _ = env.step(action)
@@ -199,7 +200,6 @@ for episode in range(episodes):
         tensor_norms.append(l2_norm(observation, tensor_prediction[:,0]))
         tensor_norms_2.append(l2_norm(observation, tensor_prediction_2[:,0]))
         for i in range(num_ranks):
-            print(tensor_predictions_rrr[i].shape)
             tensor_norms_rrr.append(l2_norm(observation, tensor_predictions_rrr[i,:,0]))
 env.close()
 print("Multi Koopman mean prediction error:", np.mean(multi_norms))
