@@ -76,7 +76,7 @@ U = np.random.uniform(-100,100,size=(1,N)) # Random actions
 Y = F(X, U) # Move one step forward
 
 #%% Koopman Tensor
-order = 2 # Does really poorly when order = 4
+order = 2
 phi = observables.monomials(order)
 psi = observables.monomials(order)
 

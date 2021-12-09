@@ -152,6 +152,8 @@ def getPsiPhiMatrix(Psi_U, Phi_X):
 psiPhiMatrix = getPsiPhiMatrix(Psi_U, Phi_X)
 print("PsiPhiMatrix shape:", psiPhiMatrix.shape)
 M = estimate_L.ols(psiPhiMatrix.T, getPhiMatrix(Y_opt).T).T
+M_2 = estimate_L.SINDy(psiPhiMatrix.T, getPhiMatrix(Y_opt).T).T
+M_3 = estimate_L.rrr(psiPhiMatrix.T, getPhiMatrix(Y_opt).T).T
 print("M shape:", M.shape)
 assert M.shape == (num_lifted_state_features, num_lifted_state_features * num_lifted_action_features)
 
@@ -159,12 +161,18 @@ K = np.empty((num_lifted_state_features, num_lifted_state_features, num_lifted_a
 for i in range(M.shape[0]):
     K[i] = M[i].reshape((num_lifted_state_features, num_lifted_action_features), order='F')
 print("K shape:", K.shape)
+K_2 = np.empty((num_lifted_state_features, num_lifted_state_features, num_lifted_action_features))
+for i in range(M_2.shape[0]):
+    K_2[i] = M_2[i].reshape((num_lifted_state_features, num_lifted_action_features), order='F')
+K_3 = np.empty((num_lifted_state_features, num_lifted_state_features, num_lifted_action_features))
+for i in range(M_3.shape[0]):
+    K_3[i] = M_3[i].reshape((num_lifted_state_features, num_lifted_action_features), order='F')
 
-def K_u(u):
+def K_u(K, u):
     return np.einsum('ijz,z->ij', K, psi(u))
 
 print("Psi U[0,0]:", psi(U_opt[0,0]))
-print("K_u shape:", K_u(U_opt[0,0]).shape)
+print("K_u shape:", K_u(K, U_opt[0,0]).shape)
 
 #%%
 def l2_norm(true_state, predicted_state):
@@ -172,25 +180,41 @@ def l2_norm(true_state, predicted_state):
 
 #%% Training error
 norms = []
+norms_2 = []
+norms_3 = []
 starting_point = 0
 for i in range(Y_opt.shape[1]):
     actual_phi_x_prime = phi(Y_opt[:,starting_point+i])
-    predicted_phi_x_prime = K_u(U_opt[0,starting_point+i]) @ phi(X_opt[:,starting_point+i])
+    predicted_phi_x_prime = K_u(K, U_opt[0,starting_point+i]) @ phi(X_opt[:,starting_point+i])
 
     norms.append(l2_norm(actual_phi_x_prime, predicted_phi_x_prime))
+    norms_2.append(l2_norm(actual_phi_x_prime, K_u(K_2, U_opt[0,starting_point+i]) @ phi(X_opt[:,starting_point+i])))
+    norms_3.append(l2_norm(actual_phi_x_prime, K_u(K_3, U_opt[0,starting_point+i]) @ phi(X_opt[:,starting_point+i])))
 norms = np.array(norms)
+norms_2 = np.array(norms_2)
+norms_3 = np.array(norms_3)
 # print(norms)
-print("Mean training norm:", norms.mean())
+print("Mean training norm (OLS):", norms.mean())
+print("Mean training norm (SINDy):", norms_2.mean())
+print("Mean training norm (RRR):", norms_3.mean())
 
 #%% Single-step prediction error with optimal controller
 norms = []
+norms_2 = []
+norms_3 = []
 starting_point = 0
 for i in range(Y_opt.shape[1]):
     actual_phi_x_prime = phi(Y_opt[:,starting_point+i])
-    predicted_phi_x_prime = K_u(U_opt[0,starting_point+i]) @ phi(X_opt[:,starting_point+i])
+    predicted_phi_x_prime = K_u(K, U_opt[0,starting_point+i]) @ phi(X_opt[:,starting_point+i])
 
     norms.append(l2_norm(actual_phi_x_prime, predicted_phi_x_prime))
+    norms_2.append(l2_norm(actual_phi_x_prime, K_u(K_2, U_opt[0,starting_point+i]) @ phi(X_opt[:,starting_point+i])))
+    norms_3.append(l2_norm(actual_phi_x_prime, K_u(K_3, U_opt[0,starting_point+i]) @ phi(X_opt[:,starting_point+i])))
 norms = np.array(norms)
-print("Mean single-step prediction norm:", norms.mean())
+norms_2 = np.array(norms_2)
+norms_3 = np.array(norms_3)
+print("Mean single-step prediction norm (OLS):", norms.mean())
+print("Mean single-step prediction norm (SINDy):", norms_2.mean())
+print("Mean single-step prediction norm (RRR):", norms_3.mean())
 
 #%%
