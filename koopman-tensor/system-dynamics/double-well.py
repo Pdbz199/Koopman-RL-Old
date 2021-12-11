@@ -1,4 +1,6 @@
 #%%
+import matplotlib
+import matplotlib.pyplot as plt
 import numpy as np
 import scipy as sp
 import scipy.sparse.linalg
@@ -7,7 +9,6 @@ import sys
 sys.path.append('../../')
 import domain
 import observables
-import matplotlib.pyplot as plt
 
 def l2_norm(true_state, predicted_state):
     error = true_state - predicted_state
@@ -114,13 +115,17 @@ evs = 3 # number of eigenvalues/eigenfunctions to be computed
 K, d, V = gedmd(X, Y, Z, phi, evs=evs, operator='K')
 printVector(np.real(d), 'd')
 
-# plot eigenfunctions
+#%% Plot eigenfunctions
+fig = plt.figure()
 c = Omega.midpointGrid()
+_X = c[0, :].reshape(Omega._boxes)
+_Y = c[1, :].reshape(Omega._boxes)
 Phi_c = phi(c)
+
 for i in range(evs):
-    plt.figure(i+1)
-    plt.clf()
-    Omega.plot(np.real( V[:, i].T @ Phi_c ), mode='3D')
+    ax = fig.add_subplot(2, 3, i+1, projection='3d')
+    _Z = np.real( V[:, i].T @ Phi_c ).reshape(Omega._boxes)
+    ax.plot_surface(_X, _Y, _Z, cmap=matplotlib.cm.coolwarm)
 
 #%% KOOPMAN TENSOR
 
@@ -165,13 +170,14 @@ def K_u(K, u):
     return np.einsum('ijz,z->ij', K, psi(u))
 
 #%% Plot eigenfunctions
-d, V = sortEig(K_u(_K, 0).T, evs, which='SM') #! Note the K_u is transposed
-Phi_c = phi(c)
-for i in range(evs):
-    plt.figure(i+1+evs)
-    plt.clf()
-    Omega.plot(np.real( V[:, i].T @ Phi_c ), mode='3D')
+_d, _V = sortEig(K_u(_K, 0).T, evs, which='SM') #! Note the K_u is transposed
 
+for i in range(evs):
+    ax = fig.add_subplot(2, 3, i+evs+1, projection='3d')
+    _Z = np.real( _V[:, i].T @ Phi_c ).reshape(Omega._boxes)
+    ax.plot_surface(_X, _Y, _Z, cmap=matplotlib.cm.coolwarm)
+
+#%%
 plt.show()
 
 #%%
