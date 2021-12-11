@@ -145,11 +145,19 @@ for i in range(N):
 
 #%% Estimate M
 M = estimate_L.ols(kronMatrix.T, Y.T).T # Phi_Y.T
+M_2 = estimate_L.SINDy(kronMatrix.T, Y.T).T # Phi_Y.T
+M_3 = estimate_L.rrr(kronMatrix.T, Y.T).T # Phi_Y.T
 
 #%% Reshape M into K tensor
 K = np.empty((2, d_phi, d_psi))
 for i in range(2):
     K[i] = M[i].reshape((d_phi,d_psi), order='F')
+K_2 = np.empty((2, d_phi, d_psi))
+for i in range(2):
+    K_2[i] = M_2[i].reshape((d_phi,d_psi), order='F')
+K_3 = np.empty((2, d_phi, d_psi))
+for i in range(2):
+    K_3[i] = M_3[i].reshape((d_phi,d_psi), order='F')
 
 def K_u(K, u):
     return np.einsum('ijz,z->ij', K, psi(u))
@@ -163,6 +171,8 @@ def l2_norm(true_state, predicted_state):
 fun_norms = []
 concatenated_norms = []
 norms = []
+norms_2 = []
+norms_3 = []
 for i in range(N-1):
     true_phi_x_prime = Y[:,i]
     predicted_phi_xu_prime = fun_koopman_operator @ Phi_XU[:,i]
@@ -177,9 +187,13 @@ for i in range(N-1):
     true_phi_x_prime = Y[:,i]
     predicted_phi_x_prime = K_u(K, U[:,i]) @ Phi_X[:,i]
     norms.append(l2_norm(true_phi_x_prime, predicted_phi_x_prime))
+    norms_2.append(l2_norm(Y[:,i], K_u(K_2, U[:,i]) @ Phi_X[:,i]))
+    norms_3.append(l2_norm(Y[:,i], K_u(K_3, U[:,i]) @ Phi_X[:,i]))
 fun_norms = np.array(fun_norms)
 concatenated_norms = np.array(concatenated_norms)
 norms = np.array(norms)
+norms_2 = np.array(norms_2)
+norms_3 = np.array(norms_3)
 
 # Split datasets
 split_datasets_norms = []
@@ -196,7 +210,9 @@ split_datasets_norms = np.array(split_datasets_norms)
 print("Fun mean norm on training data:", fun_norms.mean())
 print("Concatenated mean norm on training data:", concatenated_norms.mean())
 print("Split datasets mean norm on training data:", split_datasets_norms.mean())
-print("Tensor mean norm on training data:", norms.mean())
+print("Tensor mean norm on training data (OLS):", norms.mean())
+print("Tensor mean norm on training data (SINDy):", norms_2.mean())
+print("Tensor mean norm on training data (RRR):", norms_3.mean())
 
 
 
@@ -251,6 +267,8 @@ fun_norms = []
 concatenated_norms = []
 split_datasets_norms = []
 norms = []
+norms_2 = []
+norms_3 = []
 for i in range(N-1):
     true_phi_x_prime = Y[:,i]
     predicted_phi_xu_prime = fun_koopman_operator @ Phi_XU[:,i]
@@ -270,14 +288,20 @@ for i in range(N-1):
     true_phi_x_prime = Y[:,i]
     predicted_phi_x_prime = K_u(K, U[:,i]) @ Phi_X[:,i]
     norms.append(l2_norm(true_phi_x_prime, predicted_phi_x_prime))
+    norms_2.append(l2_norm(Y[:,i], K_u(K_2, U[:,i]) @ Phi_X[:,i]))
+    norms_3.append(l2_norm(Y[:,i], K_u(K_3, U[:,i]) @ Phi_X[:,i]))
 fun_norms = np.array(fun_norms)
 concatenated_norms = np.array(concatenated_norms)
 split_datasets_norms = np.array(split_datasets_norms)
 norms = np.array(norms)
+norms_2 = np.array(norms_2)
+norms_3 = np.array(norms_3)
 
 print("Fun mean norm on prediction data:", fun_norms.mean())
 print("Concatenated mean norm on prediction data:", concatenated_norms.mean())
 print("Split datasets mean norm on prediction data:", split_datasets_norms.mean())
-print("Tensor mean norm on prediction data:", norms.mean())
+print("Tensor mean norm on prediction data (OLS):", norms.mean())
+print("Tensor mean norm on prediction data (SINDy):", norms_2.mean())
+print("Tensor mean norm on prediction data (RRR):", norms_3.mean())
 
 #%%

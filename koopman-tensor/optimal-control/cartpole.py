@@ -52,13 +52,13 @@ if __name__ == '__main__':
     #%% Matrix builder functions
     order = 2
     phi = observables.monomials(order)
-    psi = observables.monomials(order)
+    # psi = observables.monomials(order)
 
     # One-hot encoder
-    # def psi(u):
-    #     psi_u = np.zeros((env.action_space.n,1))
-    #     psi_u[int(u),0] = 1
-    #     return psi_u
+    def psi(u):
+        psi_u = np.zeros((env.action_space.n,u.shape[1]))
+        psi_u[u[0].astype(int),np.arange(0,u.shape[1])] = 1
+        return psi_u
 
     #%% Compute Phi and Psi matrices + dimensions
     Phi_X = phi(X)
@@ -124,7 +124,7 @@ if __name__ == '__main__':
         return -cartpole_reward.defaultCartpoleRewardMatrix(xs,us)
 
     #%% Control
-    algos = algorithmsv2.algos(X, All_U, u_bounds, phi, psi, K, cost, epsilon=8000.0, bellmanErrorType=0, learning_rate=1e-1)
+    algos = algorithmsv2.algos(X, All_U, u_bounds, phi, psi, K, cost, epsilon=8000.0, bellmanErrorType=0, learning_rate=1)
     bellmanErrors, gradientNorms = algos.algorithm2(batch_size=256)
     # algos = tf_algorithmsv2.Algorithms(X, All_U, phi, psi, K, cost)
     # bellmanErrors = algos.algorithm2()
