@@ -48,7 +48,7 @@ x0 = 5*np.random.rand() - 2.5
 # plt.plot(y)
 
 #%% Generate training data
-m = 10000 # number of data points
+m = 1000#0 # number of data points
 X = 5*np.random.rand(1,m) - 2.5
 Y = np.zeros((1,m))
 U = np.zeros((1,m))
@@ -58,8 +58,8 @@ for i in range(m):
     y = em.integrate(s, x0)
     Y[0,i] = y[-1]
 
-plt.figure()
-plt.hist(Y, 50)
+# plt.figure()
+# plt.hist(Y, 50)
 
 #%% Koopman Tensor
 order = 10
@@ -103,8 +103,8 @@ def l2_norm(true_state, predicted_state):
     return np.sum(np.power(err, 2))
 
 #%% Training error
-prediction_norms = np.zeros(N)
-phi_prediction_norms = np.zeros(N)
+training_prediction_norms = np.zeros(N)
+training_phi_prediction_norms = np.zeros(N)
 for i in range(X.shape[1]):
     phi_x = Phi_X[:,i].reshape(-1,1)
     u = U[:,i].reshape(-1,1)
@@ -113,9 +113,32 @@ for i in range(X.shape[1]):
     true_phi_x_prime = Phi_Y[:,i].reshape(-1,1)
     predicted_phi_x_prime = K_u(K, u) @ phi_x
 
-    prediction_norms[i] = l2_norm(true_x_prime, B.T @ predicted_phi_x_prime)
-    phi_prediction_norms[i] = l2_norm(true_phi_x_prime, predicted_phi_x_prime)
-print("Mean l2 norm between true and predicted x_prime:", np.mean(prediction_norms))
-print("Mean l2 norm between true and predicted phi_x_prime:", np.mean(phi_prediction_norms))
+    training_prediction_norms[i] = l2_norm(true_x_prime, B.T @ predicted_phi_x_prime)
+    training_phi_prediction_norms[i] = l2_norm(true_phi_x_prime, predicted_phi_x_prime)
+print("TRAINING: Mean l2 norm between true and predicted x_prime:", np.mean(training_prediction_norms))
+print("TRAINING: Mean l2 norm between true and predicted phi_x_prime:", np.mean(training_phi_prediction_norms))
+
+#%% Testing error
+path_length = 1000#0
+starting_x = 5*np.random.rand() - 2.5
+last_x = np.array([[starting_x]])
+
+testing_prediction_norms = np.zeros(N)
+testing_phi_prediction_norms = np.zeros(N)
+for i in range(path_length):
+    s.c = np.random.uniform(-2.0, 2.0) # Random control
+
+    true_x_prime = np.array([[em.integrate(s, last_x[0,0])[-1]]]) # Compute true x_prime
+    true_phi_x_prime = phi(true_x_prime) # Compute phi of true x_prime
+
+    predicted_phi_x_prime = K_u(K, np.array([[s.c]])) @ phi(last_x)
+    predicted_x_prime = B.T @ predicted_phi_x_prime
+
+    testing_prediction_norms[i] = l2_norm(true_x_prime, predicted_x_prime)
+    testing_phi_prediction_norms[i] = l2_norm(true_phi_x_prime, predicted_phi_x_prime)
+
+    last_x = true_x_prime
+print("TESTING: Mean l2 norm between true and predicted x_prime:", np.mean(testing_prediction_norms))
+print("TESTING: Mean l2 norm between true and predicted phi_x_prime:", np.mean(testing_phi_prediction_norms))
 
 #%%
