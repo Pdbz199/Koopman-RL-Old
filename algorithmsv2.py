@@ -51,7 +51,14 @@ class algos:
         self.bellmanError = self.discreteBellmanError if bellmanErrorType == 0 else self.continuousBellmanError
         self.learning_rate = learning_rate
         self.epsilon = epsilon
-        self.w = np.ones([K_hat.shape[0],1]) # Default weights of 1s
+        # self.w = np.ones([K_hat.shape[0],1]) # Default weights of 1s
+        self.w = np.array([[-0.09453714],
+                           [-0.00255096],
+                           [0.03786652],
+                           [0.00499169],
+                           [-0.03218651],
+                           [-0.0020997],
+                           [0.0113134]])
         self.weightRegularization = weightRegularizationBool #Bool for including weight regularization in Bellman loss functions
         self.weightRegLambda = weightRegLambda
 
@@ -85,19 +92,18 @@ class algos:
             x = self.X[:,i].reshape(-1,1)
             # x = self.X[:, np.random.choice(np.arange(self.X.shape[1]))].reshape(-1,1)
             phi_x = self.phi(x)
-
             inner_pi_us = self.inner_pi_us(self.All_U, x)
             inner_pi_us = np.real(inner_pi_us)
             max_inner_pi_u = np.max(inner_pi_us)
             pi_us = np.exp(inner_pi_us - max_inner_pi_u)
             Z_x = np.sum(pi_us)
-
-            pis = pi_us / Z_x
+            normalization = 4*self.All_U.shape[1]
+            pis = pi_us / (Z_x*normalization)
             # pi_sum = np.sum(pis)
             # assert np.isclose(pi_sum, 1, rtol=1e-3, atol=1e-4)
 
             weighted_phi_x_primes = self.w.T @ self.K_us(self.All_U) @ phi_x
-            expectation_us = (self.cost(x * np.ones([x.shape[0],2]), self.All_U) + np.log(pis) + weighted_phi_x_primes[:,0,0]) * pis
+            expectation_us = (self.cost(x * np.ones([x.shape[0],self.All_U.shape[1]]), self.All_U) + np.log(pis) + weighted_phi_x_primes[:,0,0]) * pis
             expectation_u = np.sum(expectation_us)
 
             # with p.lock:
@@ -108,7 +114,7 @@ class algos:
     def continuousBellmanError(self):
         ''' Equation 3 in writeup modified for continuous action weight regularization added to help gradient explosion in Bellman algos '''
         total = 0
-        self.All_U = np.random.uniform(self.u_lower, self.u_upper, [1,self.u_batch_size])
+        #self.All_U = np.random.uniform(self.u_lower, self.u_upper, [1,self.u_batch_size])
         # print(self.All_U.shape)
         for i in range(0, self.X.shape[1]): # loop
             x = self.X[:,i].reshape(-1,1)
@@ -152,7 +158,7 @@ class algos:
 
         return total
 
-    def algorithm2(self, batch_size):
+    def algorithm2(self, batch_size, Zx_Batch_Size = 1000):
         ''' Bellman error optimization '''
 
         BE = self.bellmanError()[0,0]
@@ -179,12 +185,13 @@ class algos:
                     max_inner_pi_u = np.max(inner_pi_us)
                     pi_us = np.exp(inner_pi_us - max_inner_pi_u)
                     Z_x = np.sum(pi_us)
+                    normalization = 4*self.All_U.shape[1]
 
-                    pis = pi_us / Z_x
+                    pis = pi_us / (Z_x*normalization)
                     log_pis = np.log(pis)
                     K_us = self.K_us(self.All_U)
                     costs = self.cost(
-                        x * np.ones([x.shape[0],2]),
+                        x * np.ones([x.shape[0],self.All_U.shape[1]]),
                         self.All_U
                     )
                     costs_plus_log_pis = costs + log_pis
@@ -235,7 +242,7 @@ class algos:
                     log_pis1 = np.log(pis1)
                     K_us1 = self.K_us(u1_batch)
                     costs = self.cost(
-                        x1 * np.ones([x1.shape[0],self.All_U.shape[1]]),
+                        x1 * np.ones([x1.shape[0],self.u_batch_size]),
                         u1_batch
                     )
                     costs_plus_log_pis1 = costs + log_pis1
@@ -251,10 +258,10 @@ class algos:
                     pis2 = pi_us2 / (Z_x2 *normalization)
                     #log_pis2 = np.log(pis2)
                     K_us2 = self.K_us(u2_batch)
-                    costs = self.cost(
-                        x1 * np.ones([x1.shape[0],u2_batch.shape[1]]),
-                        u2_batch
-                    )
+                    # costs = self.cost(
+                    #     x1 * np.ones([x1.shape[0],u2_batch.shape[1]]),
+                    #     u2_batch
+                    # )
                     expectationTerm2 = np.einsum('i, ijk -> jk', pis2, K_us2 @ phi_x1)
 
                     # Equation 13/14 in writeup
@@ -274,6 +281,7 @@ class algos:
                 bellmanErrors.append(BE)
                 print("Current Bellman error:", BE)
 
+            
             return bellmanErrors, gradientNorms
             # while BE > self.epsilon:
             #     # These are col vectors
@@ -294,6 +302,8 @@ class algos:
             #     # Recompute Bellman error
             #     BE = self.bellmanError()
             #     print("Current Bellman error:", BE)
+
+    
 
     def Q_pi_t(self, x, u):
         return self.cost(x, u) + self.w @ self.K_u(u)
