@@ -1,3 +1,4 @@
+#%% Imports
 import numpy as np
 np.random.seed(123)
 from scipy import integrate
@@ -70,7 +71,7 @@ def C2_func():
 def F(x, u):
     return A@x + B@u
 
-N = 1000
+N = 100000
 X = np.random.uniform(-500,500,size=(2,N)) # Random starting points
 U = np.random.uniform(-100,100,size=(1,N)) # Random actions
 Y = F(X, U) # Move one step forward
@@ -97,8 +98,8 @@ for i in range(N):
     kronMatrix[:,i] = np.kron(Psi_U[:,i], Phi_X[:,i])
 
 #%% Estimate M and B matrices
-M = estimate_L.ols(kronMatrix.T, Phi_Y.T).T
-_B = estimate_L.ols(Phi_X.T, X.T)
+M = estimate_L.ols(kronMatrix.T, Phi_Y.T, pinv=False).T
+_B = estimate_L.ols(Phi_X.T, X.T, pinv=False)
 
 #%% Reshape M into K tensor
 K = np.empty((dim_phi, dim_phi, dim_psi))
@@ -131,7 +132,7 @@ for i in range(N):
     predicted_x_prime = _B.T @ K_u(K, u) @ phi_x
 
     tensor_norms[i] = l2_norm(actual_x_prime, predicted_x_prime)
-print("Tensor training error mean norm:", np.mean(tensor_norms))
+print("Tensor training prediction error mean norm:", np.mean(tensor_norms))
 
 #%% Prediction error
 curr_x = np.random.uniform(-500,500,size=(2,1)) # Random starting point
@@ -147,6 +148,6 @@ for i in range(N):
 
     curr_x = actual_x_prime
     curr_u = np.random.uniform(-100,100,size=(1,1))
-print("Tensor prediction error mean norm:", np.mean(tensor_norms))
+print("Tensor testing prediction error mean norm:", np.mean(tensor_norms))
 
 #%%

@@ -89,7 +89,7 @@ for i in range(N):
     kronMatrix[:,i] = np.kron(Psi_U[:,i], Phi_X[:,i])
 
 #%% Estimate M and B matrices
-num_ranks = 14
+num_ranks = 20 - 1
 
 M = estimate_L.ols(kronMatrix.T, Phi_Y.T).T
 M_2 = estimate_L.SINDy(kronMatrix.T, Phi_Y.T).T
@@ -167,7 +167,7 @@ for i in range(num_ranks):
     print(f"Tensor mean training error (RRR, rank={i+1}):", np.mean(tensor_norms_rrr[i]))
 
 #%% Run environment for prediction error
-episodes = 10
+episodes = 1000
 multi_norms = []
 extended_norms = []
 tensor_norms = []
@@ -189,7 +189,7 @@ for episode in range(episodes):
         tensor_predictions_rrr = []
         for i in range(num_ranks):
             tensor_predictions_rrr.append(B.T @ K_u(K_rrrs[i], np.array([[action]])) @ phi_x)
-        print(nptensor_predictions_rrr)
+        tensor_predictions_rrr = np.array(tensor_predictions_rrr)
 
         # Take one step forward in environment
         observation, reward, done, _ = env.step(action)
@@ -204,9 +204,9 @@ for episode in range(episodes):
 env.close()
 print("Multi Koopman mean prediction error:", np.mean(multi_norms))
 print("Extended mean prediction error:", np.mean(extended_norms))
-print("Tensor mean training error (OLS):", np.mean(tensor_norms))
-print("Tensor mean training error (SINDy):", np.mean(tensor_norms_2))
+print("Tensor mean prediction error (OLS):", np.mean(tensor_norms))
+print("Tensor mean prediction error (SINDy):", np.mean(tensor_norms_2))
 for i in range(num_ranks):
-    print(f"Tensor mean training error (RRR, rank={i+1}):", np.mean(tensor_norms_rrr[i]))
+    print(f"Tensor mean prediction error (RRR, rank={i+1}):", np.mean(tensor_norms_rrr[i]))
 
 #%%

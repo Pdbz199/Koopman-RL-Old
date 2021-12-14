@@ -140,11 +140,12 @@ def cost(x, u):
     return (x[0]**2) #Tried to normalize this by 10000 for overflow issues, but didn't help
 
 #%% Discretize all controls
-step_size = 0.1
-All_U = np.arange(start=u_bounds[0,0], stop=u_bounds[0,1]+step_size, step=0.1).reshape(-1,1)
+#step_size = 0.1
+All_U = U.reshape(1,-1)
+#np.arange(start=u_bounds[0,0], stop=u_bounds[0,1]+step_size, step=step_size).reshape(1,-1)
 
 #%% Control
-algos = algorithmsv2.algos(X, All_U, u_bounds[0], phi, psi, K, cost, epsilon=1e-2, bellmanErrorType=1, u_batch_size=20)
+algos = algorithmsv2.algos(X, All_U, u_bounds[0], phi, psi, K, cost, epsilon=2, bellmanErrorType=1, u_batch_size=2000)
 bellmanErrors, gradientNorms = algos.algorithm2(batch_size=64)
 
-#%%
+#%% Calculate the new pi_u 
