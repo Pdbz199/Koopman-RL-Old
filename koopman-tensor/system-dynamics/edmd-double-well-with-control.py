@@ -9,9 +9,6 @@ import observables
 
 #%% GENERATE TRAINING DATA FOR FIXED U
 
-import numpy as np
-import matplotlib.pyplot as plt
-
 class DoubleWell():
     def __init__(self, beta, c):
         self.beta = beta
