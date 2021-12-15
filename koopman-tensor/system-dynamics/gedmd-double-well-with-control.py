@@ -20,8 +20,8 @@ u_boxes = np.array([300])
 u_omega = domain.discretization(u_bounds, u_boxes)
 
 #%% Define system
-def b(x):
-    return np.vstack((-4*x[0, :]**3 + 4*x[0, :], -2*x[1, :]))
+def b(x, u):
+    return np.vstack([-4*x[0, :]**3 + 4*x[0, :], -2*x[1, :]]) + u
  
 def sigma(x):
     n = x.shape[1]
@@ -39,10 +39,11 @@ psi = observables.monomials(order)
 #%% Generate data
 rand_points = 100
 X = x_omega.randPerBox(rand_points)
-Y = b(X)
+U = u_omega.randPerBox(rand_points)
+Y = b(X, U)
 Z = sigma(X)
 
-U = u_omega.randPerBox(rand_points)
+
 
 #%% Apply dictionaries
 Phi_X = phi(X)
@@ -87,7 +88,7 @@ _Y = c[1, :].reshape(x_omega._boxes)
 Phi_c = phi(c)
 
 for i in range(evs):
-    ax = fig.add_subplot(2, 3, i+evs+1, projection='3d')
+    ax = fig.add_subplot(1, 3, i+1, projection='3d')
     _Z = np.real( _V[:, i].T @ Phi_c ).reshape(x_omega._boxes)
     ax.plot_surface(_X, _Y, _Z, cmap=matplotlib.cm.coolwarm)
 
