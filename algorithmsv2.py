@@ -31,7 +31,7 @@ class algos:
         K_hat,
         cost,
         bellmanErrorType=0,
-        learning_rate=1e-3,
+         learning_rate=1e-3,
         epsilon=1,
         weightRegularizationBool=1,
         weightRegLambda=1e-2,
@@ -51,14 +51,14 @@ class algos:
         self.bellmanError = self.discreteBellmanError if bellmanErrorType == 0 else self.continuousBellmanError
         self.learning_rate = learning_rate
         self.epsilon = epsilon
-        # self.w = np.ones([K_hat.shape[0],1]) # Default weights of 1s
-        self.w = np.array([[-0.09453714],
-                           [-0.00255096],
-                           [0.03786652],
-                           [0.00499169],
-                           [-0.03218651],
-                           [-0.0020997],
-                           [0.0113134]])
+        self.w = np.ones([K_hat.shape[0],1]) # Default weights of 1s
+        # self.w = np.array([[-0.09453714],
+        #                    [-0.00255096],
+        #                    [0.03786652],
+        #                    [0.00499169],
+        #                    [-0.03218651],
+        #                    [-0.0020997],
+        #                    [0.0113134]])
         self.weightRegularization = weightRegularizationBool #Bool for including weight regularization in Bellman loss functions
         self.weightRegLambda = weightRegLambda
 
@@ -97,7 +97,7 @@ class algos:
             max_inner_pi_u = np.max(inner_pi_us)
             pi_us = np.exp(inner_pi_us - max_inner_pi_u)
             Z_x = np.sum(pi_us)
-            normalization = 4*self.All_U.shape[1]
+            normalization = (self.u_upper-self.u_lower)*self.All_U.shape[1]
             pis = pi_us / (Z_x*normalization)
             # pi_sum = np.sum(pis)
             # assert np.isclose(pi_sum, 1, rtol=1e-3, atol=1e-4)
@@ -127,7 +127,7 @@ class algos:
             pi_us = np.exp(inner_pi_us - max_inner_pi_u)
             Z_x = np.sum(pi_us)
 
-            normalization = 4*self.u_batch_size # 4 for uniform dist on u and 20 for minibatch on u's
+            normalization = (self.u_upper-self.u_lower)*self.u_batch_size # 4 for uniform dist on u and 20 for minibatch on u's
             pis = pi_us / (Z_x*normalization)
             # pi_sum = np.sum(pis)
             # assert np.isclose(pi_sum, 1, rtol=1e-3, atol=1e-4)
@@ -185,7 +185,7 @@ class algos:
                     max_inner_pi_u = np.max(inner_pi_us)
                     pi_us = np.exp(inner_pi_us - max_inner_pi_u)
                     Z_x = np.sum(pi_us)
-                    normalization = 4*self.All_U.shape[1]
+                    normalization = (self.u_upper-self.u_lower)*self.All_U.shape[1]
 
                     pis = pi_us / (Z_x*normalization)
                     log_pis = np.log(pis)
@@ -225,7 +225,7 @@ class algos:
                 
                 u1_batch = np.random.uniform(self.u_lower, self.u_upper, [1,self.u_batch_size])
                 u2_batch = np.random.uniform(self.u_lower, self.u_upper, [1,self.u_batch_size])
-                normalization = 4*self.u_batch_size # 4 for uniform dist on u and 20 for minibatch on u's
+                normalization = (self.u_upper-self.u_lower)*self.u_batch_size # difference in u bounds for uniform dist on u and u batch size for minibatch sample average on u's
 
                 nabla_w = np.zeros_like(self.w)
                 for x1, phi_x1 in zip(x_batch.T, phi_x_batch.T): # loop
