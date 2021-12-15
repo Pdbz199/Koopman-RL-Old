@@ -32,9 +32,9 @@ def sigma(x):
     return y
 
 #%% Define observables
-order = 10
+order = 5
 phi = observables.monomials(order)
-psi = observables.monomials(2)
+psi = observables.monomials(order)
 
 #%% Generate data
 rand_points = 100
@@ -87,8 +87,9 @@ _Y = c[1, :].reshape(x_omega._boxes)
 Phi_c = phi(c)
 
 for i in range(evs):
-    ax = fig.add_subplot(2, 3, i+1, projection='3d')
+    ax = fig.add_subplot(2, 3, i+evs+1, projection='3d')
     _Z = np.real( _V[:, i].T @ Phi_c ).reshape(x_omega._boxes)
     ax.plot_surface(_X, _Y, _Z, cmap=matplotlib.cm.coolwarm)
 
 #%%
+plt.show()
