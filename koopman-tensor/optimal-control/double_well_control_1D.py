@@ -135,7 +135,7 @@ print("Mean norm on training data:", norms.mean())
 
 #%% Define cost function
 def cost(x, u):
-    if x.shape == 2:
+    if len(x.shape) == 2:
         return x[0,0]**2
     return (x[0]**2) #Tried to normalize this by 10000 for overflow issues, but didn't help
 
