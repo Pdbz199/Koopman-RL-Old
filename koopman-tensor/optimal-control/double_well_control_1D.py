@@ -135,8 +135,8 @@ print("Mean norm on training data:", norms.mean())
 
 #%% Define cost function
 def cost(x, u):
-    # if x.shape == 2:
-    #     return x[0,0]**2
+    if x.shape == 2:
+        return x[0,0]**2
     return (x[0]**2) #Tried to normalize this by 10000 for overflow issues, but didn't help
 
 #%% Discretize all controls
@@ -159,13 +159,18 @@ def policy(x):
     return action
 
 #%% Test policy
-episodes = 1#00
+episodes = 1
 steps = 1000
+costs = []
 for episode in range(episodes):
     starting_x = np.vstack(X[:,0]) # Maybe pick randomly?
     x = starting_x
+    cost_sum = 0
     print("Initial x:", x)
     for step in range(steps):
         s.c = policy(x)
+        cost_sum += cost(x, s.c)
         x = x + s.b(x)*h + s.sigma(x)*np.sqrt(h)*np.random.randn()
         print("Current x:", x)
+    costs.append(cost_sum)
+print("Mean cost per episode:", np.mean(costs))

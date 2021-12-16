@@ -52,13 +52,20 @@ class algos:
         self.learning_rate = learning_rate
         self.epsilon = epsilon
         # self.w = np.ones([K_hat.shape[0],1]) # Default weights of 1s
-        self.w = np.array([[-0.0621016 ],
-                           [-0.02850024],
-                           [0.05875246],
-                           [0.05520755],
-                           [-0.05661481],
-                           [-0.02197514],
-                           [0.0167968]])
+        # self.w = np.array([[-0.0621016],
+        #                    [-0.02850024],
+        #                    [0.05875246],
+        #                    [0.05520755],
+        #                    [-0.05661481],
+        #                    [-0.02197514],
+        #                    [0.0167968]])
+        self.w = np.array([[-0.01982002],
+                           [-0.02703254],
+                           [0.05974696],
+                           [0.0510355],
+                           [-0.05785985],
+                           [-0.0195029],
+                           [ 0.01544842]])
         self.weightRegularization = weightRegularizationBool #Bool for including weight regularization in Bellman loss functions
         self.weightRegLambda = weightRegLambda
 
@@ -91,7 +98,7 @@ class algos:
             max_inner_pi_u = np.max(inner_pi_us)
             pi_us = np.exp(inner_pi_us - max_inner_pi_u)
             Z_x = np.sum(pi_us)
-            normalization = 4*self.All_U.shape[1]
+            normalization = self.u_batch_size*self.All_U.shape[1] #! Seems wrong to use 4, but not sure what the right amount is
 
             pis = pi_us / (Z_x*normalization)
         else:
