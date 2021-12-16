@@ -99,6 +99,7 @@ class algos:
             Z_x = np.sum(pi_us)
             normalization = (self.u_upper-self.u_lower)*self.All_U.shape[1]
             pis = pi_us / (Z_x*normalization)
+            print("size of pis", pis.size)
             # pi_sum = np.sum(pis)
             # assert np.isclose(pi_sum, 1, rtol=1e-3, atol=1e-4)
 

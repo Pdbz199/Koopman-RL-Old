@@ -146,7 +146,7 @@ All_U = np.arange(start=u_bounds[0,0], stop=u_bounds[0,1]+step_size, step=step_s
 #np.arange(start=u_bounds[0,0], stop=u_bounds[0,1]+step_size, step=step_size).reshape(1,-1)
 
 #%% Control
-algos = algorithmsv2.algos(X, All_U, u_bounds[0], phi, psi, K, cost, epsilon=0.1, bellmanErrorType=0,weightRegularizationBool=0, u_batch_size=30)
+algos = algorithmsv2.algos(X, All_U, u_bounds[0], phi, psi, K, cost, epsilon=0.1, bellmanErrorType=0, weightRegularizationBool=1, u_batch_size=30)
 bellmanErrors, gradientNorms = algos.algorithm2(batch_size=64)
 
 #%% Calculate the new pi_u 
