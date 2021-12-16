@@ -29,7 +29,7 @@ def SINDy(Theta, dXdt, lamb=0.05):
     d = dXdt.shape[1]
     Xi = np.linalg.lstsq(Theta, dXdt, rcond=None)[0] # Initial guess: Least-squares
     
-    for k in range(10):
+    for k in range(10): #which parameter should we be tuning here for RRR comp
         smallinds = np.abs(Xi) < lamb # Find small coefficients
         Xi[smallinds] = 0                          # and threshold
         for ind in range(d):                       # n is state dimension
