@@ -53,9 +53,10 @@ def sortEig(A, evs=5, which='LM'):
     '''
     n = A.shape[0]
     if evs < n:
-        d, V = sp.sparse.linalg.eigs(A, evs, which=which)
+        d, V = sp.sparse.linalg.eigs(A, evs, v0=np.ones(n), which=which)
     else:
         d, V = sp.linalg.eig(A)
     ind = d.argsort()[::-1] # [::-1] reverses the list of indices
     return (d[ind], V[:, ind])
-# %%
+
+#%%
