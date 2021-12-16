@@ -51,14 +51,14 @@ class algos:
         self.bellmanError = self.discreteBellmanError if bellmanErrorType == 0 else self.continuousBellmanError
         self.learning_rate = learning_rate
         self.epsilon = epsilon
-        self.w = np.ones([K_hat.shape[0],1]) # Default weights of 1s
-        # self.w = np.array([[-0.09453714],
-        #                    [-0.00255096],
-        #                    [0.03786652],
-        #                    [0.00499169],
-        #                    [-0.03218651],
-        #                    [-0.0020997],
-        #                    [0.0113134]])
+        # self.w = np.ones([K_hat.shape[0],1]) # Default weights of 1s
+        self.w = np.array([[-0.0621016 ],
+                           [-0.02850024],
+                           [0.05875246],
+                           [0.05520755],
+                           [-0.05661481],
+                           [-0.02197514],
+                           [0.0167968]])
         self.weightRegularization = weightRegularizationBool #Bool for including weight regularization in Bellman loss functions
         self.weightRegLambda = weightRegLambda
 
@@ -82,6 +82,30 @@ class algos:
         inner = self.inner_pi_u(u, x)
         return np.exp(inner)
 
+    def pis(self, x):
+        pis = None
+
+        if not self.bellmanErrorType:
+            inner_pi_us = self.inner_pi_us(self.All_U, x)
+            inner_pi_us = np.real(inner_pi_us)
+            max_inner_pi_u = np.max(inner_pi_us)
+            pi_us = np.exp(inner_pi_us - max_inner_pi_u)
+            Z_x = np.sum(pi_us)
+            normalization = 4*self.All_U.shape[1]
+
+            pis = pi_us / (Z_x*normalization)
+        else:
+            inner_pi_us = self.inner_pi_us(self.All_U, x)
+            inner_pi_us = np.real(inner_pi_us)
+            max_inner_pi_u = np.max(inner_pi_us)
+            pi_us = np.exp(inner_pi_us - max_inner_pi_u)
+            Z_x = np.sum(pi_us)
+
+            normalization = (self.u_upper-self.u_lower)*self.u_batch_size
+            pis = pi_us / (Z_x*normalization)
+            
+        return pis
+
     def discreteBellmanError(self):
         ''' Equation 12 in writeup '''
 
@@ -92,14 +116,8 @@ class algos:
             x = self.X[:,i].reshape(-1,1)
             # x = self.X[:, np.random.choice(np.arange(self.X.shape[1]))].reshape(-1,1)
             phi_x = self.phi(x)
-            inner_pi_us = self.inner_pi_us(self.All_U, x)
-            inner_pi_us = np.real(inner_pi_us)
-            max_inner_pi_u = np.max(inner_pi_us)
-            pi_us = np.exp(inner_pi_us - max_inner_pi_u)
-            Z_x = np.sum(pi_us)
-            normalization = (self.u_upper-self.u_lower)*self.All_U.shape[1]
-            pis = pi_us / (Z_x*normalization)
-            print("size of pis", pis.size)
+            pis = self.pis(x)
+            # print("size of pis", pis.size) # 41
             # pi_sum = np.sum(pis)
             # assert np.isclose(pi_sum, 1, rtol=1e-3, atol=1e-4)
 
@@ -115,21 +133,14 @@ class algos:
     def continuousBellmanError(self):
         ''' Equation 3 in writeup modified for continuous action weight regularization added to help gradient explosion in Bellman algos '''
         total = 0
-        #self.All_U = np.random.uniform(self.u_lower, self.u_upper, [1,self.u_batch_size])
+        self.All_U = np.random.uniform(self.u_lower, self.u_upper, [1,self.u_batch_size])
         # print(self.All_U.shape)
         for i in range(0, self.X.shape[1]): # loop
             x = self.X[:,i].reshape(-1,1)
             # x = self.X[:, np.random.choice(np.arange(self.X.shape[1]))].reshape(-1,1)
             phi_x = self.phi(x)
 
-            inner_pi_us = self.inner_pi_us(self.All_U, x)
-            inner_pi_us = np.real(inner_pi_us)
-            max_inner_pi_u = np.max(inner_pi_us)
-            pi_us = np.exp(inner_pi_us - max_inner_pi_u)
-            Z_x = np.sum(pi_us)
-
-            normalization = (self.u_upper-self.u_lower)*self.u_batch_size # 4 for uniform dist on u and 20 for minibatch on u's
-            pis = pi_us / (Z_x*normalization)
+            pis = self.pis(x)
             # pi_sum = np.sum(pis)
             # assert np.isclose(pi_sum, 1, rtol=1e-3, atol=1e-4)
 
@@ -168,6 +179,7 @@ class algos:
         print("Initial Bellman error:", BE)
 
         if not self.bellmanErrorType: # if discrete BE
+            n = 0
             while BE > self.epsilon:
                 x_batch_indices = np.random.choice(self.X.shape[1], batch_size, replace=False)
                 x_batch = self.X[:,x_batch_indices]
@@ -181,14 +193,7 @@ class algos:
                     x = x_batch[:,i].reshape(-1,1)
                     phi_x = phi_x_batch[:,i].reshape(-1,1)
 
-                    inner_pi_us = self.inner_pi_us(self.All_U, x)
-                    inner_pi_us = np.real(inner_pi_us)
-                    max_inner_pi_u = np.max(inner_pi_us)
-                    pi_us = np.exp(inner_pi_us - max_inner_pi_u)
-                    Z_x = np.sum(pi_us)
-                    normalization = (self.u_upper-self.u_lower)*self.All_U.shape[1]
-
-                    pis = pi_us / (Z_x*normalization)
+                    pis = self.pis(x)
                     log_pis = np.log(pis)
                     K_us = self.K_us(self.All_U)
                     costs = self.cost(
@@ -215,7 +220,9 @@ class algos:
                 # Recompute Bellman error
                 BE = self.bellmanError()[0,0]
                 bellmanErrors.append(BE)
-                print("Current Bellman error:", BE)
+                n += 1
+                if not n%100:
+                    print("Current Bellman error:", BE)
 
             return bellmanErrors, gradientNorms
         else:
@@ -232,7 +239,7 @@ class algos:
                 for x1, phi_x1 in zip(x_batch.T, phi_x_batch.T): # loop
                     x1 = x1.reshape(-1,1)
                     phi_x1 = phi_x1.reshape(-1,1)
-
+                    ####Replace with pis function and include different u batches
                     inner_pi_us1 = self.inner_pi_us(u1_batch, x1)
                     inner_pi_us1 = np.real(inner_pi_us1)
                     max_inner_pi_u1 = np.max(inner_pi_us1)
@@ -240,6 +247,7 @@ class algos:
                     Z_x1 = np.sum(pi_us1)
 
                     pis1 = pi_us1 / (Z_x1*normalization)
+                    #######
                     log_pis1 = np.log(pis1)
                     K_us1 = self.K_us(u1_batch)
                     costs = self.cost(

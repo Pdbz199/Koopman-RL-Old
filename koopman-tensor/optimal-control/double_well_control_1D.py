@@ -142,11 +142,30 @@ def cost(x, u):
 #%% Discretize all controls
 step_size = 0.1
 All_U = np.arange(start=u_bounds[0,0], stop=u_bounds[0,1]+step_size, step=step_size).reshape(1,-1)
-#U.reshape(1,-1)
+#All_U = U.reshape(1,-1) # continuous case is just original domain
 #np.arange(start=u_bounds[0,0], stop=u_bounds[0,1]+step_size, step=step_size).reshape(1,-1)
 
 #%% Control
 algos = algorithmsv2.algos(X, All_U, u_bounds[0], phi, psi, K, cost, epsilon=0.1, bellmanErrorType=0, weightRegularizationBool=1, u_batch_size=30)
 bellmanErrors, gradientNorms = algos.algorithm2(batch_size=64)
+# algos.w = np.ones([K.shape[0],1])
+print("Weights:", algos.w)
 
-#%% Calculate the new pi_u 
+#%% Retrieve policy
+def policy(x):
+    pis = algos.pis(x)
+    pis = pis + ((1 - np.sum(pis)) / pis.shape[0])
+    action = np.random.choice(All_U[0,:], p=pis)
+    return action
+
+#%% Test policy
+episodes = 1#00
+steps = 1000
+for episode in range(episodes):
+    starting_x = np.vstack(X[:,0]) # Maybe pick randomly?
+    x = starting_x
+    print("Initial x:", x)
+    for step in range(steps):
+        s.c = policy(x)
+        x = x + s.b(x)*h + s.sigma(x)*np.sqrt(h)*np.random.randn()
+        print("Current x:", x)
