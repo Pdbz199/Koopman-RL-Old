@@ -154,7 +154,7 @@ print("Weights:", algos.w)
 #%% Retrieve policy
 def policy(x):
     pis = algos.pis(x)
-    pis = pis + ((1 - np.sum(pis)) / pis.shape[0])
+    # pis = pis + ((1 - np.sum(pis)) / pis.shape[0])
     action = np.random.choice(All_U[0,:], p=pis)
     return action
 
