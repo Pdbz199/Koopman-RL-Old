@@ -1,3 +1,5 @@
+#%% gEDMD 2D Double Well W/ Control
+
 #%% Imports
 import numpy as np
 np.random.seed(123)

@@ -82,8 +82,8 @@ Psi_U = psi(U) #np.ones((1,N))
 dim_phi = Phi_X[:,0].shape[0]
 dim_psi = Psi_U[:,0].shape[0]
 
-dPhi_Y = phi.diff(X)[:,0,:]*Y #np.einsum('ijk,jk->ik', phi.diff(X), Y)
-ddPhi_X = phi.ddiff(X) # second-order derivatives
+dPhi_Y = phi.diff(X)[:,0,:]*Y*h #np.einsum('ijk,jk->ik', phi.diff(X), Y)
+ddPhi_X = phi.ddiff(X)*h/2 # second-order derivatives
 #S = np.einsum('ijk,ljk->ilk', Z, Z) # sigma \cdot sigma^T
 S = Z * Z
 for i in range(dim_phi):
@@ -143,22 +143,33 @@ def cost(x, u):
 step_size = 0.1
 All_U = np.arange(start=u_bounds[0,0], stop=u_bounds[0,1]+step_size, step=step_size).reshape(1,-1)
 #All_U = U.reshape(1,-1) # continuous case is just original domain
-#np.arange(start=u_bounds[0,0], stop=u_bounds[0,1]+step_size, step=step_size).reshape(1,-1)
 
 #%% Control
-algos = algorithmsv2.algos(X, All_U, u_bounds[0], phi, psi, K, cost, epsilon=0.1, bellmanErrorType=0, weightRegularizationBool=1, u_batch_size=30)
+algos = algorithmsv2.algos(X, All_U, u_bounds[0], phi, psi, K, cost, epsilon=0.01, bellmanErrorType=0, weightRegularizationBool=0, u_batch_size=30)
 bellmanErrors, gradientNorms = algos.algorithm2(batch_size=64)
 # algos.w = np.ones([K.shape[0],1])
 print("Weights:", algos.w)
 
 #%% Retrieve policy
-def policy(x):
+def     policy(x):
     pis = algos.pis(x)
     # pis = pis + ((1 - np.sum(pis)) / pis.shape[0])
-    action = np.random.choice(All_U[0,:], p=pis)
+    # Select action column at index sampled from policy distribution
+    action = All_U[:,np.random.choice(np.arange(All_U.shape[1]), p=pis)].reshape(-1,1)
     return action
 
 #%% Test policy
+
+# Create the figure
+fig, ax = plt.subplots()
+line, = plt.plot(x, f(x, init_beta, init_c), lw=2)
+point, = plt.plot(y, f(y, init_beta, init_c), 'r.', markersize=20)
+ax.set_xlabel('x')
+plt.ylim([-5, 5])
+
+axcolor = 'lightgoldenrodyellow'
+ax.margins(x=0)
+
 episodes = 1
 steps = 1000
 costs = []
@@ -168,9 +179,18 @@ for episode in range(episodes):
     cost_sum = 0
     print("Initial x:", x)
     for step in range(steps):
-        s.c = policy(x)
+        s.c = policy(x)[0,0]
         cost_sum += cost(x, s.c)
-        x = x + s.b(x)*h + s.sigma(x)*np.sqrt(h)*np.random.randn()
-        print("Current x:", x)
+        y = x + s.b(x)*h + s.sigma(x)*np.sqrt(h)*np.random.randn()
+        
+        line.set_ydata(f(x, s.beta, s.c))
+        point.set_xdata(y)
+        point.set_ydata(f(y, s.beta, s.c))
+        
+        fig.canvas.draw_idle()
+
+        x = y
     costs.append(cost_sum)
 print("Mean cost per episode:", np.mean(costs))
+
+#%%
