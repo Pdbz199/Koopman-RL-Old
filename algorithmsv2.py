@@ -1,7 +1,7 @@
 from os import replace
 import auxiliaries as aux
 import numpy as np
-import pymp
+# import pymp
 import scipy.integrate as integrate
 import time
 
@@ -51,21 +51,8 @@ class algos:
         self.bellmanError = self.discreteBellmanError if bellmanErrorType == 0 else self.continuousBellmanError
         self.learning_rate = learning_rate
         self.epsilon = epsilon
-        # self.w = np.ones([K_hat.shape[0],1]) # Default weights of 1s
-        self.w = np.array([[-0.0621016],
-                           [-0.02850024],
-                           [0.05875246],
-                           [0.05520755],
-                           [-0.05661481],
-                           [-0.02197514],
-                           [0.0167968]])
-        # self.w = np.array([[-0.01982002],
-        #                    [-0.02703254],
-        #                    [0.05974696],
-        #                    [0.0510355],
-        #                    [-0.05785985],
-        #                    [-0.0195029],
-        #                    [ 0.01544842]])
+        self.w = np.ones([K_hat.shape[0],1]) # Default weights of 1s
+
         self.weightRegularization = weightRegularizationBool #Bool for including weight regularization in Bellman loss functions
         self.weightRegLambda = weightRegLambda
 
@@ -98,7 +85,8 @@ class algos:
             max_inner_pi_u = np.max(inner_pi_us)
             pi_us = np.exp(inner_pi_us - max_inner_pi_u)
             Z_x = np.sum(pi_us)
-            normalization = (self.u_upper-self.u_lower)
+            #normalization = (self.u_upper-self.u_lower)
+            normalization = 1
 
             pis = pi_us / (Z_x*normalization)
         else: # Continuous
@@ -107,8 +95,8 @@ class algos:
             max_inner_pi_u = np.max(inner_pi_us)
             pi_us = np.exp(inner_pi_us - max_inner_pi_u)
             Z_x = np.sum(pi_us)
-
-            normalization = (self.u_upper-self.u_lower)*self.u_batch_size
+            #Normalization follows from montecarlo integration approach to estimate true Z_x
+            normalization = (self.u_upper-self.u_lower)/self.u_batch_size
             pis = pi_us / (Z_x*normalization)
             
         return pis
@@ -124,6 +112,7 @@ class algos:
             # x = self.X[:, np.random.choice(np.arange(self.X.shape[1]))].reshape(-1,1)
             phi_x = self.phi(x)
             pis = self.pis(x)
+            # print("pis:",pis)
             # print("size of pis", pis.size) # 41
             # pi_sum = np.sum(pis)
             # assert np.isclose(pi_sum, 1, rtol=1e-3, atol=1e-4)
@@ -208,9 +197,9 @@ class algos:
                         self.All_U
                     )
                     costs_plus_log_pis = costs + log_pis
-
+                    # rho = self.u_upper - self.u_lower
                     expectationTerm1 = np.sum(pis.reshape(-1,1) * (costs_plus_log_pis.reshape(-1,1) + (self.w.T @ K_us @ phi_x).reshape(self.All_U.shape[1],1)))
-                    expectationTerm2 = np.einsum('i, ijk -> jk', pis, K_us @ phi_x)
+                    expectationTerm2 = np.einsum('i,ijk->jk', pis, K_us @ phi_x)
 
                     # Equation 13/14 in writeup
                     # with p.lock:
@@ -229,6 +218,7 @@ class algos:
                 bellmanErrors.append(BE)
                 n += 1
                 if not n%100:
+                    np.save('bellman-weights.npy', self.w)
                     print("Current Bellman error:", BE)
 
             return bellmanErrors, gradientNorms

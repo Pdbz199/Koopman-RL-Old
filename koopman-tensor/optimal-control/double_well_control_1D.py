@@ -146,12 +146,13 @@ All_U = np.arange(start=u_bounds[0,0], stop=u_bounds[0,1]+step_size, step=step_s
 
 #%% Control
 algos = algorithmsv2.algos(X, All_U, u_bounds[0], phi, psi, K, cost, epsilon=0.01, bellmanErrorType=0, weightRegularizationBool=0, u_batch_size=30)
-bellmanErrors, gradientNorms = algos.algorithm2(batch_size=64)
+# bellmanErrors, gradientNorms = algos.algorithm2(batch_size=64)
 # algos.w = np.ones([K.shape[0],1])
+algos.w = np.load('bellman-weights.npy')
 print("Weights:", algos.w)
 
 #%% Retrieve policy
-def     policy(x):
+def policy(x):
     pis = algos.pis(x)
     # pis = pis + ((1 - np.sum(pis)) / pis.shape[0])
     # Select action column at index sampled from policy distribution
@@ -183,13 +184,14 @@ for episode in range(episodes):
         cost_sum += cost(x, s.c)
         y = x + s.b(x)*h + s.sigma(x)*np.sqrt(h)*np.random.randn()
         
-        line.set_ydata(f(x, s.beta, s.c))
-        point.set_xdata(y)
-        point.set_ydata(f(y, s.beta, s.c))
+        # line.set_ydata(f(x, s.beta, s.c))
+        # point.set_xdata(y)
+        # point.set_ydata(f(y, s.beta, s.c))
         
-        fig.canvas.draw_idle()
+        # fig.canvas.draw_idle()
 
         x = y
+        print("Current x:", x)
     costs.append(cost_sum)
 print("Mean cost per episode:", np.mean(costs))
 
