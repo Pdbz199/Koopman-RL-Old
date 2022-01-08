@@ -33,6 +33,9 @@ R = 4
 
 # Singular value of matrix is <1 ???
 
+def f(x, u):
+    return A @ x + B @ u
+
 #%% Traditional LQR
 lq = lqr(A, B, Q, R)
 K = lq[0][0]
