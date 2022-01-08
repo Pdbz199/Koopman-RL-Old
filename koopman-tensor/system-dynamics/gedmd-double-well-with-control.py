@@ -37,7 +37,7 @@ def sigma(x):
     return y
 
 #%% Define observables
-order = 5
+order = 6
 phi = observables.monomials(order)
 psi = observables.monomials(order)
 

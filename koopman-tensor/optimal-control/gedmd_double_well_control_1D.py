@@ -38,7 +38,9 @@ class DoubleWell():
     def sigma(self, x):
         return np.sqrt(2/self.beta)
 
-s = DoubleWell(beta=1, c=0)
+init_beta = 1
+init_c = 0
+s = DoubleWell(beta=init_beta, c=init_c)
 h = 1e-2
 y = 1
 
@@ -50,8 +52,6 @@ def f(x, beta, c):
 
 
 # Define initial parameters
-init_beta = 1
-init_c = 0
 u_bounds = np.array([[-2, 2]])
 x_bounds = np.array([[-1.5, 1.5]])
 #bounds_u = np.array([u_bounds])
