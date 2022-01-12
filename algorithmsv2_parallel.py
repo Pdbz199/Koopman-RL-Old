@@ -64,17 +64,17 @@ class algos:
         ''' Pick out Koopman operator given a matrix of action column vectors '''
         return np.einsum('ijz,zk->kij', self.K_hat, self.psi(us))
 
-    def inner_pi_u(self, u, x):
-        inner_pi_u = (-(self.cost(x, u) + self.w.T @ self.K_u(u) @ self.phi(x)))[0]
-        return inner_pi_u
+    # def inner_pi_u(self, u, x):
+    #     inner_pi_u = (-(self.cost(x, u) + self.w.T @ self.K_u(u) @ self.phi(x)))[0]
+    #     return inner_pi_u
 
     def inner_pi_us(self, us, x):
-        inner_pi_us = -(self.cost(x, us) + self.w.T @ self.K_us(us) @ self.phi(x)) #stack cols of x as cols in self.phi(x)
-        return inner_pi_us[:,0,0]
+        inner_pi_us = -(self.cost(x, us).T + (self.w.T @ self.K_us(us) @ self.phi(x))[:,:,0])
+        return inner_pi_us
 
-    def pi_u(self, u, x):
-        inner = self.inner_pi_u(u, x)
-        return np.exp(inner)
+    # def pi_u(self, u, x):
+    #     inner = self.inner_pi_u(u, x)
+    #     return np.exp(inner)
 
     def pis(self, x):
         pis = None
@@ -84,6 +84,7 @@ class algos:
             inner_pi_us = np.real(inner_pi_us)
             max_inner_pi_u = np.max(inner_pi_us)
             pi_us = np.exp(inner_pi_us - max_inner_pi_u)
+            # pi_us[pi_us == 0] = 1e-323 # make it so all 0s are just a small number
             Z_x = np.sum(pi_us)
             #normalization = (self.u_upper-self.u_lower)
             normalization = 1
@@ -119,11 +120,11 @@ class algos:
 
                 weighted_phi_x_primes = self.w.T @ self.K_us(self.All_U) @ phi_x
                 costs = self.cost(x, self.All_U).T
-                expectation_us = (costs + np.log(pis) + np.vstack(weighted_phi_x_primes[:,0,0])) * pis
+                expectation_us = (costs + np.log(pis) + weighted_phi_x_primes[:,:,0]) * pis
                 expectation_u = np.sum(expectation_us)
 
                 with p.lock:
-                    total += np.power((self.w.T @ phi_x - expectation_u), 2)
+                    total += np.power((self.w.T @ phi_x - expectation_u)[0,0], 2)
                 
         return total
 
@@ -196,7 +197,7 @@ class algos:
                         costs = self.cost(x, self.All_U).T
                         costs_plus_log_pis = costs + log_pis # column vector of self.All_U.shape[0] x 1
                         # rho = self.u_upper - self.u_lower
-                        expectationTerm1 = np.sum(pis * (costs_plus_log_pis + (self.w.T @ K_us @ phi_x).reshape(self.All_U.shape[1],1)))
+                        expectationTerm1 = np.sum(pis * (costs_plus_log_pis + (self.w.T @ K_us @ phi_x)[:,:,0]))
                         expectationTerm2 = np.einsum('iz,ijk->jk', pis, K_us @ phi_x)
 
                         # Equation 13/14 in writeup

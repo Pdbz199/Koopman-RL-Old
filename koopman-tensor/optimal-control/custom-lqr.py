@@ -126,6 +126,7 @@ for episode in range(num_episodes):
     cost_sum = 0
     for step in range(num_steps_per_episode):
         u = policy(x)
+        # u = np.random.rand(1,1)*action_range # sample random action
         x_prime = f(x, u)
 
         cost_sum += cost(x, u)
