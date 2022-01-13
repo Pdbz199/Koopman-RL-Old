@@ -43,7 +43,7 @@ def f(x, u):
 #%% Construct snapshots of u from random agent and initial states x0
 N = 10000
 action_range = 10
-state_range = 10
+state_range = 10 #! Are these reasonable ranges? Depending on draws 
 U = np.random.rand(1,N)*action_range
 X0 = np.random.rand(2,N)*state_range
 
@@ -94,15 +94,28 @@ All_U = np.arange(start=u_bounds[0,0], stop=u_bounds[0,1], step=step_size).resha
 epsilon = 1 # 0.1
 algos = algorithmsv2.algos(X0, All_U, u_bounds[0], phi, psi, K, cost, epsilon=epsilon, bellmanErrorType=0, weightRegularizationBool=0, u_batch_size=30, learning_rate=1e-4)
 # algos.w = np.load('bellman-weights.npy')
-# algos.w = np.array([[-3.69297848e+00],
-#                     [-2.98691215e-03],
-#                     [ 9.07953885e-01],
-#                     [-2.73630256e-03],
-#                     [ 1.14440957e-01],
-#                     [ 1.56593661e-03],
-#                     [-3.75790976e-02]])
+algos.w = np.array([
+    [ 1.        ],
+    [ 0.04950633],
+    [-0.32755624],
+    [ 1.32549688],
+    [ 0.01576367],
+    [ 1.11493135]
+])
+# algos.w = np.array([
+#     [ 1.        ],
+#     [ 4.90417142],
+#     [ 4.04355341],
+#     [67.17531854],
+#     [67.25611674],
+#     [61.07985195]
+# ])
+print("Weights before updating:", algos.w)
 bellmanErrors, gradientNorms = algos.algorithm2(batch_size=64)
-print("Weights:", algos.w)
+print("Weights after updating:", algos.w)
+
+#%% Reset seed
+np.random.seed(123)
 
 #%% Retrieve policy
 def policy(x):
@@ -114,8 +127,9 @@ def policy(x):
     return u
 
 #%% Test policy
+
 # Simulate system
-num_episodes = 1
+num_episodes = 100
 num_steps_per_episode = 100
 costs = np.empty((num_episodes))
 for episode in range(num_episodes):
