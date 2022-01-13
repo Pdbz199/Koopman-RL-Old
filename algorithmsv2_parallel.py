@@ -56,9 +56,9 @@ class algos:
         self.weightRegularization = weightRegularizationBool #Bool for including weight regularization in Bellman loss functions
         self.weightRegLambda = weightRegLambda
 
-    def K_u(self, u):
-        ''' Pick out Koopman operator given an action '''
-        return np.einsum('ijz,zk->ij', self.K_hat, self.psi(u))
+    # def K_u(self, u):
+    #     ''' Pick out Koopman operator given an action '''
+    #     return np.einsum('ijz,zk->ij', self.K_hat, self.psi(u))
 
     def K_us(self, us):
         ''' Pick out Koopman operator given a matrix of action column vectors '''
@@ -217,9 +217,10 @@ class algos:
                 BE = self.bellmanError()[0,0]
                 bellmanErrors.append(BE)
                 n += 1
-                if not n%100:
-                    np.save('bellman-weights.npy', self.w)
-                    print("Current Bellman error:", BE)
+                print("Current Bellman error:", BE)
+                # if not n%100:
+                #     np.save('bellman-weights.npy', self.w)
+                    # print("Current Bellman error:", BE)
 
             return bellmanErrors, gradientNorms
         else:

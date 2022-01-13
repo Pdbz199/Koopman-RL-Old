@@ -9,7 +9,8 @@ from mpl_toolkits import mplot3d
 
 import sys
 sys.path.append('../../')
-import algorithmsv2
+# import algorithmsv2
+import algorithmsv2_parallel as algorithmsv2
 #import DoubleWell_GenerateData
 import domain
 import estimate_L
@@ -133,7 +134,20 @@ All_U = np.arange(start=u_bounds[0,0], stop=u_bounds[0,1]+step_size, step=step_s
 #All_U = U.reshape(1,-1) # continuous case is just original domain
 
 #%% Learn control
-algos = algorithmsv2.algos(X, All_U, u_bounds[0], phi, psi, K, cost, epsilon=0.01, bellmanErrorType=0, weightRegularizationBool=0, u_batch_size=30)
+algos = algorithmsv2.algos(
+    X,
+    All_U,
+    u_bounds[0],
+    phi,
+    psi,
+    K,
+    cost,
+    epsilon=0.01,
+    bellmanErrorType=0,
+    weightRegularizationBool=0,
+    u_batch_size=30,
+    learning_rate=1e-4
+)
 # algos.w = np.load('bellman-weights.npy')
 algos.w = np.array([[-3.69297848e+00],
                     [-2.98691215e-03],
@@ -147,11 +161,13 @@ print("Weights:", algos.w)
 
 #%% Retrieve policy
 def policy(x):
-    pis = algos.pis(x)
+    pis = algos.pis(x)[:,0]
     # pis = pis + ((1 - np.sum(pis)) / pis.shape[0])
     # Select action column at index sampled from policy distribution
-    action = All_U[:,np.random.choice(np.arange(All_U.shape[1]), p=pis)].reshape(-1,1)
-    return action
+    u = np.vstack(
+        All_U[:,np.random.choice(np.arange(All_U.shape[1]), p=pis)]
+    )
+    return u
 
 #%% Test policy
 
@@ -165,30 +181,30 @@ def policy(x):
 # axcolor = 'lightgoldenrodyellow'
 # ax.margins(x=0)
 
-# # Simulate system
-# episodes = 1
-# steps = 1000
-# costs = []
-# for episode in range(episodes):
-#     starting_x = np.vstack(X[:,0]) # Maybe pick randomly?
-#     x = starting_x
-#     cost_sum = 0
-#     print("Initial x:", x)
-#     for step in range(steps):
-#         s.c = policy(x)[0,0]
-#         cost_sum += cost(x, s.c)
-#         y = x + s.b(x)*h + s.sigma(x)*np.sqrt(h)*np.random.randn()
+# Simulate system
+episodes = 1
+steps = 1000
+costs = []
+for episode in range(episodes):
+    starting_x = np.vstack(X[:,0]) # Maybe pick randomly?
+    x = starting_x
+    cost_sum = 0
+    print("Initial x:", x)
+    for step in range(steps):
+        s.c = policy(x)[0,0]
+        cost_sum += cost(x, s.c)
+        y = x + s.b(x)*h + s.sigma(x)*np.sqrt(h)*np.random.randn()
         
-#         # line.set_ydata(f(x, s.beta, s.c))
-#         # point.set_xdata(y)
-#         # point.set_ydata(f(y, s.beta, s.c))
+        # line.set_ydata(f(x, s.beta, s.c))
+        # point.set_xdata(y)
+        # point.set_ydata(f(y, s.beta, s.c))
         
-#         # fig.canvas.draw_idle()
+        # fig.canvas.draw_idle()
 
-#         x = y
-#         if not step%250:
-#             print("Current x:", x)
-#     costs.append(cost_sum)
-# print("Mean cost per episode:", np.mean(costs))
+        x = y
+        if not step%250:
+            print("Current x:", x)
+    costs.append(cost_sum)
+print("Mean cost per episode:", np.mean(costs))
 
 #%%
