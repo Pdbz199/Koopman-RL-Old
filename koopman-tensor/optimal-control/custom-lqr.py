@@ -139,9 +139,7 @@ def policy(x):
     )
     return u
 
-#%% Test policy
-
-# Simulate system
+#%% Test policy by simulating system
 num_episodes = 100
 num_steps_per_episode = 100
 costs = np.empty((num_episodes))
