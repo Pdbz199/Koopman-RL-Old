@@ -43,7 +43,7 @@ def f(x, u):
 #%% Construct snapshots of u from random agent and initial states x0
 N = 10000
 action_range = 10
-state_range = 10 #! Are these reasonable ranges? Depending on draws 
+state_range = 10 #! Are these reasonable ranges? Depending on draws before we were setting the seed properly, we were seeing better/worse convergence of ABE with different learning rates.
 U = np.random.rand(1,N)*action_range
 X0 = np.random.rand(2,N)*state_range
 
@@ -92,7 +92,20 @@ All_U = np.arange(start=u_bounds[0,0], stop=u_bounds[0,1], step=step_size).resha
 
 #%% Learn control
 epsilon = 1 # 0.1
-algos = algorithmsv2.algos(X0, All_U, u_bounds[0], phi, psi, K, cost, epsilon=epsilon, bellmanErrorType=0, weightRegularizationBool=0, u_batch_size=30, learning_rate=1e-4)
+algos = algorithmsv2.algos(
+    X0,
+    All_U,
+    u_bounds[0],
+    phi,
+    psi,
+    K,
+    cost,
+    epsilon=epsilon,
+    bellmanErrorType=0,
+    weightRegularizationBool=0,
+    u_batch_size=30,
+    learning_rate=1e-4
+)
 # algos.w = np.load('bellman-weights.npy')
 algos.w = np.array([
     [ 1.        ],
