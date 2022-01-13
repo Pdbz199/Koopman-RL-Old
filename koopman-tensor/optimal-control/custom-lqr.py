@@ -5,8 +5,8 @@ np.random.seed(123)
 
 import sys
 sys.path.append('../../')
-import algorithmsv2
-# import algorithmsv2_parallel as algorithmsv2
+# import algorithmsv2
+import algorithmsv2_parallel as algorithmsv2
 import estimate_L
 import observables
 import utilities
@@ -92,7 +92,7 @@ All_U = np.arange(start=u_bounds[0,0], stop=u_bounds[0,1], step=step_size).resha
 
 #%% Learn control
 epsilon = 1 # 0.1
-algos = algorithmsv2.algos(X0, All_U, u_bounds[0], phi, psi, K, cost, epsilon=epsilon, bellmanErrorType=0, weightRegularizationBool=0, u_batch_size=30)
+algos = algorithmsv2.algos(X0, All_U, u_bounds[0], phi, psi, K, cost, epsilon=epsilon, bellmanErrorType=0, weightRegularizationBool=0, u_batch_size=30, learning_rate=1e-4)
 # algos.w = np.load('bellman-weights.npy')
 # algos.w = np.array([[-3.69297848e+00],
 #                     [-2.98691215e-03],
@@ -106,7 +106,7 @@ print("Weights:", algos.w)
 
 #%% Retrieve policy
 def policy(x):
-    pis = algos.pis(x)
+    pis = algos.pis(x)[:,0]
     # Select action column at index sampled from policy distribution
     u = np.vstack(
         All_U[:,np.random.choice(np.arange(All_U.shape[1]), p=pis)]
