@@ -169,6 +169,7 @@ class algos:
         if self.bellmanErrorType == 0: # if discrete BE
             n = 0
             while BE > self.epsilon:
+                #! look carefully through this because of removed loop
                 x_batch_indices = np.random.choice(self.X.shape[1], batch_size, replace=False)
                 x_batch = self.X[:,x_batch_indices] # self.X.shape[0] x batch_size
                 phi_x_batch = self.phi(x_batch)
