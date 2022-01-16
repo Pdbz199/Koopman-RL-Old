@@ -1,5 +1,6 @@
 #%% Imports
 import matplotlib.pyplot as plt
+import numba as nb
 import numpy as np
 np.random.seed(123)
 
@@ -26,8 +27,8 @@ Q = np.array([
     [1, 0],
     [0, 1]
 ])
-R = 1
-# R = np.array([[1]])
+# R = 1
+R = np.array([[1]])
 
 def f(x, u):
     return A @ x + B @ u
@@ -81,8 +82,15 @@ def K_u(K, u):
     return np.einsum('ijz,z->ij', K, psi(u)[:,0])
 
 #%% Define cost function
+nb.njit(fastmath=True)
 def cost(x, u):
-    return x.T @ Q @ x + np.power(u, 2) * R # u.T @ R @ u
+    costs = np.empty((x.shape[1],u.shape[1]))
+    for i in range(x.shape[1]):
+        _x = np.vstack(x[:,i])
+        for j in range(u.shape[1]):
+            _u = np.vstack(u[:,j])
+            costs[i,j] = _x.T @ Q @ _x + _u.T @ R @ _u
+    return costs
 
 #%% Discretize all controls
 u_bounds = np.array([[0.0, action_range]])

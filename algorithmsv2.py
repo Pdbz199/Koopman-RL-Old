@@ -1,7 +1,6 @@
 from os import replace
 import auxiliaries as aux
 import numpy as np
-# import pymp
 import scipy.integrate as integrate
 import time
 
@@ -31,7 +30,7 @@ class algos:
         K_hat,
         cost,
         bellmanErrorType=0,
-         learning_rate=1e-3,
+        learning_rate=1e-3,
         epsilon=1,
         weightRegularizationBool=1,
         weightRegLambda=1e-2,
@@ -56,25 +55,25 @@ class algos:
         self.weightRegularization = weightRegularizationBool #Bool for including weight regularization in Bellman loss functions
         self.weightRegLambda = weightRegLambda
 
-    def K_u(self, u):
-        ''' Pick out Koopman operator given an action '''
-        return np.einsum('ijz,zk->ij', self.K_hat, self.psi(u))
+    # def K_u(self, u):
+    #     ''' Pick out Koopman operator given an action '''
+    #     return np.einsum('ijz,zk->ij', self.K_hat, self.psi(u))
 
     def K_us(self, us):
         ''' Pick out Koopman operator given a matrix of action column vectors '''
         return np.einsum('ijz,zk->kij', self.K_hat, self.psi(us))
 
-    def inner_pi_u(self, u, x):
-        inner_pi_u = (-(self.cost(x, u) + self.w.T @ self.K_u(u) @ self.phi(x)))[0]
-        return inner_pi_u
+    # def inner_pi_u(self, u, x):
+    #     inner_pi_u = (-(self.cost(x, u) + self.w.T @ self.K_u(u) @ self.phi(x)))[0]
+    #     return inner_pi_u
 
     def inner_pi_us(self, us, x):
-        inner_pi_us = -(self.cost(x, us) + self.w.T @ self.K_us(us) @ self.phi(x)) #stack cols of x as cols in self.phi(x)
-        return inner_pi_us[:,0,0]
+        inner_pi_us = -(self.cost(x, us).T + (self.w.T @ self.K_us(us) @ self.phi(x))[:,:,0])
+        return inner_pi_us
 
-    def pi_u(self, u, x):
-        inner = self.inner_pi_u(u, x)
-        return np.exp(inner)
+    # def pi_u(self, u, x):
+    #     inner = self.inner_pi_u(u, x)
+    #     return np.exp(inner)
 
     def pis(self, x):
         pis = None
@@ -83,7 +82,8 @@ class algos:
             inner_pi_us = self.inner_pi_us(self.All_U, x)
             inner_pi_us = np.real(inner_pi_us)
             max_inner_pi_u = np.max(inner_pi_us)
-            pi_us = np.exp(inner_pi_us - max_inner_pi_u)
+            pi_us = np.exp(inner_pi_us - max_inner_pi_u) # self.All_U.shape[1] x 1
+            # pi_us[pi_us == 0] = 1e-323 # make it so all 0s are just a small number
             Z_x = np.sum(pi_us)
             #normalization = (self.u_upper-self.u_lower)
             normalization = 1
@@ -105,24 +105,23 @@ class algos:
         ''' Equation 12 in writeup '''
 
         total = 0
-        # total = pymp.shared.array((1,1), dtype='float32')
-        # with pymp.Parallel(8) as p:
         for i in range(0, self.X.shape[1]): # loop
-            x = self.X[:,i].reshape(-1,1)
+            x = np.vstack(self.X[:,i]) # column vector
             # x = self.X[:, np.random.choice(np.arange(self.X.shape[1]))].reshape(-1,1)
-            phi_x = self.phi(x)
-            pis = self.pis(x)
-            # print("pis:",pis)
-            # print("size of pis", pis.size) # 41
+
+            phi_x = self.phi(x) # column vector
+            pis = np.vstack(self.pis(x)) # column vector self.All_U.shape[1] x 1
+
             # pi_sum = np.sum(pis)
             # assert np.isclose(pi_sum, 1, rtol=1e-3, atol=1e-4)
 
-            weighted_phi_x_primes = self.w.T @ self.K_us(self.All_U) @ phi_x
-            expectation_us = (self.cost(x * np.ones([x.shape[0],self.All_U.shape[1]]), self.All_U) + np.log(pis) + weighted_phi_x_primes[:,0,0]) * pis
+            phi_x_primes = (self.K_us(self.All_U) @ phi_x)[:,:,0].T # dim_phi x self.All_U.shape[1]
+            weighted_phi_x_primes = (self.w.T @ phi_x_primes).T # self.All_U.shape[1] x 1
+            costs = self.cost(x, self.All_U).T # self.All_U.shape[1] x 1
+            expectation_us = (costs + np.log(pis) + weighted_phi_x_primes) * pis
             expectation_u = np.sum(expectation_us)
 
-            # with p.lock:
-            total += np.power((self.w.T @ phi_x - expectation_u), 2)
+            total += np.power(((self.w.T @ phi_x)[0,0] - expectation_u), 2)
                 
         return total
 
@@ -174,7 +173,7 @@ class algos:
         gradientNorms = []
         print("Initial Bellman error:", BE)
 
-        if not self.bellmanErrorType: # if discrete BE
+        if self.bellmanErrorType == 0: # if discrete BE
             n = 0
             while BE > self.epsilon:
                 x_batch_indices = np.random.choice(self.X.shape[1], batch_size, replace=False)
@@ -182,28 +181,23 @@ class algos:
                 phi_x_batch = self.phi(x_batch)
 
                 nabla_w = np.zeros_like(self.w)
-                # nabla_w = pymp.shared.array(self.w.shape, dtype='float32')
-                # with pymp.Parallel(8) as p:
                 for i in range(0, x_batch.shape[1]):
-                # for x1, phi_x1 in zip(x_batch.T, phi_x_batch.T): # loop
-                    x = x_batch[:,i].reshape(-1,1)
-                    phi_x = phi_x_batch[:,i].reshape(-1,1)
+                    x = np.vstack(x_batch[:,i]) # dim_x x 1
+                    phi_x = np.vstack(phi_x_batch[:,i]) # dim_phi x 1
+                    weighted_phi_x = (self.w.T @ phi_x)[0,0] # scalar
 
-                    pis = self.pis(x)
-                    log_pis = np.log(pis)
-                    K_us = self.K_us(self.All_U)
-                    costs = self.cost(
-                        x * np.ones([x.shape[0],self.All_U.shape[1]]),
-                        self.All_U
-                    )
-                    costs_plus_log_pis = costs + log_pis
-                    # rho = self.u_upper - self.u_lower
-                    expectationTerm1 = np.sum(pis.reshape(-1,1) * (costs_plus_log_pis.reshape(-1,1) + (self.w.T @ K_us @ phi_x).reshape(self.All_U.shape[1],1)))
-                    expectationTerm2 = np.einsum('i,ijk->jk', pis, K_us @ phi_x)
+                    pis = np.vstack(self.pis(x)) # self.All_U.shape[1] x 1
+                    log_pis = np.log(pis) # self.All_U.shape[1] x 1
+                    K_us = self.K_us(self.All_U) # self.All_U.shape[1] x dim_phi x dim_phi
+                    phi_x_primes = (K_us @ phi_x)[:,:,0] # self.All_U.shape[1] x dim_phi
+                    costs = self.cost(x, self.All_U).T # self.All_U.shape[1] x 1
+                    costs_plus_log_pis = costs + log_pis # self.All_U.shape[1] x 1
+
+                    expectationTerm1 = np.sum((costs_plus_log_pis + (self.w.T @ phi_x_primes.T).T) * pis) # scalar
+                    expectationTerm2 = (pis.T @ phi_x_primes).T # dim_phi x 1
 
                     # Equation 13/14 in writeup
-                    # with p.lock:
-                    nabla_w += ((self.w.T @ phi_x - expectationTerm1) * (phi_x - expectationTerm2)) / batch_size
+                    nabla_w += ((weighted_phi_x - expectationTerm1) * (phi_x - expectationTerm2)) / batch_size
 
                 gradientNorm = l2_norm(nabla_w, np.zeros_like(nabla_w))
                 gradientNorms.append(gradientNorm)
@@ -211,15 +205,15 @@ class algos:
                 # Update weights
                 assert self.w.shape == nabla_w.shape
                 self.w = self.w - (self.learning_rate * nabla_w)
-                # print("Current weights:", self.w)
 
                 # Recompute Bellman error
                 BE = self.bellmanError()[0,0]
                 bellmanErrors.append(BE)
                 n += 1
-                if not n%100:
-                    np.save('bellman-weights.npy', self.w)
-                    print("Current Bellman error:", BE)
+                print("Current Bellman error:", BE)
+                # if not n%100:
+                #     np.save('bellman-weights.npy', self.w)
+                    # print("Current Bellman error:", BE)
 
             return bellmanErrors, gradientNorms
         else:
@@ -247,10 +241,7 @@ class algos:
                     #######
                     log_pis1 = np.log(pis1)
                     K_us1 = self.K_us(u1_batch)
-                    costs = self.cost(
-                        x1 * np.ones([x1.shape[0],self.u_batch_size]),
-                        u1_batch
-                    )
+                    costs = self.cost(x1, u1_batch)
                     costs_plus_log_pis1 = costs + log_pis1
 
                     expectationTerm1 = np.sum(pis1.reshape(-1,1) * (costs_plus_log_pis1.reshape(-1,1) + (self.w.T @ K_us1 @ phi_x1).reshape(u1_batch.shape[1],1)))

@@ -1,7 +1,7 @@
 from os import replace
 import auxiliaries as aux
 import numpy as np
-import pymp
+# import pymp
 import scipy.integrate as integrate
 import time
 
@@ -13,8 +13,8 @@ def rho(u, o='unif', a=0, b=1):
 
 def l2_norm(true_state, predicted_state):
     if true_state.shape != predicted_state.shape:
-        print("Shape 1:", true_state.shape)
-        print("Shape 2:", predicted_state.shape)
+        # print("Shape 1:", true_state.shape)
+        # print("Shape 2:", predicted_state.shape)
         raise Exception('The dimensions of the parameters did not match and therefore cannot be compared.')
     
     err = true_state - predicted_state
@@ -68,64 +68,53 @@ class algos:
     #     inner_pi_u = (-(self.cost(x, u) + self.w.T @ self.K_u(u) @ self.phi(x)))[0]
     #     return inner_pi_u
 
-    def inner_pi_us(self, us, x):
-        inner_pi_us = -(self.cost(x, us).T + (self.w.T @ self.K_us(us) @ self.phi(x))[:,:,0])
+    def inner_pi_us(self, us, xs):
+        phi_x_primes = self.K_us(us) @ self.phi(xs)
+        inner_pi_us = -(self.cost(xs, us).T + (self.w.T @ phi_x_primes)[:,0])
         return inner_pi_us
 
     # def pi_u(self, u, x):
     #     inner = self.inner_pi_u(u, x)
     #     return np.exp(inner)
 
-    def pis(self, x):
-        pis = None
-
+    def pis(self, xs):
         if not self.bellmanErrorType: # Discrete
-            inner_pi_us = self.inner_pi_us(self.All_U, x)
-            inner_pi_us = np.real(inner_pi_us)
-            max_inner_pi_u = np.max(inner_pi_us)
-            pi_us = np.exp(inner_pi_us - max_inner_pi_u) # self.All_U.shape[1] x 1
-            # pi_us[pi_us == 0] = 1e-323 # make it so all 0s are just a small number
-            Z_x = np.sum(pi_us)
+            inner_pi_us = self.inner_pi_us(self.All_U, xs) # self.All_U.shape[1] x self.xs.shape[1]
+            inner_pi_us = np.real(inner_pi_us) # self.All_U.shape[1] x self.xs.shape[1]
+            max_inner_pi_u = np.amax(inner_pi_us, axis=0) # self.xs.shape[1]
+            pi_us = np.exp(inner_pi_us - max_inner_pi_u) # self.All_U.shape[1] x self.xs.shape[1]
+            Z_x = np.sum(pi_us, axis=0) # self.xs.shape[1]
+
             #normalization = (self.u_upper-self.u_lower)
             normalization = 1
-
-            pis = pi_us / (Z_x*normalization)
+            return pi_us / (Z_x*normalization)
         else: # Continuous
-            inner_pi_us = self.inner_pi_us(self.All_U, x)
+            inner_pi_us = self.inner_pi_us(self.All_U, xs)
             inner_pi_us = np.real(inner_pi_us)
             max_inner_pi_u = np.max(inner_pi_us)
             pi_us = np.exp(inner_pi_us - max_inner_pi_u)
             Z_x = np.sum(pi_us)
+
             #Normalization follows from montecarlo integration approach to estimate true Z_x
             normalization = (self.u_upper-self.u_lower)/self.u_batch_size
-            pis = pi_us / (Z_x*normalization)
-            
-        return pis
+            return pi_us / (Z_x*normalization)
 
     def discreteBellmanError(self):
         ''' Equation 12 in writeup '''
 
-        # total = 0
-        total = pymp.shared.array((1,1), dtype='float32')
-        with pymp.Parallel(8) as p:
-            for i in p.range(0, self.X.shape[1]): # loop
-                x = np.vstack(self.X[:,i]) # column vector
-                # x = self.X[:, np.random.choice(np.arange(self.X.shape[1]))].reshape(-1,1)
+        phi_xs = self.phi(self.X) # dim_phi x self.X.shape[1]
+        pis = self.pis(self.X) # self.All_U.shape[1] x self.X.shape[1]
 
-                phi_x = self.phi(x) # column vector
-                pis = np.vstack(self.pis(x)) # column vector self.All_U.shape[1] x 1
+        # pi_sum = np.sum(pis)
+        # assert np.isclose(pi_sum, 1, rtol=1e-3, atol=1e-4)
 
-                # pi_sum = np.sum(pis)
-                # assert np.isclose(pi_sum, 1, rtol=1e-3, atol=1e-4)
+        phi_x_primes = self.K_us(self.All_U) @ phi_xs # self.All_U.shape[1] x dim_phi x self.X.shape[1]
+        weighted_phi_x_primes = (self.w.T @ phi_x_primes)[:,0,:] # self.All_U.shape[1] x self.X.shape[1]
+        costs = self.cost(self.X, self.All_U).T # self.All_U.shape[1] x self.X.shape[1]
+        expectation_us = (costs + np.log(pis) + weighted_phi_x_primes) * pis # self.All_U.shape[1] x self.X.shape[1]
+        expectation_u = np.sum(expectation_us) # scalar
 
-                phi_x_primes = (self.K_us(self.All_U) @ phi_x)[:,:,0].T # dim_phi x self.All_U.shape[1]
-                weighted_phi_x_primes = (self.w.T @ phi_x_primes).T # self.All_U.shape[1] x 1
-                costs = self.cost(x, self.All_U).T # self.All_U.shape[1] x 1
-                expectation_us = (costs + np.log(pis) + weighted_phi_x_primes) * pis
-                expectation_u = np.sum(expectation_us)
-
-                with p.lock:
-                    total += np.power(((self.w.T @ phi_x)[0,0] - expectation_u), 2)
+        total = np.power(((self.w.T @ phi_xs) - expectation_u), 2)
                 
         return total
 
@@ -181,30 +170,24 @@ class algos:
             n = 0
             while BE > self.epsilon:
                 x_batch_indices = np.random.choice(self.X.shape[1], batch_size, replace=False)
-                x_batch = self.X[:,x_batch_indices]
+                x_batch = self.X[:,x_batch_indices] # self.X.shape[0] x batch_size
                 phi_x_batch = self.phi(x_batch)
 
-                # nabla_w = np.zeros_like(self.w)
-                nabla_w = pymp.shared.array(self.w.shape, dtype='float32')
-                with pymp.Parallel(8) as p:
-                    for i in p.range(0, x_batch.shape[1]):
-                        x = np.vstack(x_batch[:,i]) # dim_x x 1
-                        phi_x = np.vstack(phi_x_batch[:,i]) # dim_phi x 1
-                        weighted_phi_x = (self.w.T @ phi_x)[0,0] # scalar
+                nabla_w = np.zeros_like(self.w)
+                weighted_phi_xs = (self.w.T @ phi_x_batch)
 
-                        pis = np.vstack(self.pis(x)) # self.All_U.shape[1] x 1
-                        log_pis = np.log(pis) # self.All_U.shape[1] x 1
-                        K_us = self.K_us(self.All_U) # self.All_U.shape[1] x dim_phi x dim_phi
-                        phi_x_primes = (K_us @ phi_x)[:,:,0] # self.All_U.shape[1] x dim_phi
-                        costs = self.cost(x, self.All_U).T # self.All_U.shape[1] x 1
-                        costs_plus_log_pis = costs + log_pis # self.All_U.shape[1] x 1
+                pis = np.vstack(self.pis(x_batch)) # self.All_U.shape[1] x 1
+                log_pis = np.log(pis) # self.All_U.shape[1] x 1
+                K_us = self.K_us(self.All_U) # self.All_U.shape[1] x dim_phi x dim_phi
+                phi_x_primes = (K_us @ phi_x_batch)[:,:,0] # self.All_U.shape[1] x dim_phi
+                costs = self.cost(x_batch, self.All_U).T # self.All_U.shape[1] x 1
+                costs_plus_log_pis = costs + log_pis # self.All_U.shape[1] x 1
 
-                        expectationTerm1 = np.sum((costs_plus_log_pis + (self.w.T @ phi_x_primes.T).T) * pis) # scalar
-                        expectationTerm2 = (pis.T @ phi_x_primes).T # dim_phi x 1
+                expectationTerm1 = np.sum((costs_plus_log_pis + (self.w.T @ phi_x_primes.T).T) * pis) # scalar
+                expectationTerm2 = (pis.T @ phi_x_primes).T # dim_phi x 1
 
-                        # Equation 13/14 in writeup
-                        with p.lock:
-                            nabla_w += ((weighted_phi_x - expectationTerm1) * (phi_x - expectationTerm2)) / batch_size
+                # Equation 13/14 in writeup
+                nabla_w += ((weighted_phi_xs - expectationTerm1) * (phi_x_batch - expectationTerm2)) / batch_size
 
                 gradientNorm = l2_norm(nabla_w, np.zeros_like(nabla_w))
                 gradientNorms.append(gradientNorm)
