@@ -82,6 +82,7 @@ def K_u(K, u):
     return np.einsum('ijz,z->ij', K, psi(u)[:,0])
 
 #%% Define cost function
+#! Cost is current bottleneck in performance
 nb.njit(fastmath=True)
 def cost(x, u):
     costs = np.empty((x.shape[1],u.shape[1]))
@@ -114,7 +115,7 @@ algos = algorithmsv2.algos(
     u_batch_size=30,
     learning_rate=1e-4
 )
-# algos.w = np.load('bellman-weights.npy')
+algos.w = np.load('bellman-weights.npy')
 # algos.w = np.array([
 #     [ 1.        ],
 #     [ 0.04950633],
