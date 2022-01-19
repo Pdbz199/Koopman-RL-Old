@@ -16,19 +16,19 @@ import utilities
 
 #%% System dynamics
 A = np.array([
-    [0.5, 0],
-    [0, 0.3]
-])
+    [0.5, 0.0],
+    [0.0, 0.3]
+], dtype=np.float64)
 B = np.array([
-    [1],
-    [1]
-])
+    [1.0],
+    [1.0]
+], dtype=np.float64)
 Q = np.array([
-    [1, 0],
-    [0, 1]
-])
+    [1.0, 0.0],
+    [0.0, 1.0]
+], dtype=np.float64)
 # R = 1
-R = np.array([[1]])
+R = np.array([[1.0]], dtype=np.float64)
 
 def f(x, u):
     return A @ x + B @ u
@@ -82,24 +82,13 @@ def K_u(K, u):
     return np.einsum('ijz,z->ij', K, psi(u)[:,0])
 
 #%% Define cost function
-#! Cost is current bottleneck in performance
-nb.njit(fastmath=True)
 # def cost(x, u):
-#     costs = np.empty((x.shape[1],u.shape[1]))
-#     for i in range(x.shape[1]):
-#         _x = np.vstack(x[:,i])
-#         for j in range(u.shape[1]):
-#             _u = np.vstack(u[:,j])
-#             costs[i,j] = _x.T @ Q @ _x + _u.T @ R @ _u
-#     return costs
+#     return x.T @ Q @ x + u.T @ R @ u
 
-def cost(x,u):
+def cost(x, u):
     # Assuming that data matrices are passed in for X and U. Columns vecs are snapshots
-    mat = np.vstack(np.diag(x.T @ Q @ x)) + u*u*R
+    mat = np.vstack(np.diag(x.T @ Q @ x)) + np.power(u, 2)*R
     return mat
-
-
-
 
 #%% Discretize all controls
 u_bounds = np.array([[0.0, action_range]])
@@ -124,24 +113,8 @@ algos = algorithmsv2.algos(
     learning_rate=1e-4
 )
 algos.w = np.load('bellman-weights.npy')
-# algos.w = np.array([
-#     [ 1.        ],
-#     [ 0.04950633],
-#     [-0.32755624],
-#     [ 1.32549688],
-#     [ 0.01576367],
-#     [ 1.11493135]
-# ])
-# algos.w = np.array([
-#     [ 1.        ],
-#     [ 4.90417142],
-#     [ 4.04355341],
-#     [67.17531854],
-#     [67.25611674],
-#     [61.07985195]
-# ])
 print("Weights before updating:", algos.w)
-bellmanErrors, gradientNorms = algos.algorithm2(batch_size=64)
+bellmanErrors, gradientNorms = algos.algorithm2(batch_size=256)
 print("Weights after updating:", algos.w)
 
 #%% Reset seed

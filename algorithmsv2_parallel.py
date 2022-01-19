@@ -47,7 +47,7 @@ class algos:
         self.bellmanError = self.discreteBellmanError if bellmanErrorType == 0 else self.continuousBellmanError
         self.learning_rate = learning_rate
         self.epsilon = epsilon
-        self.w = np.ones([K_hat.shape[0],1]) # Default weights of 1s
+        self.w = np.ones([K_hat.shape[0],1], dtype=np.float64) # Default weights of 1s
 
         self.weightRegularization = weightRegularizationBool #Bool for including weight regularization in Bellman loss functions
         self.weightRegLambda = weightRegLambda
