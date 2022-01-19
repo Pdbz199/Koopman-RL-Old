@@ -84,14 +84,22 @@ def K_u(K, u):
 #%% Define cost function
 #! Cost is current bottleneck in performance
 nb.njit(fastmath=True)
-def cost(x, u):
-    costs = np.empty((x.shape[1],u.shape[1]))
-    for i in range(x.shape[1]):
-        _x = np.vstack(x[:,i])
-        for j in range(u.shape[1]):
-            _u = np.vstack(u[:,j])
-            costs[i,j] = _x.T @ Q @ _x + _u.T @ R @ _u
-    return costs
+# def cost(x, u):
+#     costs = np.empty((x.shape[1],u.shape[1]))
+#     for i in range(x.shape[1]):
+#         _x = np.vstack(x[:,i])
+#         for j in range(u.shape[1]):
+#             _u = np.vstack(u[:,j])
+#             costs[i,j] = _x.T @ Q @ _x + _u.T @ R @ _u
+#     return costs
+
+def cost(x,u):
+    # Assuming that data matrices are passed in for X and U. Columns vecs are snapshots
+    mat = np.vstack(np.diag(x.T @ Q @ x)) + u*u*R
+    return mat
+
+
+
 
 #%% Discretize all controls
 u_bounds = np.array([[0.0, action_range]])
