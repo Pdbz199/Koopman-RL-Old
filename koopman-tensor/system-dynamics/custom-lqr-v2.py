@@ -12,10 +12,14 @@ import utilities
 from control import dlqr
 
 #%% System dynamics
-A = np.array([
-    [0.5, 0.0],
-    [0.0, 0.3]
-])
+A = np.zeros((2,2))
+max_real_eigen_val = 1
+while max_real_eigen_val >= 1 or max_real_eigen_val <= 0.7:
+    Z = np.random.rand(2,2)
+    A = Z.T @ Z
+    W,V = np.linalg.eig(A)
+    max_real_eigen_val = np.max(np.real(W))
+print(A)
 B = np.array([
     [1.0],
     [1.0]
