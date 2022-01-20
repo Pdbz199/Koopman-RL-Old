@@ -149,7 +149,7 @@ class algos:
                 n += 1
                 print("Current Bellman error:", BE)
                 np.save('bellman-weights.npy', self.w)
-                # if not n%100:
+                # if n%100 == 0:
                 #     np.save('bellman-weights.npy', self.w)
                 #     print("Current Bellman error:", BE)
 

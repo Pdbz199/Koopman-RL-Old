@@ -12,7 +12,7 @@ import estimate_L
 import observables
 import utilities
 
-# from control import lqr
+from control import dlqr
 
 #%% System dynamics
 A = np.array([
@@ -34,8 +34,8 @@ def f(x, u):
     return A @ x + B @ u
 
 #%% Traditional LQR
-# lq = lqr(A, B, Q, R)
-# C = lq[0][0]
+lq = dlqr(A, B, Q, R)
+C = lq[0]
 # lq[0] == [[ 8.96688317 -6.28428936]]
 # lq[1] == [[ 79.40499383 -70.43811066]
 #           [-70.43811066  64.1538213 ]]
@@ -112,31 +112,43 @@ algos = algorithmsv2.algos(
     u_batch_size=30,
     learning_rate=1e-4
 )
-algos.w = np.load('bellman-weights.npy')
+# algos.w = np.array([
+#     [ 1.        ],
+#     [-0.10849056],
+#     [-0.3513768 ],
+#     [ 1.33814896],
+#     [ 0.0154977 ],
+#     [ 1.11888816]
+# ])
+# algos.w = np.load('bellman-weights.npy')
 print("Weights before updating:", algos.w)
-bellmanErrors, gradientNorms = algos.algorithm2(batch_size=256)
-print("Weights after updating:", algos.w)
+# bellmanErrors, gradientNorms = algos.algorithm2(batch_size=256)
+# print("Weights after updating:", algos.w)
 
-#%% Reset seed
+#%% Reset seed and compute initial x0s
 np.random.seed(123)
 
-#%% Retrieve policy
+num_episodes = 1000
+num_steps_per_episode = 1000
+initial_Xs = np.random.rand(2,num_episodes)*state_range # random initial states
+
+#%% Construct policy
+All_U_range = np.arange(All_U.shape[1])
 def policy(x):
     pis = algos.pis(x)[:,0]
     # Select action column at index sampled from policy distribution
     u = np.vstack(
-        All_U[:,np.random.choice(np.arange(All_U.shape[1]), p=pis)]
+        All_U[:,np.random.choice(All_U_range, p=pis)]
     )
     return u
 
+# def policy(x):
+#     return -C @ x
+
 #%% Test policy by simulating system
-num_episodes = 100
-num_steps_per_episode = 100
 costs = np.empty((num_episodes))
 for episode in range(num_episodes):
-    x = np.vstack(
-        np.random.rand(2,1)*state_range # random initial state
-    )
+    x = np.vstack(initial_Xs[:,episode])
     print("Initial x:", x)
     cost_sum = 0
     for step in range(num_steps_per_episode):
@@ -147,7 +159,7 @@ for episode in range(num_episodes):
         cost_sum += cost(x, u)
 
         x = x_prime
-        if not step%250:
+        if step%250 == 0:
             print("Current x:", x)
     costs[episode] = cost_sum
 print("Mean cost per episode:", np.mean(costs)) # Cost should be minimized
