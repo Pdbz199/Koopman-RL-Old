@@ -50,7 +50,7 @@ Y = f(X0, U)
 #%% Estimate Koopman tensor
 order = 2
 phi = observables.monomials(order)
-psi = observables.monomials(order)
+psi = observables.monomials(5)
 
 #%% Build Phi and Psi matrices
 Phi_X = phi(X0)
@@ -68,7 +68,7 @@ for i in range(N):
     kronMatrix[:,i] = np.kron(Psi_U[:,i], Phi_X[:,i])
 
 #%% Estimate M
-M = estimate_L.ols(kronMatrix.T, Phi_Y.T).T
+M = estimate_L.SINDy(kronMatrix.T, Phi_Y.T).T
 B_ = estimate_L.ols(Phi_X.T, X0.T)
 
 #%% Reshape M into K tensor

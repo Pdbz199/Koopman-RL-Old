@@ -64,7 +64,7 @@ for i in range(N):
     kronMatrix[:,i] = np.kron(Psi_U[:,i], Phi_X[:,i])
 
 #%% Estimate M
-M = estimate_L.ols(kronMatrix.T, Phi_Y.T).T
+M = estimate_L.SINDy(kronMatrix.T, Phi_Y.T).T
 B_ = estimate_L.ols(Phi_X.T, X0.T)
 
 #%% Reshape M into K tensor
