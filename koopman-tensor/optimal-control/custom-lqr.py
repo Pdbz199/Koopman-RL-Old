@@ -44,7 +44,7 @@ C = lq[0]
 #%% Construct snapshots of u from random agent and initial states x0
 N = 10000
 action_range = 10
-state_range = 10 #! Are these reasonable ranges? Depending on draws before we were setting the seed properly, we were seeing better/worse convergence of ABE with different learning rates.
+state_range = 10
 U = np.random.rand(1,N)*action_range
 X0 = np.random.rand(2,N)*state_range
 
@@ -128,8 +128,8 @@ print("Weights before updating:", algos.w)
 #%% Reset seed and compute initial x0s
 np.random.seed(123)
 
-num_episodes = 1000
-num_steps_per_episode = 1000
+num_episodes = 100
+num_steps_per_episode = 100
 initial_Xs = np.random.rand(2,num_episodes)*state_range # random initial states
 
 #%% Construct policy
@@ -149,7 +149,7 @@ def policy(x):
 costs = np.empty((num_episodes))
 for episode in range(num_episodes):
     x = np.vstack(initial_Xs[:,episode])
-    print("Initial x:", x)
+    # print("Initial x:", x)
     cost_sum = 0
     for step in range(num_steps_per_episode):
         u = policy(x)
@@ -159,8 +159,8 @@ for episode in range(num_episodes):
         cost_sum += cost(x, u)
 
         x = x_prime
-        if step%250 == 0:
-            print("Current x:", x)
+        # if step%250 == 0:
+        #     print("Current x:", x)
     costs[episode] = cost_sum
 print("Mean cost per episode:", np.mean(costs)) # Cost should be minimized
 

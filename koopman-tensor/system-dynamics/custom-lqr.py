@@ -94,13 +94,18 @@ for i in range(N):
     norms[i] = utilities.l2_norm(true_x_prime, predicted_x_prime)
 print("Training error:", np.mean(norms))
 
-#%% Testing error
+#%% Testing error normalized by mean norm of different starting states
 num_episodes = 100
 num_steps_per_episode = 100
 
 norms = np.empty((num_episodes,N))
+norms_states = np.empty((num_episodes,N))
+X0_sample = np.random.rand(2,num_episodes)*state_range # random initial states
+norm_X0s = utilities.l2_norm(X0_sample, np.zeros_like(X0_sample))
+avg_norm_X0s = np.mean(norm_X0s)
+
 for episode in range(num_episodes):
-    x = np.random.rand(2,1)*state_range # random initial state
+    x = np.vstack(X0_sample[:,episode])
     phi_x = phi(x) # apply phi to initial state
 
     for step in range(num_steps_per_episode):
@@ -110,8 +115,12 @@ for episode in range(num_episodes):
         predicted_x_prime = B_.T @ K_u(K, action) @ phi_x
 
         norms[episode,step] = utilities.l2_norm(true_x_prime, predicted_x_prime)
+        norms_states[episode,step] = utilities.l2_norm(x, np.zeros_like(x))
 
         x = true_x_prime
-print("Testing error over all episodes:", np.mean(norms))
+avg_norm_by_path = np.mean(norms_states, axis = 1)
+print("Avg testing error over all episodes:", np.mean(norms))
+print("Avg testing error over all episodes normalized by avg norm of starting state:", np.mean(norms)/avg_norm_X0s)
+print("Avg testing error over all episodes normalized by avg norm of state path:", np.mean((np.mean(norms, axis =1)/avg_norm_by_path)))
 
 #%%
