@@ -19,7 +19,7 @@ while max_real_eigen_val >= 1 or max_real_eigen_val <= 0.7:
     A = Z.T @ Z
     W,V = np.linalg.eig(A)
     max_real_eigen_val = np.max(np.real(W))
-print(A)
+
 B = np.array([
     [1.0],
     [1.0]
