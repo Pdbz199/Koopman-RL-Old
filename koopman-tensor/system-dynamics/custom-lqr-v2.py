@@ -20,6 +20,9 @@ while max_real_eigen_val >= 1 or max_real_eigen_val <= 0.7:
     W,V = np.linalg.eig(A)
     max_real_eigen_val = np.max(np.real(W))
 
+# A = [[0.53653091 0.32435379]
+#      [0.32435379 0.38582369]]
+
 B = np.array([
     [1.0],
     [1.0]
@@ -50,7 +53,7 @@ Y = f(X0, U)
 #%% Estimate Koopman tensor
 order = 2
 phi = observables.monomials(order)
-psi = observables.monomials(5)
+psi = observables.monomials(order)
 
 #%% Build Phi and Psi matrices
 Phi_X = phi(X0)
@@ -68,7 +71,7 @@ for i in range(N):
     kronMatrix[:,i] = np.kron(Psi_U[:,i], Phi_X[:,i])
 
 #%% Estimate M
-M = estimate_L.SINDy(kronMatrix.T, Phi_Y.T).T
+M = estimate_L.ols(kronMatrix.T, Phi_Y.T).T
 B_ = estimate_L.ols(Phi_X.T, X0.T)
 
 #%% Reshape M into K tensor
