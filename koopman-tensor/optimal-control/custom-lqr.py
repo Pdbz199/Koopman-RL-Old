@@ -120,9 +120,9 @@ algos = algorithmsv2.algos(
 #     [ 0.0154977 ],
 #     [ 1.11888816]
 # ])
-# algos.w = np.load('bellman-weights.npy')
+algos.w = np.load('bellman-weights.npy')
 print("Weights before updating:", algos.w)
-# bellmanErrors, gradientNorms = algos.algorithm2(batch_size=256)
+# bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
 # print("Weights after updating:", algos.w)
 
 #%% Reset seed and compute initial x0s
@@ -144,7 +144,7 @@ def policy(x):
 
 # def policy(x):
 #     return -C @ x
-
+Lambda = 0.2
 #%% Test policy by simulating system
 costs = np.empty((num_episodes))
 for episode in range(num_episodes):
@@ -156,7 +156,7 @@ for episode in range(num_episodes):
         # u = np.random.rand(1,1)*action_range # sample random action
         x_prime = f(x, u)
 
-        cost_sum += cost(x, u)
+        cost_sum += cost(x, u) #+ Lambda*np.log(algos.pis(u,x))
 
         x = x_prime
         # if step%250 == 0:
