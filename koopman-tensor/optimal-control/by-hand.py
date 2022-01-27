@@ -1,6 +1,6 @@
 #%% Imports
 import numpy as np
-np.random.seed(123)
+np.random.seed(13)
 
 from enum import IntEnum
 
@@ -39,9 +39,9 @@ def cost(x, u):
     if x == State.HIGH and u == Action.UP:
         return 1.0
     elif x == State.HIGH and u == Action.DOWN:
-        return 10.0
+        return 100.0
     elif x == State.LOW and u == Action.UP:
-        return 10.0
+        return 100.0
     elif x == State.LOW and u == Action.DOWN:
         return 1.0
 
@@ -148,7 +148,6 @@ print("Average testing error per episode:", np.mean(norms))
 All_U = np.array([[Action.UP, Action.DOWN]])
 
 #%% Learn control
-epsilon = 98.207
 algos = algorithmsv2.algos(
     X,
     All_U,
@@ -157,16 +156,19 @@ algos = algorithmsv2.algos(
     psi,
     K,
     costs,
-    epsilon=epsilon,
+    beta=0.8,
+    epsilon=1e-2,
     bellmanErrorType=0,
     weightRegularizationBool=0,
     u_batch_size=30,
     learning_rate=1e-1
 )
-algos.w = np.load('bellman-weights.npy')
+# algos.w = np.load('bellman-weights.npy')
+algos.w = np.array([[0.6],[753.6]])
+# algos.w = np.array([[14241],[14241]])
 print("Weights before updating:", algos.w)
 bellmanErrors, gradientNorms = algos.algorithm2(batch_size=64)
-# print("Weights after updating:", algos.w)
+print("Weights after updating:", algos.w)
 
 #%% Construct policy
 All_U_range = np.arange(All_U.shape[1])

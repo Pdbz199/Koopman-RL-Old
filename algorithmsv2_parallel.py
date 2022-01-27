@@ -26,6 +26,7 @@ class algos:
         psi,
         K_hat,
         cost,
+        beta=1.0,
         bellmanErrorType=0,
         learning_rate=1e-3,
         epsilon=1,
@@ -43,6 +44,7 @@ class algos:
         self.psi = psi # Dictionary function for U
         self.K_hat = K_hat # Estimated Koopman Tensor
         self.cost = cost # Cost function to optimize
+        self.beta = beta
         self.bellmanErrorType = bellmanErrorType
         self.bellmanError = self.discreteBellmanError if bellmanErrorType == 0 else self.continuousBellmanError
         self.learning_rate = learning_rate
@@ -58,7 +60,7 @@ class algos:
 
     def inner_pi_us(self, us, xs):
         phi_x_primes = self.K_us(us) @ self.phi(xs) # self.us.shape[1] x dim_phi x self.xs.shape[1]
-        inner_pi_us = -(self.cost(xs, us).T + (self.w.T @ phi_x_primes)[:,0]) # self.us.shape[1] x self.xs.shape[1]
+        inner_pi_us = -(self.cost(xs, us).T + self.beta * (self.w.T @ phi_x_primes)[:,0]) # self.us.shape[1] x self.xs.shape[1]
         return inner_pi_us
 
     def pis(self, xs):
@@ -95,7 +97,7 @@ class algos:
         phi_x_primes = self.K_us(self.All_U) @ phi_xs # self.All_U.shape[1] x dim_phi x self.X.shape[1]
         weighted_phi_x_primes = (self.w.T @ phi_x_primes)[:,0] # self.All_U.shape[1] x self.X.shape[1]
         costs = self.cost(self.X, self.All_U).T # self.All_U.shape[1] x self.X.shape[1]
-        expectation_us = (costs + np.log(pis) + weighted_phi_x_primes) * pis # self.All_U.shape[1] x self.X.shape[1]
+        expectation_us = (costs + np.log(pis) + self.beta * weighted_phi_x_primes) * pis # self.All_U.shape[1] x self.X.shape[1]
         expectation_u = np.sum(expectation_us, axis=0) # self.X.shape[1]
 
         squared_differences = np.power((self.w.T @ phi_xs) - expectation_u, 2) # 1 x self.X.shape[1]
@@ -118,7 +120,7 @@ class algos:
                 x_batch = self.X[:,x_batch_indices] # self.X.shape[0] x batch_size
                 phi_x_batch = self.phi(x_batch) # dim_phi x batch_size
 
-                weighted_phi_xs = (self.w.T @ phi_x_batch) # 1 x batch_size
+                weighted_phi_x_batch = (self.w.T @ phi_x_batch) # 1 x batch_size
 
                 pis = np.vstack(self.pis(x_batch)) # self.All_U.shape[1] x batch_size
                 log_pis = np.log(pis) # self.All_U.shape[1] x batch_size
@@ -126,13 +128,12 @@ class algos:
                 phi_x_primes = K_us @ phi_x_batch # self.All_U.shape[1] x dim_phi x batch_size
                 weighted_phi_x_primes = (self.w.T @ phi_x_primes)[:,0] # self.All_U.shape[1] x batch_size
                 costs = self.cost(x_batch, self.All_U).T # self.All_U.shape[1] x batch_size
-                costs_plus_log_pis = costs + log_pis # self.All_U.shape[1] x batch_size
 
-                expectationTerm1 = np.sum((costs_plus_log_pis + weighted_phi_x_primes) * pis, axis=0) # batch_size
-                expectationTerm2 = np.einsum('ux,upx->px', pis, phi_x_primes) # dim_phi x batch_size
+                expectationTerm1 = np.sum((costs + log_pis + self.beta * weighted_phi_x_primes) * pis, axis=0) # batch_size
+                expectationTerm2 = np.einsum('ux,upx->px', pis, self.beta * phi_x_primes) # dim_phi x batch_size
 
                 # Equations 22/23 in writeup
-                difference = ((weighted_phi_xs - expectationTerm1) * (phi_x_batch - expectationTerm2)) / batch_size # dim_phi x batch_size
+                difference = ((weighted_phi_x_batch - expectationTerm1) * (phi_x_batch - expectationTerm2)) / batch_size # dim_phi x batch_size
                 nabla_w = np.sum(difference, axis=1) # dim_phi
                 nabla_w = nabla_w.reshape((phi_x_batch.shape[0],1)) # dim_phi x 1
 
