@@ -61,7 +61,7 @@ class algos:
     def inner_pi_us(self, us, xs):
         phi_x_primes = self.K_us(us) @ self.phi(xs) # self.us.shape[1] x dim_phi x self.xs.shape[1]
         inner_pi_us = -(self.cost(xs, us).T + self.beta * (self.w.T @ phi_x_primes)[:,0]) # self.us.shape[1] x self.xs.shape[1]
-        return inner_pi_us
+        return inner_pi_us#*(1/self.weightRegLambda)
 
     def pis(self, xs):
         if self.bellmanErrorType == 0: # Discrete
@@ -97,7 +97,7 @@ class algos:
         phi_x_primes = self.K_us(self.All_U) @ phi_xs # self.All_U.shape[1] x dim_phi x self.X.shape[1]
         weighted_phi_x_primes = (self.w.T @ phi_x_primes)[:,0] # self.All_U.shape[1] x self.X.shape[1]
         costs = self.cost(self.X, self.All_U).T # self.All_U.shape[1] x self.X.shape[1]
-        expectation_us = (costs + np.log(pis) + self.beta * weighted_phi_x_primes) * pis # self.All_U.shape[1] x self.X.shape[1]
+        expectation_us = (costs + self.weightRegLambda*np.log(pis) + self.beta * weighted_phi_x_primes) * pis # self.All_U.shape[1] x self.X.shape[1]
         expectation_u = np.sum(expectation_us, axis=0) # self.X.shape[1]
 
         squared_differences = np.power((self.w.T @ phi_xs) - expectation_u, 2) # 1 x self.X.shape[1]
@@ -129,7 +129,7 @@ class algos:
                 weighted_phi_x_primes = (self.w.T @ phi_x_primes)[:,0] # self.All_U.shape[1] x batch_size
                 costs = self.cost(x_batch, self.All_U).T # self.All_U.shape[1] x batch_size
 
-                expectationTerm1 = np.sum((costs + log_pis + self.beta * weighted_phi_x_primes) * pis, axis=0) # batch_size
+                expectationTerm1 = np.sum((costs + self.weightRegLambda*log_pis + self.beta * weighted_phi_x_primes) * pis, axis=0) # batch_size
                 expectationTerm2 = np.einsum('ux,upx->px', pis, self.beta * phi_x_primes) # dim_phi x batch_size
 
                 # Equations 22/23 in writeup

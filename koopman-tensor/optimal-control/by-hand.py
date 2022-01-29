@@ -16,11 +16,11 @@ TWO_THIRDS = 2/3
 #%% IntEnum for high/low, up/down
 class State(IntEnum):
     HIGH = 1
-    LOW = 0#-1
+    LOW = 0
 
 class Action(IntEnum):
     UP = 1
-    DOWN = 0#-1
+    DOWN = 0
 
 #%% System dynamics
 def f(x, u):

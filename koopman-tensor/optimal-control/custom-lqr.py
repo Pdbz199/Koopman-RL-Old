@@ -97,7 +97,7 @@ All_U = np.arange(start=u_bounds[0,0], stop=u_bounds[0,1], step=step_size).resha
 # All_U = U.reshape(1,-1) # continuous case is just original domain
 
 #%% Learn control
-epsilon = 1 # 0.1
+epsilon = 0.1
 algos = algorithmsv2.algos(
     X0,
     All_U,
@@ -106,24 +106,42 @@ algos = algorithmsv2.algos(
     psi,
     K,
     cost,
+    beta=0.5,
     epsilon=epsilon,
     bellmanErrorType=0,
     weightRegularizationBool=0,
     u_batch_size=30,
     learning_rate=1e-4
 )
+# algos.w = 1 # cost before updating: 132.62760223538467
 # algos.w = np.array([
-#     [ 1.        ],
-#     [-0.10849056],
-#     [-0.3513768 ],
-#     [ 1.33814896],
-#     [ 0.0154977 ],
-#     [ 1.11888816]
-# ])
+#     [ 0.32838696],
+#     [-0.33044519],
+#     [-0.41617378],
+#     [ 1.16240693],
+#     [ 0.02526733],
+#     [ 1.07197209]
+# ]) # cost before updating: 186.6709194728545
+# algos.w = np.array([
+#     [ 0.45438418],
+#     [ 0.06581561],
+#     [ 0.04912081],
+#     [ 1.14375388],
+#     [-0.00797578],
+#     [ 1.04895122]
+# ]) # cost before updating: 172.10126543439546
+# algos.w = np.array([
+#     [0.97556216],
+#     [0.89174057],
+#     [0.86661941],
+#     [1.0363173 ],
+#     [0.00910955],
+#     [0.94223967]
+# ]) # cost before updating: 150.27612833754785
 algos.w = np.load('bellman-weights.npy')
 print("Weights before updating:", algos.w)
-# bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
-# print("Weights after updating:", algos.w)
+bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
+print("Weights after updating:", algos.w)
 
 #%% Reset seed and compute initial x0s
 np.random.seed(123)
