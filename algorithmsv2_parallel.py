@@ -31,7 +31,7 @@ class algos:
         learning_rate=1e-3,
         epsilon=1,
         weightRegularizationBool=1,
-        weightRegLambda=1e-2,
+        weightRegLambda=1,
         u_batch_size=50
     ):
         self.X = X # Collection of observations
@@ -61,7 +61,7 @@ class algos:
     def inner_pi_us(self, us, xs):
         phi_x_primes = self.K_us(us) @ self.phi(xs) # self.us.shape[1] x dim_phi x self.xs.shape[1]
         inner_pi_us = -(self.cost(xs, us).T + self.beta * (self.w.T @ phi_x_primes)[:,0]) # self.us.shape[1] x self.xs.shape[1]
-        return inner_pi_us#*(1/self.weightRegLambda)
+        return inner_pi_us*(1/self.weightRegLambda)
 
     def pis(self, xs):
         if self.bellmanErrorType == 0: # Discrete

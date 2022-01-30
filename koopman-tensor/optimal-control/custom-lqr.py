@@ -45,8 +45,8 @@ C = lq[0]
 N = 10000
 action_range = 10
 state_range = 10
-U = np.random.rand(1,N)*action_range
-X0 = np.random.rand(2,N)*state_range
+U = np.random.rand(1,N)*action_range*np.random.choice(np.array([-1,1]), size=(1,N))
+X0 = np.random.rand(2,N)*state_range*np.random.choice(np.array([-1,1]), size=(2,N))
 
 #%% Construct snapshots of states following dynamics f
 Y = f(X0, U)
@@ -91,13 +91,15 @@ def cost(x, u):
     return mat
 
 #%% Discretize all controls
-u_bounds = np.array([[0.0, action_range]])
+u_bounds = np.array([[-action_range, action_range]])
 step_size = 0.1
 All_U = np.arange(start=u_bounds[0,0], stop=u_bounds[0,1], step=step_size).reshape(1,-1)
+All_U = np.round(All_U, decimals=1)
 # All_U = U.reshape(1,-1) # continuous case is just original domain
 
 #%% Learn control
 epsilon = 0.1
+beta = 0.5
 algos = algorithmsv2.algos(
     X0,
     All_U,
@@ -106,49 +108,77 @@ algos = algorithmsv2.algos(
     psi,
     K,
     cost,
-    beta=0.5,
+    beta=beta,
+    weightRegLambda=1,
     epsilon=epsilon,
     bellmanErrorType=0,
     weightRegularizationBool=0,
     u_batch_size=30,
     learning_rate=1e-4
 )
-# algos.w = 1 # cost before updating: 132.62760223538467
-# algos.w = np.array([
-#     [ 0.32838696],
-#     [-0.33044519],
-#     [-0.41617378],
-#     [ 1.16240693],
-#     [ 0.02526733],
-#     [ 1.07197209]
-# ]) # cost before updating: 186.6709194728545
-# algos.w = np.array([
-#     [ 0.45438418],
-#     [ 0.06581561],
-#     [ 0.04912081],
-#     [ 1.14375388],
-#     [-0.00797578],
-#     [ 1.04895122]
-# ]) # cost before updating: 172.10126543439546
-# algos.w = np.array([
-#     [0.97556216],
-#     [0.89174057],
-#     [0.86661941],
-#     [1.0363173 ],
-#     [0.00910955],
-#     [0.94223967]
-# ]) # cost before updating: 150.27612833754785
 algos.w = np.load('bellman-weights.npy')
 print("Weights before updating:", algos.w)
-bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
-print("Weights after updating:", algos.w)
+# bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
+# print("Weights after updating:", algos.w)
+
+# UPDATE (beta = 0.5)
+# Mean cost 149.70096846344427, weights = 1
+# 159.73050635706545, BE = 227313.64619706973
+# 150.87148630617315, BE = 27789.43904288947
+# 151.03942785346644, BE = 25334.162539428587
+# 150.95426211613199, BE = 24971.944982697343
+
+# Mean optimal cost 73.55472996049053
+
+# BETA = 0.5
+# 144.71, BE = 5193061.96
+# 159.30, BE = 97900.11
+# 159.49, BE = 9741.73
+# 159.36, BE = 6387.96
+# 158.92, BE = 5645.05
+# 158.55, BE = 5466.73
+# 157.66, BE = 4981.88
+# 157.39, BE = 4845.50
+# 157.15, BE = 4742.25
+# 156.22, BE = 4307.26
+# 154.51, BE = 3791.99
+# 152.55, BE = 3328.96
+# algos.w = np.array([
+#     [ 0.75538592],
+#     [ 0.68470443],
+#     [ 0.66054487],
+#     [ 1.13714188],
+#     [-0.0029041 ],
+#     [ 1.07005579]
+# ])
+
+# w/ discounting and weights = 1: 69.40
+# w/ discounting and weights are s.t. BE = 5466.73: 69.39
+
+# BETA = 1
+# 126.80, BE = 4638908.76
+# 140.57, BE = 116866.17
+# 140.34, BE = 29099.91
+# 139.81, BE = 7947.24
+# 139.23, BE = 6387.74
+# algos.w = np.array([
+#     [ 1.        ]
+#     [ 0.91458017]
+#     [ 0.90113685]
+#     [ 1.26895151]
+#     [-0.09738594]
+#     [ 1.13607786]
+# ])
+
+# w/o discounting: 70.03 is optimal
+# w/ discounting: 68.38 is optimal
 
 #%% Reset seed and compute initial x0s
 np.random.seed(123)
 
 num_episodes = 100
 num_steps_per_episode = 100
-initial_Xs = np.random.rand(2,num_episodes)*state_range # random initial states
+initial_Xs = np.random.rand(2,num_episodes)*state_range*np.random.choice(np.array([-1,1]), size=(2,num_episodes)) # random initial states
 
 #%% Construct policy
 All_U_range = np.arange(All_U.shape[1])
@@ -160,10 +190,11 @@ def policy(x):
     )
     return u
 
-# def policy(x):
-#     return -C @ x
-Lambda = 0.2
+def policy2(x):
+    return -C @ x
+
 #%% Test policy by simulating system
+lamb = 1e-2
 costs = np.empty((num_episodes))
 for episode in range(num_episodes):
     x = np.vstack(initial_Xs[:,episode])
@@ -171,10 +202,12 @@ for episode in range(num_episodes):
     cost_sum = 0
     for step in range(num_steps_per_episode):
         u = policy(x)
-        # u = np.random.rand(1,1)*action_range # sample random action
+        # u = np.random.rand(1,1)*action_range*np.random.choice(np.array([-1,1])) # sample random action
         x_prime = f(x, u)
 
-        cost_sum += cost(x, u) #+ Lambda*np.log(algos.pis(u,x))
+        # pis = algos.pis(x)[:,0]
+        # (beta**step)*
+        cost_sum += cost(x, u) #+ lamb * np.log(pis[All_U[0] == u[0,0]])
 
         x = x_prime
         # if step%250 == 0:
