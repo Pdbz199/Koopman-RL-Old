@@ -22,8 +22,8 @@ NEGATIVE_TWO_THIRDS_TWO_THIRDS = np.array(
      [2/3]
 ])
 TWO_THIRDS_NEGATIVE_TWO_THIRDS = np.array(
-    [[-2/3],
-     [2/3]
+    [[2/3],
+     [-2/3]
 ])
 
 #%% IntEnum for high/low, up/down
