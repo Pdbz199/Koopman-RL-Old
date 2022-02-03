@@ -88,7 +88,7 @@ def K_(u):
 
 #%% Define h function
 # Example: h(State.LOW, Action.DOWN) => 1.9825030824294083e-110
-w = np.array([[0.6],[753.6]])
+w = np.array([[9],[300]])
 def h(x, u):
     return np.exp(
         -( cost(x, u) + w.T @ K_(u) @ phi(x) )
@@ -102,5 +102,34 @@ def Z_(x):
 def π(x, u):
     return h(x, u) / (Z_(x))
 
+def ln_π(x, u):
+    return ln(π(x, u))
+
 #%% Compute nabla_w
-#...
+# frac_LOW = N_LOW/N --where N_X is number of X states sampled and N is total number of states sampled
+# 35 1s and 29 0s
+# 35 State.HIGH, 29 State.LOW
+total_states = 64
+num_high_states = 35
+num_low_states = 64-num_high_states # 29
+
+def nabla_w(num_LOW, num_HIGH):
+    total_Num = num_HIGH + num_LOW
+
+    nabla_w = \
+        (num_HIGH/total_Num) * \
+            ( \
+                w.T @ phi(State.HIGH) \
+                - π(State.HIGH, Action.UP) * ( cost(State.HIGH, Action.UP) + ln_π(State.HIGH, Action.UP) + w.T @ K_(Action.UP) @ phi(State.HIGH) ) \
+                - π(State.HIGH, Action.DOWN) * ( cost(State.HIGH, Action.DOWN) + ln_π(State.HIGH, Action.DOWN) + w.T @ K_(Action.DOWN) @ phi(State.HIGH) ) \
+            ) * ( phi(State.HIGH) - π(State.HIGH, Action.DOWN) * K_(Action.DOWN) @ phi(State.HIGH) - K_(Action.DOWN) @ phi(State.HIGH) - π(State.HIGH, Action.UP) * K_(Action.UP) @ phi(State.HIGH) - K_(Action.UP) @ phi(State.HIGH)) \
+        + (num_LOW/total_Num) * \
+            ( \
+                w.T @ phi(State.LOW) \
+                - π(State.LOW, Action.UP) * ( cost(State.LOW, Action.UP) + ln_π(State.LOW, Action.UP) + w.T @ K_(Action.UP) @ phi(State.LOW) ) \
+                - π(State.LOW, Action.DOWN) * ( cost(State.LOW, Action.DOWN) + ln_π(State.LOW, Action.DOWN) + w.T @ K_(Action.DOWN) @ phi(State.LOW) ) \
+            ) * ( phi(State.LOW) - π(State.LOW, Action.DOWN) * K_(Action.DOWN) @ phi(State.LOW) - K_(Action.DOWN) @ phi(State.LOW) - π(State.LOW, Action.UP) * K_(Action.UP) @ phi(State.LOW) - K_(Action.UP) @ phi(State.LOW))
+
+    return nabla_w
+
+#%%
