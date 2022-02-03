@@ -1,49 +1,67 @@
-#%% Imports
+#%%
+from colorsys import TWO_THIRD
 import numpy as np
-np.random.seed(13)
 
 from enum import IntEnum
 
-import sys
-sys.path.append('../../')
-import algorithmsv2_parallel as algorithmsv2
-import estimate_L
-import utilities
+# Random, potentially nice functions
+def ln(input):
+    return np.log(input)
 
-#%% Constants
-TWO_THIRDS = 2/3
+#%% Random, potentially useful constants
+TWO_THIRDS_ONE_THIRD = np.array(
+    [[2/3],
+     [1/3]]
+)
+ONE_THIRD_TWO_THIRDS = np.array(
+    [[1/3],
+     [2/3]
+])
+NEGATIVE_TWO_THIRDS_TWO_THIRDS = np.array(
+    [[-2/3],
+     [2/3]
+])
+TWO_THIRDS_NEGATIVE_TWO_THIRDS = np.array(
+    [[-2/3],
+     [2/3]
+])
 
 #%% IntEnum for high/low, up/down
 class State(IntEnum):
-    HIGH = 1
     LOW = 0
+    HIGH = 1
 
 class Action(IntEnum):
-    UP = 1
     DOWN = 0
+    UP = 1
 
-#%% System dynamics
-def f(x, u):
-    random = np.random.rand()
-    if x == State.HIGH and u == Action.UP:
-        return State.HIGH if random <= TWO_THIRDS else State.LOW
-    elif x == State.HIGH and u == Action.DOWN:
-        return State.LOW if random <= TWO_THIRDS else State.HIGH
-    elif x == State.LOW and u == Action.UP:
-        return State.HIGH if random <= TWO_THIRDS else State.LOW
-    elif x == State.LOW and u == Action.DOWN:
-        return State.LOW if random <= TWO_THIRDS else State.HIGH
+#%% Dictionaries
+distinct_xs = 2
+distinct_us = 2
+
+def phi(x):
+    if type(x) != np.ndarray:
+        x = np.array([[x]])
+
+    phi_x = np.zeros((distinct_us,x.shape[1]))
+    phi_x[x[0].astype(int),np.arange(0,x.shape[1])] = 1
+    return phi_x
+
+def psi(u):
+    if type(u) != np.ndarray:
+        u = np.array([[u]])
+
+    psi_u = np.zeros((distinct_us,u.shape[1]))
+    psi_u[u[0].astype(int),np.arange(0,u.shape[1])] = 1
+    return psi_u
 
 #%% Define cost
 def cost(x, u):
-    if x == State.HIGH and u == Action.UP:
+    if (x == State.HIGH and u == Action.UP) or (x == State.LOW and u == Action.DOWN):
         return 1.0
-    elif x == State.HIGH and u == Action.DOWN:
-        return 100.0
-    elif x == State.LOW and u == Action.UP:
-        return 100.0
-    elif x == State.LOW and u == Action.DOWN:
-        return 1.0
+
+    # Else, return 100.0
+    return 100.0
 
 def costs(xs, us):
     costs = np.empty((xs.shape[1],us.shape[1]))
@@ -52,151 +70,37 @@ def costs(xs, us):
         for j in range(us.shape[1]):
             u = np.vstack(us[:,j])
             costs[i,j] = cost(x, u)
-
     return costs
 
-#%% Construct snapshots of u from random agent and initial states x0
-N = 100
-X = np.random.choice(list(State), size=(1,N))
-U = np.random.choice(list(Action), size=(1,N))
+#%% Define K_u function
+def K_(u):
+    if u == Action.DOWN:
+        return np.array([
+            [2/3, 2/3],
+            [1/3, 1/3]
+        ])
+    
+    # Else, return K_up
+    return np.array([
+        [1/3, 1/3],
+        [2/3, 2/3]
+    ])
 
-#%% Construct snapshots of states following dynamics f(x,u) -> x'
-Y = np.empty_like(X)
-for i in range(X.shape[1]):
-    x = np.vstack(X[:,i])
-    u = np.vstack(U[:,i])
-    Y[:,i] = f(x, u)
+#%% Define h function
+# Example: h(State.LOW, Action.DOWN) => 1.9825030824294083e-110
+w = np.array([[0.6],[753.6]])
+def h(x, u):
+    return np.exp(
+        -( cost(x, u) + w.T @ K_(u) @ phi(x) )
+    )[0,0]
 
-#%% Dictionaries
-distinct_xs = 2
-distinct_us = 2
+#%% Define Z_x function
+def Z_(x):
+    return h(x, Action.UP) + h(x, Action.DOWN)
 
-enumerated_states = np.array([State.HIGH, State.LOW])
-enumerated_actions = np.array([Action.UP, Action.DOWN])
+#%% Define π function
+def π(x, u):
+    return h(x, u) / (Z_(x))
 
-def phi(x):
-    phi_x = np.zeros((distinct_us,x.shape[1]))
-    phi_x[x[0].astype(int),np.arange(0,x.shape[1])] = 1
-    return phi_x
-
-def psi(u):
-    psi_u = np.zeros((distinct_us,u.shape[1]))
-    psi_u[u[0].astype(int),np.arange(0,u.shape[1])] = 1
-    return psi_u
-
-#%% Apply Phi and Psi dictionaries
-Phi_X = phi(X)
-Phi_Y = phi(Y)
-Psi_U = psi(U)
-dim_phi = Phi_X[:,0].shape[0]
-dim_psi = Psi_U[:,0].shape[0]
-
-#%% Build kronMatrix
-kronMatrix = np.empty((dim_psi * dim_phi, N))
-for i in range(N):
-    kronMatrix[:,i] = np.kron(Psi_U[:,i], Phi_X[:,i])
-
-#%% Estimate M
-M = estimate_L.ols(kronMatrix.T, Phi_Y.T).T
-B = estimate_L.ols(Phi_X.T, X.T)
-
-#%% Reshape M into K tensor
-K = np.empty((dim_phi, dim_phi, dim_psi))
-for i in range(dim_phi):
-    K[i] = M[i].reshape((dim_phi,dim_psi), order='F')
-
-def K_u(K, u):
-    # return np.einsum('ijz,kz->ij', K, psi(u))
-    return np.einsum('ijz,z->ij', K, psi(u)[:,0])
-
-#%% Training error
-norms = np.empty((N))
-for i in range(N):
-    phi_x = np.vstack(Phi_X[:,i]) # current (lifted) state
-
-    action = np.vstack(U[:,i])
-
-    true_x_prime = np.vstack(Y[:,i])
-    predicted_x_prime = B.T @ K_u(K, action) @ phi_x
-
-    # Compute norms
-    norms[i] = utilities.l2_norm(true_x_prime, predicted_x_prime)
-print("Average training error:", np.mean(norms))
-
-#%% Testing error
-num_episodes = 100
-num_steps_per_episode = 100
-
-norms = np.zeros((num_episodes))
-for episode in range(num_episodes):
-    x = np.array([[np.random.choice(list(State))]])
-
-    for step in range(num_steps_per_episode):
-        phi_x = phi(x) # apply phi to state
-
-        action = np.array([[np.random.choice(list(Action))]]) # sample random action
-
-        true_x_prime = np.array([[f(x, action)]])
-        predicted_x_prime = B.T @ K_u(K, action) @ phi_x
-
-        norms[episode] += utilities.l2_norm(true_x_prime, predicted_x_prime)
-
-        x = true_x_prime
-print("Average testing error per episode:", np.mean(norms))
-
-#%% Discretize all controls
-All_U = np.array([[Action.UP, Action.DOWN]])
-
-#%% Learn control
-algos = algorithmsv2.algos(
-    X,
-    All_U,
-    np.array([0,1]),
-    phi,
-    psi,
-    K,
-    costs,
-    beta=0.8,
-    epsilon=1e-2,
-    bellmanErrorType=0,
-    weightRegularizationBool=0,
-    u_batch_size=30,
-    learning_rate=1e-1
-)
-# algos.w = np.load('bellman-weights.npy')
-algos.w = np.array([[0.6],[753.6]])
-# algos.w = np.array([[14241],[14241]])
-print("Weights before updating:", algos.w)
-bellmanErrors, gradientNorms = algos.algorithm2(batch_size=64)
-print("Weights after updating:", algos.w)
-
-#%% Construct policy
-All_U_range = np.arange(All_U.shape[1])
-def policy(x):
-    pis = algos.pis(x)[:,0]
-    # Select action column at index sampled from policy distribution
-    u = np.vstack(
-        All_U[:,np.random.choice(All_U_range, p=pis)]
-    )
-    return u
-
-#%% Test policy by simulating system
-num_episodes = 100
-num_steps_per_episode = 100
-
-costs = np.empty((num_episodes))
-for episode in range(num_episodes):
-    x = np.array([[np.random.choice(list(State))]])
-
-    cost_sum = 0
-    for step in range(num_steps_per_episode):
-        u = policy(x)
-
-        cost_sum += cost(x, u)
-
-        x = np.array([[f(x, u)]])
-
-        # if step%250 == 0:
-        #     print("Current x:", x)
-    costs[episode] = cost_sum
-print("Mean cost per episode:", np.mean(costs)) # Cost should be minimized
+#%% Compute nabla_w
+#...
