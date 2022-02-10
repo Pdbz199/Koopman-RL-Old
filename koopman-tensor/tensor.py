@@ -1,7 +1,7 @@
 import numpy as np
 
 import sys
-sys.path.append('../')
+sys.path.append('../../')
 import estimate_L
 import observables
 
@@ -12,7 +12,8 @@ class KoopmanTensor:
         Y,
         U,
         phi=observables.monomials(2),
-        psi=observables.monomials(2)
+        psi=observables.monomials(2),
+        regressor='ols'
     ):
         self.X = X
         self.Y = Y
@@ -42,8 +43,16 @@ class KoopmanTensor:
                 self.Phi_X[:,i]
             )
 
-        # Solve for M
-        self.M = estimate_L.ols(self.kronMatrix.T, self.Phi_Y.T).T
+        # Solve for M and B
+        if regressor == 'rrr':
+            self.M = estimate_L.rrr(self.kronMatrix.T, self.Phi_Y.T).T
+            self.B = estimate_L.rrr(self.Phi_X.T, self.X.T)
+        if regressor == 'sindy':
+            self.M = estimate_L.SINDy(self.kronMatrix.T, self.Phi_Y.T).T
+            self.B = estimate_L.SINDy(self.Phi_X.T, self.X.T)
+        else:
+            self.M = estimate_L.ols(self.kronMatrix.T, self.Phi_Y.T).T
+            self.B = estimate_L.ols(self.Phi_X.T, self.X.T)
 
         # reshape M into tensor K
         self.K = np.empty([
@@ -64,4 +73,9 @@ class KoopmanTensor:
         if len(u.shape) == 1:
             u = np.vstack(u)
         
-        return np.einsum('ijz,zk->kij', self.K, self.psi(u))
+        K_u = np.einsum('ijz,zk->kij', self.K, self.psi(u))
+
+        if K_u.shape[0] == 1:
+            return K_u[0]
+
+        return K_u

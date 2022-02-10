@@ -5,6 +5,8 @@ np.random.seed(13)
 from enum import IntEnum
 
 import sys
+sys.path.append('../')
+from tensor import KoopmanTensor
 sys.path.append('../../')
 import algorithmsv2_parallel as algorithmsv2
 import estimate_L
@@ -84,40 +86,18 @@ def psi(u):
     psi_u[u[0].astype(int),np.arange(0,u.shape[1])] = 1
     return psi_u
 
-#%% Apply Phi and Psi dictionaries
-Phi_X = phi(X)
-Phi_Y = phi(Y)
-Psi_U = psi(U)
-dim_phi = Phi_X[:,0].shape[0]
-dim_psi = Psi_U[:,0].shape[0]
-
-#%% Build kronMatrix
-kronMatrix = np.empty((dim_psi * dim_phi, N))
-for i in range(N):
-    kronMatrix[:,i] = np.kron(Psi_U[:,i], Phi_X[:,i])
-
-#%% Estimate M
-M = estimate_L.ols(kronMatrix.T, Phi_Y.T).T
-B = estimate_L.ols(Phi_X.T, X.T)
-
-#%% Reshape M into K tensor
-K = np.empty((dim_phi, dim_phi, dim_psi))
-for i in range(dim_phi):
-    K[i] = M[i].reshape((dim_phi,dim_psi), order='F')
-
-def K_u(K, u):
-    # return np.einsum('ijz,kz->ij', K, psi(u))
-    return np.einsum('ijz,z->ij', K, psi(u)[:,0])
+#%% Koopman tensor
+tensor = KoopmanTensor(X, Y, U, phi, psi)
 
 #%% Training error
 norms = np.empty((N))
 for i in range(N):
-    phi_x = np.vstack(Phi_X[:,i]) # current (lifted) state
+    phi_x = np.vstack(tensor.Phi_X[:,i]) # current (lifted) state
 
     action = np.vstack(U[:,i])
 
     true_x_prime = np.vstack(Y[:,i])
-    predicted_x_prime = B.T @ K_u(K, action) @ phi_x
+    predicted_x_prime = tensor.B.T @ tensor.K_(action) @ phi_x
 
     # Compute norms
     norms[i] = utilities.l2_norm(true_x_prime, predicted_x_prime)
@@ -137,7 +117,7 @@ for episode in range(num_episodes):
         action = np.array([[np.random.choice(list(Action))]]) # sample random action
 
         true_x_prime = np.array([[f(x, action)]])
-        predicted_x_prime = B.T @ K_u(K, action) @ phi_x
+        predicted_x_prime = tensor.B.T @ tensor.K_(action) @ phi_x
 
         norms[episode] += utilities.l2_norm(true_x_prime, predicted_x_prime)
 
@@ -154,8 +134,9 @@ algos = algorithmsv2.algos(
     np.array([0,1]),
     phi,
     psi,
-    K,
+    tensor.K,
     costs,
+    beta=0.5,
     epsilon=1e-2,
     bellmanErrorType=0,
     weightRegularizationBool=0,
@@ -163,7 +144,7 @@ algos = algorithmsv2.algos(
     learning_rate=1e-1
 )
 # algos.w = np.load('bellman-weights.npy')
-algos.w = np.array([[0.6],[753.6]])
+algos.w = np.array([[9],[300]])
 # algos.w = np.array([[14241],[14241]])
 print("Weights before updating:", algos.w)
 bellmanErrors, gradientNorms = algos.algorithm2(batch_size=64)
@@ -199,3 +180,5 @@ for episode in range(num_episodes):
         #     print("Current x:", x)
     costs[episode] = cost_sum
 print("Mean cost per episode:", np.mean(costs)) # Cost should be minimized
+
+#%%

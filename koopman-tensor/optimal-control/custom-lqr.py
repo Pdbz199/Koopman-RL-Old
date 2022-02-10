@@ -5,6 +5,8 @@ import numpy as np
 np.random.seed(123)
 
 import sys
+sys.path.append('../')
+from tensor import KoopmanTensor
 sys.path.append('../../')
 # import algorithmsv2
 import algorithmsv2_parallel as algorithmsv2
@@ -52,34 +54,14 @@ X0 = np.random.rand(2,N)*state_range*np.random.choice(np.array([-1,1]), size=(2,
 Y = f(X0, U)
 
 #%% Estimate Koopman tensor
-order = 2
-phi = observables.monomials(order)
-psi = observables.monomials(order)
-
-#%% Build Phi and Psi matrices
-Phi_X = phi(X0)
-Phi_Y = phi(Y)
-Psi_U = psi(U)
-dim_phi = Phi_X[:,0].shape[0]
-dim_psi = Psi_U[:,0].shape[0]
-N = X0.shape[1]
-
-#%% Build kronMatrix
-kronMatrix = np.empty((dim_psi * dim_phi, N))
-for i in range(N):
-    kronMatrix[:,i] = np.kron(Psi_U[:,i], Phi_X[:,i])
-
-#%% Estimate M
-M = estimate_L.ols(kronMatrix.T, Phi_Y.T).T
-
-#%% Reshape M into K tensor
-K = np.empty((dim_phi, dim_phi, dim_psi))
-for i in range(dim_phi):
-    K[i] = M[i].reshape((dim_phi,dim_psi), order='F')
-
-def K_u(K, u):
-    # return np.einsum('ijz,kz->ij', K, psi(u))
-    return np.einsum('ijz,z->ij', K, psi(u)[:,0])
+tensor = KoopmanTensor(
+    X0,
+    Y,
+    U,
+    phi=observables.monomials(2),
+    psi=observables.monomials(1),
+    regressor='sindy'
+)
 
 #%% Define cost function
 # def cost(x, u):
@@ -98,28 +80,32 @@ All_U = np.round(All_U, decimals=1)
 # All_U = U.reshape(1,-1) # continuous case is just original domain
 
 #%% Learn control
-epsilon = 0.1
-beta = 0.5
 algos = algorithmsv2.algos(
     X0,
     All_U,
     u_bounds[0],
-    phi,
-    psi,
-    K,
+    tensor.phi,
+    tensor.psi,
+    tensor.K,
     cost,
-    beta=beta,
-    weightRegLambda=1,
-    epsilon=epsilon,
-    bellmanErrorType=0,
-    weightRegularizationBool=0,
-    u_batch_size=30,
-    learning_rate=1e-4
+    gamma=0.5,
+    epsilon=0.01,
+    bellman_error_type=0,
+    u_batch_size=32,
+    learning_rate=1e-1,
+    weight_regularization_bool=True,
+    weight_regularization_lambda=0.6,
+    optimizer='adam'
 )
-algos.w = np.load('bellman-weights.npy')
+# algos.w = np.load('bellman-weights.npy')
 print("Weights before updating:", algos.w)
-# bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
-# print("Weights after updating:", algos.w)
+bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
+print("Weights after updating:", algos.w)
+
+plt.plot(bellmanErrors)
+plt.show()
+plt.plot(gradientNorms)
+plt.show()
 
 # UPDATE (beta = 0.5)
 # Mean cost 149.70096846344427, weights = 1

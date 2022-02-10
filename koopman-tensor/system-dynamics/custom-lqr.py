@@ -1,11 +1,15 @@
 #%% Imports
 import matplotlib.pyplot as plt
+import numba as nb
 import numpy as np
 np.random.seed(123)
 
 import sys
+sys.path.append('../')
+from tensor import KoopmanTensor
 sys.path.append('../../')
-import estimate_L
+# import algorithmsv2
+import algorithmsv2_parallel as algorithmsv2
 import observables
 import utilities
 
@@ -15,76 +19,58 @@ from control import dlqr
 A = np.array([
     [0.5, 0.0],
     [0.0, 0.3]
-])
+], dtype=np.float64)
 B = np.array([
     [1.0],
     [1.0]
-])
+], dtype=np.float64)
 Q = np.array([
     [1.0, 0.0],
     [0.0, 1.0]
-])
-R = 1.0
+], dtype=np.float64)
+# R = 1
+R = np.array([[1.0]], dtype=np.float64)
 
 def f(x, u):
     return A @ x + B @ u
 
 #%% Traditional LQR
 lq = dlqr(A, B, Q, R)
-K = lq[0]
+C = lq[0]
+# lq[0] == [[ 8.96688317 -6.28428936]]
+# lq[1] == [[ 79.40499383 -70.43811066]
+#           [-70.43811066  64.1538213 ]]
+# lq[2] == [-1.474176 +0.j -0.4084178+0.j]
 
 #%% Construct snapshots of u from random agent and initial states x0
 N = 10000
 action_range = 10
 state_range = 10
-U = np.random.rand(1,N)*action_range
-X0 = np.random.rand(2,N)*state_range
+U = np.random.rand(1,N)*action_range*np.random.choice(np.array([-1,1]), size=(1,N))
+X0 = np.random.rand(2,N)*state_range*np.random.choice(np.array([-1,1]), size=(2,N))
 
 #%% Construct snapshots of states following dynamics f
 Y = f(X0, U)
 
 #%% Estimate Koopman tensor
-order = 2
-phi = observables.monomials(order)
-psi = observables.monomials(order)
-
-#%% Build Phi and Psi matrices
-Phi_X = phi(X0)
-Phi_Y = phi(Y)
-Psi_U = psi(U)
-dim_phi = Phi_X[:,0].shape[0]
-dim_psi = Psi_U[:,0].shape[0]
-N = X0.shape[1]
-
-print(Phi_X.shape)
-
-#%% Build kronMatrix
-kronMatrix = np.empty((dim_psi * dim_phi, N))
-for i in range(N):
-    kronMatrix[:,i] = np.kron(Psi_U[:,i], Phi_X[:,i])
-
-#%% Estimate M
-M = estimate_L.SINDy(kronMatrix.T, Phi_Y.T).T
-B_ = estimate_L.ols(Phi_X.T, X0.T)
-
-#%% Reshape M into K tensor
-K = np.empty((dim_phi, dim_phi, dim_psi))
-for i in range(dim_phi):
-    K[i] = M[i].reshape((dim_phi,dim_psi), order='F')
-
-def K_u(K, u):
-    # return np.einsum('ijz,kz->ij', K, psi(u))
-    return np.einsum('ijz,z->ij', K, psi(u)[:,0])
+tensor = KoopmanTensor(
+    X0,
+    Y,
+    U,
+    phi=observables.monomials(2),
+    psi=observables.monomials(2),
+    regressor='sindy'
+)
 
 #%% Training error
 norms = np.empty((N))
 for i in range(N):
-    phi_x = np.vstack(Phi_X[:,i]) # current (lifted) state
+    phi_x = np.vstack(tensor.Phi_X[:,i]) # current (lifted) state
 
     action = np.vstack(U[:,i])
 
     true_x_prime = np.vstack(Y[:,i])
-    predicted_x_prime = B_.T @ K_u(K, action) @ phi_x
+    predicted_x_prime = tensor.B.T @ tensor.K_(action) @ phi_x
 
     # Compute norms
     norms[i] = utilities.l2_norm(true_x_prime, predicted_x_prime)
@@ -104,12 +90,12 @@ for episode in range(num_episodes):
     x = np.vstack(X0_sample[:,episode]) # initial state
 
     for step in range(num_steps_per_episode):
-        phi_x = phi(x) # apply phi to state
+        phi_x = tensor.phi(x) # apply phi to state
 
         action = np.random.rand(1,1)*action_range # sample random action
 
         true_x_prime = f(x, action)
-        predicted_x_prime = B_.T @ K_u(K, action) @ phi_x
+        predicted_x_prime = tensor.B.T @ tensor.K_(action) @ phi_x
 
         norms[episode,step] = utilities.l2_norm(true_x_prime, predicted_x_prime)
         norms_states[episode,step] = utilities.l2_norm(x, np.zeros_like(x))
