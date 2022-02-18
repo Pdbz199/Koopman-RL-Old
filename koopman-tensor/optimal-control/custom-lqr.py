@@ -59,8 +59,8 @@ tensor = KoopmanTensor(
     Y,
     U,
     phi=observables.monomials(2),
-    psi=observables.monomials(1),
-    regressor='sindy'
+    psi=observables.monomials(2),
+    regressor='ols'
 )
 
 #%% Define cost function
@@ -74,7 +74,7 @@ def cost(x, u):
 
 #%% Discretize all controls
 u_bounds = np.array([[-action_range, action_range]])
-step_size = 0.1
+step_size = 0.01
 All_U = np.arange(start=u_bounds[0,0], stop=u_bounds[0,1], step=step_size).reshape(1,-1)
 All_U = np.round(All_U, decimals=1)
 # All_U = U.reshape(1,-1) # continuous case is just original domain
@@ -84,80 +84,41 @@ algos = algorithmsv2.algos(
     X0,
     All_U,
     u_bounds[0],
-    tensor.phi,
-    tensor.psi,
-    tensor.K,
+    tensor,
     cost,
     gamma=0.5,
     epsilon=0.01,
     bellman_error_type=0,
-    u_batch_size=32,
     learning_rate=1e-1,
     weight_regularization_bool=True,
     weight_regularization_lambda=0.6,
     optimizer='adam'
 )
 # algos.w = np.load('bellman-weights.npy')
+# algos.w = np.array([
+#     [ 6.32850460e+01],
+#     [-1.63997489e-05],
+#     [ 1.61457139e-06],
+#     [ 1.07368850e+00],
+#     [-8.32041194e-02],
+#     [ 1.02243938e+00]
+# ]) # for psi = monomials order 1
+algos.w = np.array([
+    [-2.71008047e+00],
+    [-4.84689433e-06],
+    [-4.70463240e-06],
+    [ 1.10210792e+00],
+    [-4.33749393e-02],
+    [ 1.03527770e+00]
+])
 print("Weights before updating:", algos.w)
-bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
-print("Weights after updating:", algos.w)
+# bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
+# print("Weights after updating:", algos.w)
 
-plt.plot(bellmanErrors)
-plt.show()
-plt.plot(gradientNorms)
-plt.show()
-
-# UPDATE (beta = 0.5)
-# Mean cost 149.70096846344427, weights = 1
-# 159.73050635706545, BE = 227313.64619706973
-# 150.87148630617315, BE = 27789.43904288947
-# 151.03942785346644, BE = 25334.162539428587
-# 150.95426211613199, BE = 24971.944982697343
-
-# Mean optimal cost 73.55472996049053
-
-# BETA = 0.5
-# 144.71, BE = 5193061.96
-# 159.30, BE = 97900.11
-# 159.49, BE = 9741.73
-# 159.36, BE = 6387.96
-# 158.92, BE = 5645.05
-# 158.55, BE = 5466.73
-# 157.66, BE = 4981.88
-# 157.39, BE = 4845.50
-# 157.15, BE = 4742.25
-# 156.22, BE = 4307.26
-# 154.51, BE = 3791.99
-# 152.55, BE = 3328.96
-# algos.w = np.array([
-#     [ 0.75538592],
-#     [ 0.68470443],
-#     [ 0.66054487],
-#     [ 1.13714188],
-#     [-0.0029041 ],
-#     [ 1.07005579]
-# ])
-
-# w/ discounting and weights = 1: 69.40
-# w/ discounting and weights are s.t. BE = 5466.73: 69.39
-
-# BETA = 1
-# 126.80, BE = 4638908.76
-# 140.57, BE = 116866.17
-# 140.34, BE = 29099.91
-# 139.81, BE = 7947.24
-# 139.23, BE = 6387.74
-# algos.w = np.array([
-#     [ 1.        ]
-#     [ 0.91458017]
-#     [ 0.90113685]
-#     [ 1.26895151]
-#     [-0.09738594]
-#     [ 1.13607786]
-# ])
-
-# w/o discounting: 70.03 is optimal
-# w/ discounting: 68.38 is optimal
+# plt.plot(bellmanErrors)
+# plt.show()
+# plt.plot(gradientNorms)
+# plt.show()
 
 #%% Reset seed and compute initial x0s
 np.random.seed(123)
@@ -178,6 +139,10 @@ def policy(x):
 
 def policy2(x):
     return -C @ x
+
+sigma_t = np.linalg.inv(R + B.T @ Q @ B)
+def policy3(x):
+    return np.random.normal(-C @ x, sigma_t)
 
 #%% Test policy by simulating system
 lamb = 1e-2
