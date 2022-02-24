@@ -13,7 +13,8 @@ class KoopmanTensor:
         U,
         phi=observables.monomials(2),
         psi=observables.monomials(2),
-        regressor='ols'
+        regressor='ols',
+        p_inv=True
     ):
         self.X = X
         self.Y = Y
@@ -25,16 +26,16 @@ class KoopmanTensor:
         self.N = self.X.shape[1]
 
         # Construct Phi and Psi matrices
-        self.Phi_X = phi(X)
-        self.Phi_Y = phi(Y)
-        self.Psi_U = psi(U)
+        self.Phi_X = self.phi(X)
+        self.Phi_Y = self.phi(Y)
+        self.Psi_U = self.psi(U)
 
         self.dim_phi = self.Phi_X.shape[0]
         self.dim_psi = self.Psi_U.shape[0]
 
-        # Build matrix of kronecker products between u_i and x_j for all i, j
+        # Build matrix of kronecker products between u_i and x_i for all 0 <= i <= N
         self.kronMatrix = np.empty([
-            self.dim_phi * self.dim_psi,
+            self.dim_psi * self.dim_phi,
             self.N
         ])
         for i in range(self.N):
@@ -51,8 +52,8 @@ class KoopmanTensor:
             self.M = estimate_L.SINDy(self.kronMatrix.T, self.Phi_Y.T).T
             self.B = estimate_L.SINDy(self.Phi_X.T, self.X.T)
         else:
-            self.M = estimate_L.ols(self.kronMatrix.T, self.Phi_Y.T).T
-            self.B = estimate_L.ols(self.Phi_X.T, self.X.T)
+            self.M = estimate_L.ols(self.kronMatrix.T, self.Phi_Y.T, p_inv).T
+            self.B = estimate_L.ols(self.Phi_X.T, self.X.T, p_inv)
 
         # reshape M into tensor K
         self.K = np.empty([

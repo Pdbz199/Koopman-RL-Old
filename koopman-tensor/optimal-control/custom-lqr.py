@@ -59,7 +59,7 @@ tensor = KoopmanTensor(
     Y,
     U,
     phi=observables.monomials(2),
-    psi=observables.monomials(1),
+    psi=observables.monomials(2),
     regressor='sindy'
 )
 
@@ -106,58 +106,6 @@ plt.plot(bellmanErrors)
 plt.show()
 plt.plot(gradientNorms)
 plt.show()
-
-# UPDATE (beta = 0.5)
-# Mean cost 149.70096846344427, weights = 1
-# 159.73050635706545, BE = 227313.64619706973
-# 150.87148630617315, BE = 27789.43904288947
-# 151.03942785346644, BE = 25334.162539428587
-# 150.95426211613199, BE = 24971.944982697343
-
-# Mean optimal cost 73.55472996049053
-
-# BETA = 0.5
-# 144.71, BE = 5193061.96
-# 159.30, BE = 97900.11
-# 159.49, BE = 9741.73
-# 159.36, BE = 6387.96
-# 158.92, BE = 5645.05
-# 158.55, BE = 5466.73
-# 157.66, BE = 4981.88
-# 157.39, BE = 4845.50
-# 157.15, BE = 4742.25
-# 156.22, BE = 4307.26
-# 154.51, BE = 3791.99
-# 152.55, BE = 3328.96
-# algos.w = np.array([
-#     [ 0.75538592],
-#     [ 0.68470443],
-#     [ 0.66054487],
-#     [ 1.13714188],
-#     [-0.0029041 ],
-#     [ 1.07005579]
-# ])
-
-# w/ discounting and weights = 1: 69.40
-# w/ discounting and weights are s.t. BE = 5466.73: 69.39
-
-# BETA = 1
-# 126.80, BE = 4638908.76
-# 140.57, BE = 116866.17
-# 140.34, BE = 29099.91
-# 139.81, BE = 7947.24
-# 139.23, BE = 6387.74
-# algos.w = np.array([
-#     [ 1.        ]
-#     [ 0.91458017]
-#     [ 0.90113685]
-#     [ 1.26895151]
-#     [-0.09738594]
-#     [ 1.13607786]
-# ])
-
-# w/o discounting: 70.03 is optimal
-# w/ discounting: 68.38 is optimal
 
 #%% Reset seed and compute initial x0s
 np.random.seed(123)

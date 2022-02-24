@@ -1,6 +1,4 @@
 #%% Imports
-import matplotlib.pyplot as plt
-import numba as nb
 import numpy as np
 np.random.seed(123)
 
@@ -67,22 +65,23 @@ norms = np.empty((N))
 for i in range(N):
     phi_x = np.vstack(tensor.Phi_X[:,i]) # current (lifted) state
 
-    action = np.vstack(U[:,i])
+    action = np.vstack(tensor.U[:,i])
 
-    true_x_prime = np.vstack(Y[:,i])
-    predicted_x_prime = tensor.B.T @ tensor.K_(action) @ phi_x
+    # true_x_prime = np.vstack(tensor.Y[:,i])
+    true_phi_x_prime = np.vstack(tensor.Phi_Y[:,i])
+    predicted_phi_x_prime = tensor.K_(action) @ phi_x
 
     # Compute norms
-    norms[i] = utilities.l2_norm(true_x_prime, predicted_x_prime)
+    norms[i] = utilities.l2_norm(true_phi_x_prime, predicted_phi_x_prime)
 print("Training error:", np.mean(norms))
 
 #%% Testing error normalized by mean norm of different starting states
 num_episodes = 100
 num_steps_per_episode = 100
 
-norms = np.empty((num_episodes,N))
-norms_states = np.empty((num_episodes,N))
-X0_sample = np.random.rand(2,num_episodes)*state_range # random initial states
+norms = np.empty((num_episodes,num_steps_per_episode))
+norms_states = np.empty((num_episodes,num_steps_per_episode))
+X0_sample = np.random.rand(2,num_episodes)*state_range*np.random.choice(np.array([-1,1]), size=(2,num_episodes)) # random initial states
 norm_X0s = utilities.l2_norm(X0_sample, np.zeros_like(X0_sample))
 avg_norm_X0s = np.mean(norm_X0s)
 
@@ -92,15 +91,17 @@ for episode in range(num_episodes):
     for step in range(num_steps_per_episode):
         phi_x = tensor.phi(x) # apply phi to state
 
-        action = np.random.rand(1,1)*action_range # sample random action
+        action = np.random.rand(1,1)*action_range*np.random.choice(np.array([-1,1])) # sample random action
 
         true_x_prime = f(x, action)
-        predicted_x_prime = tensor.B.T @ tensor.K_(action) @ phi_x
+        true_phi_x_prime = tensor.phi(true_x_prime)
+        predicted_phi_x_prime = tensor.K_(action) @ phi_x
 
-        norms[episode,step] = utilities.l2_norm(true_x_prime, predicted_x_prime)
+        norms[episode,step] = utilities.l2_norm(true_phi_x_prime, predicted_phi_x_prime)
         norms_states[episode,step] = utilities.l2_norm(x, np.zeros_like(x))
 
         x = true_x_prime
+
 avg_norm_by_path = np.mean(norms_states, axis = 1)
 print("Avg testing error over all episodes:", np.mean(norms))
 print("Avg testing error over all episodes normalized by avg norm of starting state:", np.mean(norms)/avg_norm_X0s)
