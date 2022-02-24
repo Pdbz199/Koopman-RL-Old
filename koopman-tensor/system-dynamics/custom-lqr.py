@@ -56,7 +56,7 @@ tensor = KoopmanTensor(
     Y,
     U,
     phi=observables.monomials(2),
-    psi=observables.monomials(2),
+    psi=observables.monomials(1),
     regressor='sindy'
 )
 

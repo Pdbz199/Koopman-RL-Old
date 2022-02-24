@@ -22,9 +22,7 @@ class algos:
         X,
         All_U,
         u_bounds,
-        phi,
-        psi,
-        K_hat,
+        tensor,
         cost,
         beta=0.9,
         beta2=0.999,
@@ -38,14 +36,14 @@ class algos:
         optimizer='sgd'
     ):
         self.X = X # Collection of observations
-        self.Phi_X = phi(X) # Collection of lifted observations
+        self.Phi_X = tensor.phi(X) # Collection of lifted observations
         self.All_U = All_U # U is a collection of all POSSIBLE actions as row vectors
         self.u_lower = u_bounds[0] # lower bound on actions in continuous case
         self.u_upper = u_bounds[1] # upper bound on actions in continuous case
         self.u_batch_size = u_batch_size
-        self.phi = phi # Dictionary function for X
-        self.psi = psi # Dictionary function for U
-        self.K_hat = K_hat # Estimated Koopman Tensor
+        self.phi = tensor.phi # Dictionary function for X
+        self.psi = tensor.psi # Dictionary function for U
+        self.tensor = tensor
         self.cost = cost # Cost function to optimize
         self.beta = beta
         self.beta2 = beta2
@@ -54,18 +52,14 @@ class algos:
         self.bellman_error = self.discrete_bellman_error if bellman_error_type == 0 else self.continuous_bellman_error
         self.learning_rate = learning_rate
         self.epsilon = epsilon
-        self.w = np.ones([K_hat.shape[0],1], dtype=np.float64) # Default weights of 1s
+        self.w = np.ones([self.Phi_X.shape[0],1], dtype=np.float64) # Default weights of 1s
 
         self.weight_regularization_bool = weight_regularization_bool #Bool for including weight regularization in Bellman loss functions
         self.weight_regularization_lambda = weight_regularization_lambda
         self.optimizer = optimizer
 
-    def K_us(self, us):
-        ''' Pick out Koopman operator given a matrix of action column vectors '''
-        return np.einsum('ijz,zk->kij', self.K_hat, self.psi(us))
-
     def inner_pi_us(self, us, xs):
-        phi_x_primes = self.K_us(us) @ self.phi(xs) # self.us.shape[1] x dim_phi x self.xs.shape[1]
+        phi_x_primes = self.tensor.K_(us) @ self.phi(xs) # self.us.shape[1] x dim_phi x self.xs.shape[1]
         inner_pi_us = -(self.cost(xs, us).T + self.gamma * (self.w.T @ phi_x_primes)[:,0]) # self.us.shape[1] x self.xs.shape[1]
         return inner_pi_us*(1/self.weight_regularization_lambda)
 
@@ -100,7 +94,7 @@ class algos:
         # pi_sum = np.sum(pis)
         # assert np.isclose(pi_sum, 1, rtol=1e-3, atol=1e-4)
 
-        phi_x_primes = self.K_us(self.All_U) @ phi_xs # self.All_U.shape[1] x dim_phi x self.X.shape[1]
+        phi_x_primes = self.tensor.K_(self.All_U) @ phi_xs # self.All_U.shape[1] x dim_phi x self.X.shape[1]
         weighted_phi_x_primes = (self.w.T @ phi_x_primes)[:,0] # self.All_U.shape[1] x self.X.shape[1]
         costs = self.cost(self.X, self.All_U).T # self.All_U.shape[1] x self.X.shape[1]
         expectation_us = (costs + self.weight_regularization_lambda*np.log(pis) + self.gamma * weighted_phi_x_primes) * pis # self.All_U.shape[1] x self.X.shape[1]
@@ -134,7 +128,7 @@ class algos:
 
                 pis = np.vstack(self.pis(x_batch)) # self.All_U.shape[1] x batch_size
                 log_pis = np.log(pis) # self.All_U.shape[1] x batch_size
-                K_us = self.K_us(self.All_U) # self.All_U.shape[1] x dim_phi x dim_phi
+                K_us = self.tensor.K_(self.All_U) # self.All_U.shape[1] x dim_phi x dim_phi
                 phi_x_primes = K_us @ phi_x_batch # self.All_U.shape[1] x dim_phi x batch_size
                 weighted_phi_x_primes = (self.w.T @ phi_x_primes)[:,0] # self.All_U.shape[1] x batch_size
                 costs = self.cost(x_batch, self.All_U).T # self.All_U.shape[1] x batch_size
@@ -148,7 +142,7 @@ class algos:
                     nabla_w = np.sum(difference, axis=1).reshape((phi_x_batch.shape[0],1)) # dim_phi x 1
                 elif self.optimizer == 'sgdwm': # SGD w/ momentum
                     nabla_w = self.beta*nabla_w + np.sum(difference, axis=1).reshape((phi_x_batch.shape[0],1)) # dim_phi x 1
-                elif self.optimizer == "adam": # Adam
+                elif self.optimizer == 'adam': # Adam
                     nabla_w = np.sum(difference, axis=1).reshape((phi_x_batch.shape[0],1))
                     momentum = self.beta*momentum + (1-self.beta)*nabla_w
                     second_moment = self.beta2*second_moment + (1-self.beta2) * nabla_w**2

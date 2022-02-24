@@ -159,7 +159,7 @@ def policy(x):
         All_U[:,np.random.choice(All_U_range, p=pis)]
     )
     return u
-
+    
 #%% Test policy by simulating system
 num_episodes = 100
 num_steps_per_episode = 100
