@@ -44,7 +44,7 @@ ols_tensor = KoopmanTensor(
     Y,
     U,
     phi=observables.monomials(2),
-    psi=observables.monomials(1),
+    psi=observables.monomials(2),
     regressor='ols',
     p_inv=False
 )
@@ -54,7 +54,7 @@ sindy_tensor = KoopmanTensor(
     Y,
     U,
     phi=observables.monomials(2),
-    psi=observables.monomials(1),
+    psi=observables.monomials(2),
     regressor='sindy'
 )
 
@@ -71,8 +71,8 @@ for i in range(N):
     sindy_predicted_phi_x_prime = sindy_tensor.K_(action) @ phi_x
 
     # Compute norms
-    ols_norms[i] = utilities.l2_norm(true_phi_x_prime[3:], ols_predicted_phi_x_prime[3:])
-    sindy_norms[i] = utilities.l2_norm(true_phi_x_prime[3:], sindy_predicted_phi_x_prime[3:])
+    ols_norms[i] = utilities.l2_norm(true_phi_x_prime, ols_predicted_phi_x_prime)
+    sindy_norms[i] = utilities.l2_norm(true_phi_x_prime, sindy_predicted_phi_x_prime)
 print("Training error (OLS):", np.mean(ols_norms))
 print("Training error (SINDy):", np.mean(sindy_norms))
 
@@ -98,8 +98,8 @@ for episode in range(num_episodes):
         ols_predicted_phi_x_prime = ols_tensor.K_(action) @ phi_x
         sindy_predicted_phi_x_prime = sindy_tensor.K_(action) @ phi_x
 
-        ols_norms[episode,step] = utilities.l2_norm(true_phi_x_prime[3:], ols_predicted_phi_x_prime[3:])
-        sindy_norms[episode,step] = utilities.l2_norm(true_phi_x_prime[3:], sindy_predicted_phi_x_prime[3:])
+        ols_norms[episode,step] = utilities.l2_norm(true_phi_x_prime, ols_predicted_phi_x_prime)
+        sindy_norms[episode,step] = utilities.l2_norm(true_phi_x_prime, sindy_predicted_phi_x_prime)
 
         x = true_x_prime
 

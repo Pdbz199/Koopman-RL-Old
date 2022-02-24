@@ -95,31 +95,13 @@ algos = algorithmsv2.algos(
     optimizer='adam'
 )
 # algos.w = np.load('bellman-weights.npy')
-<<<<<<< HEAD
-print("Weights before updating:", algos.w)
-bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
-print("Weights after updating:", algos.w)
-
-plt.plot(bellmanErrors)
-plt.show()
-plt.plot(gradientNorms)
-plt.show()
-=======
-# algos.w = np.array([
-#     [ 6.32850460e+01],
-#     [-1.63997489e-05],
-#     [ 1.61457139e-06],
-#     [ 1.07368850e+00],
-#     [-8.32041194e-02],
-#     [ 1.02243938e+00]
-# ]) # for psi = monomials order 1
 algos.w = np.array([
-    [-2.71008047e+00],
-    [-4.84689433e-06],
-    [-4.70463240e-06],
-    [ 1.10210792e+00],
-    [-4.33749393e-02],
-    [ 1.03527770e+00]
+    [-5.47580808e+00],
+    [ 1.79777563e-05],
+    [ 6.84122611e-06],
+    [ 1.10211637e+00],
+    [-4.33772881e-02],
+    [ 1.03529158e+00]
 ])
 print("Weights before updating:", algos.w)
 # bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
@@ -129,7 +111,6 @@ print("Weights before updating:", algos.w)
 # plt.show()
 # plt.plot(gradientNorms)
 # plt.show()
->>>>>>> 46bc140a81128dafa5917419e7ab0dcf72dedf3a
 
 #%% Reset seed and compute initial x0s
 np.random.seed(123)
@@ -163,7 +144,7 @@ for episode in range(num_episodes):
     # print("Initial x:", x)
     cost_sum = 0
     for step in range(num_steps_per_episode):
-        u = policy(x)
+        u = policy3(x)
         # u = np.random.rand(1,1)*action_range*np.random.choice(np.array([-1,1])) # sample random action
         x_prime = f(x, u)
 
