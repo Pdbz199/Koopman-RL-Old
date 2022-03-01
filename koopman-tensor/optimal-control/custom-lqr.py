@@ -14,13 +14,13 @@ import estimate_L
 import observables
 import utilities
 
-from control import dlqr
+from control import dlqr, dare
 
 #%% System dynamics
 A = np.array([
     [0.5, 0.0],
     [0.0, 0.3]
-], dtype=np.float64)
+], dtype=np.float64) # make one diag eigenvalue 
 B = np.array([
     [1.0],
     [1.0]
@@ -42,6 +42,10 @@ C = lq[0]
 # lq[1] == [[ 79.40499383 -70.43811066]
 #           [-70.43811066  64.1538213 ]]
 # lq[2] == [-1.474176 +0.j -0.4084178+0.j]
+
+#%% Solve riccati equation
+soln = dare(A, B, Q, R)
+P = soln[0]
 
 #%% Construct snapshots of u from random agent and initial states x0
 N = 10000
@@ -91,21 +95,21 @@ algos = algorithmsv2.algos(
     bellman_error_type=0,
     learning_rate=1e-1,
     weight_regularization_bool=True,
-    weight_regularization_lambda=0.6,
+    weight_regularization_lambda=1.0, # 0.6
     optimizer='adam'
 )
 # algos.w = np.load('bellman-weights.npy')
-algos.w = np.array([
-    [-5.47580808e+00],
-    [ 1.79777563e-05],
-    [ 6.84122611e-06],
-    [ 1.10211637e+00],
-    [-4.33772881e-02],
-    [ 1.03529158e+00]
-])
+# algos.w = np.array([
+#     [-5.47580808e+00],
+#     [ 1.79777563e-05],
+#     [ 6.84122611e-06],
+#     [ 1.10211637e+00],
+#     [-4.33772881e-02],
+#     [ 1.03529158e+00]
+# ])
 print("Weights before updating:", algos.w)
-# bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
-# print("Weights after updating:", algos.w)
+bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
+print("Weights after updating:", algos.w)
 
 # plt.plot(bellmanErrors)
 # plt.show()
@@ -132,7 +136,7 @@ def policy(x):
 def policy2(x):
     return -C @ x
 
-sigma_t = np.linalg.inv(R + B.T @ Q @ B)
+sigma_t = np.linalg.inv(R + B.T @ P @ B)
 def policy3(x):
     return np.random.normal(-C @ x, sigma_t)
 
@@ -144,7 +148,7 @@ for episode in range(num_episodes):
     # print("Initial x:", x)
     cost_sum = 0
     for step in range(num_steps_per_episode):
-        u = policy3(x)
+        u = policy(x)
         # u = np.random.rand(1,1)*action_range*np.random.choice(np.array([-1,1])) # sample random action
         x_prime = f(x, u)
 

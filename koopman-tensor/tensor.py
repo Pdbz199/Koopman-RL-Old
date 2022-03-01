@@ -30,6 +30,12 @@ class KoopmanTensor:
         self.Phi_Y = self.phi(Y)
         self.Psi_U = self.psi(U)
 
+        # Condition number check
+        print(np.linalg.cond(self.Phi_X))
+        print(np.linalg.cond(self.Phi_Y))
+        print(np.linalg.cond(self.Psi_U))
+
+        # Get dimensions
         self.dim_phi = self.Phi_X.shape[0]
         self.dim_psi = self.Psi_U.shape[0]
 
