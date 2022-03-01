@@ -17,6 +17,8 @@ import utilities
 from control import dlqr, dare
 
 #%% System dynamics
+gamma = 0.5
+
 A = np.array([
     [0.5, 0.0],
     [0.0, 0.3]
@@ -28,9 +30,9 @@ B = np.array([
 Q = np.array([
     [1.0, 0.0],
     [0.0, 1.0]
-], dtype=np.float64)
+], dtype=np.float64) * gamma
 # R = 1
-R = np.array([[1.0]], dtype=np.float64)
+R = np.array([[1.0]], dtype=np.float64) * gamma
 
 def f(x, u):
     return A @ x + B @ u
@@ -90,7 +92,7 @@ algos = algorithmsv2.algos(
     u_bounds[0],
     tensor,
     cost,
-    gamma=0.5,
+    gamma=gamma,
     epsilon=0.01,
     bellman_error_type=0,
     learning_rate=1e-1,
@@ -99,17 +101,17 @@ algos = algorithmsv2.algos(
     optimizer='adam'
 )
 # algos.w = np.load('bellman-weights.npy')
-# algos.w = np.array([
-#     [-5.47580808e+00],
-#     [ 1.79777563e-05],
-#     [ 6.84122611e-06],
-#     [ 1.10211637e+00],
-#     [-4.33772881e-02],
-#     [ 1.03529158e+00]
-# ])
+algos.w = np.array([
+    [-9.63500888e+00],
+    [ 6.44128446e-06],
+    [ 5.91321315e-06],
+    [ 1.10210390e+00],
+    [-4.33773261e-02],
+    [ 1.03527409e+00]
+])
 print("Weights before updating:", algos.w)
-bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
-print("Weights after updating:", algos.w)
+# bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
+# print("Weights after updating:", algos.w)
 
 # plt.plot(bellmanErrors)
 # plt.show()
@@ -148,7 +150,7 @@ for episode in range(num_episodes):
     # print("Initial x:", x)
     cost_sum = 0
     for step in range(num_steps_per_episode):
-        u = policy(x)
+        u = policy3(x)
         # u = np.random.rand(1,1)*action_range*np.random.choice(np.array([-1,1])) # sample random action
         x_prime = f(x, u)
 

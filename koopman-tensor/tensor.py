@@ -5,6 +5,14 @@ sys.path.append('../../')
 import estimate_L
 import observables
 
+def checkMatrixRank(X, name):
+    if np.linalg.matrix_rank(X) != X.shape[0]:
+        raise ValueError(f"{name} matrix is not full rank")
+
+def checkConditionNumber(X, name, threshold=200):
+    if np.linalg.cond(X) > threshold:
+        raise ValueError(f"Condition number of {name} is too large")
+
 class KoopmanTensor:
     def __init__(
         self,
@@ -30,14 +38,19 @@ class KoopmanTensor:
         self.Phi_Y = self.phi(Y)
         self.Psi_U = self.psi(U)
 
-        # Condition number check
-        print(np.linalg.cond(self.Phi_X))
-        print(np.linalg.cond(self.Phi_Y))
-        print(np.linalg.cond(self.Psi_U))
-
         # Get dimensions
         self.dim_phi = self.Phi_X.shape[0]
         self.dim_psi = self.Psi_U.shape[0]
+
+        # Make sure data is full rank
+        checkMatrixRank(self.Phi_X, "Phi_X")
+        checkMatrixRank(self.Phi_Y, "Phi_Y")
+        checkMatrixRank(self.Psi_U, "Psi_U")
+
+        # Make sure condition numbers are small
+        checkConditionNumber(self.Phi_X, "Phi_X")
+        checkConditionNumber(self.Phi_Y, "Phi_Y")
+        checkConditionNumber(self.Psi_U, "Psi_U")
 
         # Build matrix of kronecker products between u_i and x_i for all 0 <= i <= N
         self.kronMatrix = np.empty([
