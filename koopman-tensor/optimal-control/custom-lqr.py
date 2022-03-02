@@ -10,9 +10,7 @@ from tensor import KoopmanTensor
 sys.path.append('../../')
 # import algorithmsv2
 import algorithmsv2_parallel as algorithmsv2
-import estimate_L
 import observables
-import utilities
 
 from control import dlqr, dare
 
@@ -66,7 +64,7 @@ tensor = KoopmanTensor(
     U,
     phi=observables.monomials(2),
     psi=observables.monomials(2),
-    regressor='sindy'
+    regressor='ols'
 )
 
 #%% Define cost function
@@ -101,17 +99,17 @@ algos = algorithmsv2.algos(
     optimizer='adam'
 )
 # algos.w = np.load('bellman-weights.npy')
-algos.w = np.array([
-    [-9.63500888e+00],
-    [ 6.44128446e-06],
-    [ 5.91321315e-06],
-    [ 1.10210390e+00],
-    [-4.33773261e-02],
-    [ 1.03527409e+00]
-])
+# algos.w = np.array([
+#     [-9.63500888e+00],
+#     [ 6.44128446e-06],
+#     [ 5.91321315e-06],
+#     [ 1.10210390e+00],
+#     [-4.33773261e-02],
+#     [ 1.03527409e+00]
+# ])
 print("Weights before updating:", algos.w)
-# bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
-# print("Weights after updating:", algos.w)
+bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
+print("Weights after updating:", algos.w)
 
 # plt.plot(bellmanErrors)
 # plt.show()
@@ -127,36 +125,50 @@ initial_Xs = np.random.rand(2,num_episodes)*state_range*np.random.choice(np.arra
 
 #%% Construct policy
 All_U_range = np.arange(All_U.shape[1])
-def policy(x):
-    pis = algos.pis(x)[:,0]
-    # Select action column at index sampled from policy distribution
-    u = np.vstack(
-        All_U[:,np.random.choice(All_U_range, p=pis)]
-    )
-    return u
-
-def policy2(x):
-    return -C @ x
 
 sigma_t = np.linalg.inv(R + B.T @ P @ B)
-def policy3(x):
-    return np.random.normal(-C @ x, sigma_t)
+def policy(x, policyType):
+    if policyType == 'learned':
+        pis = algos.pis(x)[:,0]
+        # Select action column at index sampled from policy distribution
+        u_ind = np.random.choice(All_U_range, p=pis)
+        u = np.vstack(
+            All_U[:,u_ind]
+        )
+        return [u, u_ind]
+
+    elif policyType == 'optimal':
+        return [-C @ x, 0]
+
+    elif policyType == 'optimalEntropy':
+        return [np.random.normal(-C @ x, sigma_t), 0]
+
+def policyDensity(u, u_ind, x, policyType):
+    if policyType == 'learned':
+        pi_term = algos.pis(x)[u_ind,0]
+        return pi_term
+    elif policyType == 'optimalEntropy':
+        mu = -C @ x
+        pi_term = (sigma_t*np.sqrt(2*np.pi))*np.exp((-(u-mu)**2)/(2*sigma_t**2))
+        return pi_term
 
 #%% Test policy by simulating system
 lamb = 1e-2
-costs = np.empty((num_episodes))
+policy_type = 'learned'
+costs = np.empty((num_episodes)) 
 for episode in range(num_episodes):
     x = np.vstack(initial_Xs[:,episode])
     # print("Initial x:", x)
     cost_sum = 0
     for step in range(num_steps_per_episode):
-        u = policy3(x)
+        u, u_ind = policy(x, policy_type)
         # u = np.random.rand(1,1)*action_range*np.random.choice(np.array([-1,1])) # sample random action
         x_prime = f(x, u)
 
         # pis = algos.pis(x)[:,0]
         # (beta**step)*
-        cost_sum += cost(x, u) #+ lamb * np.log(pis[All_U[0] == u[0,0]])
+        cost_sum += cost(x, u) + lamb*np.log(policyDensity(u, u_ind, x, policy_type))
+         #+ lamb * np.log(pis[All_U[0] == u[0,0]])
 
         x = x_prime
         # if step%250 == 0:
