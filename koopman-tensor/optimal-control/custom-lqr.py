@@ -16,11 +16,12 @@ from control import dlqr, dare
 
 #%% System dynamics
 gamma = 0.5
+lamb = 1.0 # 0.6
 
 A = np.array([
     [0.5, 0.0],
     [0.0, 0.3]
-], dtype=np.float64) # make one diag eigenvalue 
+], dtype=np.float64)
 B = np.array([
     [1.0],
     [1.0]
@@ -28,9 +29,9 @@ B = np.array([
 Q = np.array([
     [1.0, 0.0],
     [0.0, 1.0]
-], dtype=np.float64) * gamma
+], dtype=np.float64) #* gamma
 # R = 1
-R = np.array([[1.0]], dtype=np.float64) * gamma
+R = np.array([[1.0]], dtype=np.float64) #* gamma
 
 def f(x, u):
     return A @ x + B @ u
@@ -44,7 +45,7 @@ C = lq[0]
 # lq[2] == [-1.474176 +0.j -0.4084178+0.j]
 
 #%% Solve riccati equation
-soln = dare(A, B, Q, R)
+soln = dare(A*np.sqrt(gamma), B*np.sqrt(gamma), Q, R)
 P = soln[0]
 
 #%% Construct snapshots of u from random agent and initial states x0
@@ -91,25 +92,33 @@ algos = algorithmsv2.algos(
     tensor,
     cost,
     gamma=gamma,
-    epsilon=0.01,
+    epsilon=0.001,
     bellman_error_type=0,
     learning_rate=1e-1,
     weight_regularization_bool=True,
-    weight_regularization_lambda=1.0, # 0.6
+    weight_regularization_lambda=lamb,
     optimizer='adam'
 )
 # algos.w = np.load('bellman-weights.npy')
 # algos.w = np.array([
 #     [-9.63500888e+00],
-#     [ 6.44128446e-06],
-#     [ 5.91321315e-06],
+#     [ 6.44128461e-06],
+#     [ 5.91321286e-06],
 #     [ 1.10210390e+00],
 #     [-4.33773261e-02],
 #     [ 1.03527409e+00]
-# ])
-print("Weights before updating:", algos.w)
-bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
-print("Weights after updating:", algos.w)
+# ]) # epsilon = 0.01
+algos.w = np.array([
+    [-9.63863338e+00],
+    [-4.31300696e-05],
+    [-3.47747365e-06],
+    [ 1.10211780e+00],
+    [-4.33771878e-02],
+    [ 1.03530115e+00]
+]) # epsilon = 0.001
+# print("Weights before updating:", algos.w)
+# bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
+# print("Weights after updating:", algos.w)
 
 # plt.plot(bellmanErrors)
 # plt.show()
@@ -143,6 +152,10 @@ def policy(x, policyType):
     elif policyType == 'optimalEntropy':
         return [np.random.normal(-C @ x, sigma_t), 0]
 
+    elif policyType == 'random':
+        return [np.random.rand(1,1)*(action_range)*np.random.choice(np.array([-1,1])),0] # sample random action
+        #! Issue with log of policy density on action_range (-10, 10)
+
 def policyDensity(u, u_ind, x, policyType):
     if policyType == 'learned':
         pi_term = algos.pis(x)[u_ind,0]
@@ -151,24 +164,25 @@ def policyDensity(u, u_ind, x, policyType):
         mu = -C @ x
         pi_term = (sigma_t*np.sqrt(2*np.pi))*np.exp((-(u-mu)**2)/(2*sigma_t**2))
         return pi_term
+    elif policyType == 'random':
+        pi_term = 1/(2*action_range)
+        return pi_term
 
 #%% Test policy by simulating system
-lamb = 1e-2
-policy_type = 'learned'
-costs = np.empty((num_episodes)) 
+policy_type = 'optimalEntropy'
+costs = np.empty((num_episodes))
+# lamb = 1e-2 # 1.0?
 for episode in range(num_episodes):
     x = np.vstack(initial_Xs[:,episode])
     # print("Initial x:", x)
     cost_sum = 0
     for step in range(num_steps_per_episode):
         u, u_ind = policy(x, policy_type)
-        # u = np.random.rand(1,1)*action_range*np.random.choice(np.array([-1,1])) # sample random action
         x_prime = f(x, u)
 
         # pis = algos.pis(x)[:,0]
         # (beta**step)*
-        cost_sum += cost(x, u) + lamb*np.log(policyDensity(u, u_ind, x, policy_type))
-         #+ lamb * np.log(pis[All_U[0] == u[0,0]])
+        cost_sum += (gamma**step)*(cost(x, u) + lamb*np.log(policyDensity(u, u_ind, x, policy_type)))
 
         x = x_prime
         # if step%250 == 0:
