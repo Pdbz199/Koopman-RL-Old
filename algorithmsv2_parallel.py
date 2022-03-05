@@ -74,6 +74,7 @@ class algos:
             #normalization = (self.u_upper-self.u_lower)
             normalization = 1
             return pi_us / (Z_x*normalization) # self.All_U.shape[1] x self.xs.shape[1]
+            
         else: # Continuous
             inner_pi_us = self.inner_pi_us(self.All_U, xs)
             inner_pi_us = np.real(inner_pi_us)

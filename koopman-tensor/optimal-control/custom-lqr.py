@@ -23,8 +23,8 @@ A = np.array([
     [0.0, 0.3]
 ], dtype=np.float64)
 B = np.array([
-    [1.0],
-    [1.0]
+    [1.0], # Try changing so that we get dampening on control
+    [1.0] #! (A-BC)x --test 
 ], dtype=np.float64)
 Q = np.array([
     [1.0, 0.0],
@@ -37,8 +37,8 @@ def f(x, u):
     return A @ x + B @ u
 
 #%% Traditional LQR
-lq = dlqr(A, B, Q, R)
-C = lq[0]
+# lq = dlqr(A, B, Q, R)
+# C = lq[0]
 # lq[0] == [[ 8.96688317 -6.28428936]]
 # lq[1] == [[ 79.40499383 -70.43811066]
 #           [-70.43811066  64.1538213 ]]
@@ -47,6 +47,7 @@ C = lq[0]
 #%% Solve riccati equation
 soln = dare(A*np.sqrt(gamma), B*np.sqrt(gamma), Q, R)
 P = soln[0]
+C = np.linalg.inv(R + gamma*B.T @ P @ B) @ (gamma*B.T @ P @ A)
 
 #%% Construct snapshots of u from random agent and initial states x0
 N = 10000
@@ -79,7 +80,7 @@ def cost(x, u):
 
 #%% Discretize all controls
 u_bounds = np.array([[-action_range, action_range]])
-step_size = 0.01
+step_size = 0.001
 All_U = np.arange(start=u_bounds[0,0], stop=u_bounds[0,1], step=step_size).reshape(1,-1)
 All_U = np.round(All_U, decimals=1)
 # All_U = U.reshape(1,-1) # continuous case is just original domain
@@ -160,16 +161,18 @@ def policyDensity(u, u_ind, x, policyType):
     if policyType == 'learned':
         pi_term = algos.pis(x)[u_ind,0]
         return pi_term
+
     elif policyType == 'optimalEntropy':
         mu = -C @ x
-        pi_term = (sigma_t*np.sqrt(2*np.pi))*np.exp((-(u-mu)**2)/(2*sigma_t**2))
+        pi_term = np.exp((-(u-mu)**2)/(2*sigma_t**2))/(sigma_t*np.sqrt(2*np.pi))
         return pi_term
+
     elif policyType == 'random':
         pi_term = 1/(2*action_range)
         return pi_term
 
 #%% Test policy by simulating system
-policy_type = 'optimalEntropy'
+policy_type = 'learned'
 costs = np.empty((num_episodes))
 # lamb = 1e-2 # 1.0?
 for episode in range(num_episodes):
@@ -182,7 +185,7 @@ for episode in range(num_episodes):
 
         # pis = algos.pis(x)[:,0]
         # (beta**step)*
-        cost_sum += (gamma**step)*(cost(x, u) + lamb*np.log(policyDensity(u, u_ind, x, policy_type)))
+        cost_sum += (gamma**step)*(cost(x, u)) #+ lamb*np.log(policyDensity(u, u_ind, x, policy_type)))
 
         x = x_prime
         # if step%250 == 0:
