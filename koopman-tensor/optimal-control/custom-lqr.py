@@ -1,6 +1,5 @@
 #%% Imports
 import matplotlib.pyplot as plt
-import numba as nb
 import numpy as np
 np.random.seed(123)
 
@@ -127,7 +126,7 @@ algos.w = np.array([
 # plt.show()
 
 #%% Reset seed and compute initial x0s
-np.random.seed(123)
+np.random.seed(1234)
 
 num_episodes = 100
 num_steps_per_episode = 100
@@ -172,25 +171,49 @@ def policyDensity(u, u_ind, x, policyType):
         return pi_term
 
 #%% Test policy by simulating system
-policy_type = 'learned'
-costs = np.empty((num_episodes))
+# policy_type = 'learned'
+# costs = np.empty((num_episodes))
 # lamb = 1e-2 # 1.0?
-for episode in range(num_episodes):
+opt_x0s = []
+opt_x1s = []
+
+learned_x0s = []
+learned_x1s = []
+for episode in range(1): #num_episodes
     x = np.vstack(initial_Xs[:,episode])
+    opt_x0s.append(x[0,0])
+    opt_x1s.append(x[1,0])
+    learned_x0s.append(x[0,0])
+    learned_x1s.append(x[1,0])
     # print("Initial x:", x)
-    cost_sum = 0
+    # cost_sum = 0
     for step in range(num_steps_per_episode):
-        u, u_ind = policy(x, policy_type)
-        x_prime = f(x, u)
+        opt_u, opt_u_ind = policy(x, 'optimalEntropy')
+        opt_x_prime = f(x, opt_u)
+
+        opt_x0s.append(opt_x_prime[0,0])
+        opt_x1s.append(opt_x_prime[1,0])
+
+        learned_u, learned_u_ind = policy(x, 'learned')
+        learned_x_prime = f(x, learned_u)
+
+        learned_x0s.append(learned_x_prime[0,0])
+        learned_x1s.append(learned_x_prime[1,0])
 
         # pis = algos.pis(x)[:,0]
         # (beta**step)*
-        cost_sum += (gamma**step)*(cost(x, u)) #+ lamb*np.log(policyDensity(u, u_ind, x, policy_type)))
+        # cost_sum += (gamma**step)*(cost(x, u) + lamb*np.log(policyDensity(u, u_ind, x, policy_type)))
 
-        x = x_prime
+        # x = x_prime
         # if step%250 == 0:
         #     print("Current x:", x)
-    costs[episode] = cost_sum
-print("Mean cost per episode:", np.mean(costs)) # Cost should be minimized
+    # costs[episode] = cost_sum
+# print("Mean cost per episode:", np.mean(costs)) # Cost should be minimized
+plt.plot(np.arange(num_steps_per_episode+1), opt_x0s)
+plt.plot(np.arange(num_steps_per_episode+1), opt_x1s)
+plt.show()
+plt.plot(np.arange(num_steps_per_episode+1), learned_x0s)
+plt.plot(np.arange(num_steps_per_episode+1), learned_x1s)
+plt.show()
 
 #%%
