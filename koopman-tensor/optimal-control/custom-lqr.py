@@ -126,7 +126,7 @@ algos.w = np.array([
 # plt.show()
 
 #%% Reset seed and compute initial x0s
-np.random.seed(1234)
+np.random.seed(123)
 
 num_episodes = 100
 num_steps_per_episode = 100

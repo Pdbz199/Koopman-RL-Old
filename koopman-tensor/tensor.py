@@ -92,7 +92,9 @@ class KoopmanTensor:
         ''' Pick out Koopman operator given an action '''
 
         # If array, convert to column vector
-        if len(u.shape) == 1:
+        if isinstance(u, int) or isinstance(u, float):
+            u = np.array([[u]])
+        elif len(u.shape) == 1:
             u = np.vstack(u)
         
         K_u = np.einsum('ijz,zk->kij', self.K, self.psi(u))
