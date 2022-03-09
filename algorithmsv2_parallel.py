@@ -1,11 +1,10 @@
 import numpy as np
-import time
 
-def rho(u, o='unif', a=0, b=1):
-    if o == 'unif':
-        return 1 / ( b - a )
-    if o == 'normal':
-        return np.exp( -u**2 / 2 ) / ( np.sqrt( 2 * np.pi ) )
+# def rho(u, o='unif', a=0, b=1):
+#     if o == 'unif':
+#         return 1 / ( b - a )
+#     if o == 'normal':
+#         return np.exp( -u**2 / 2 ) / ( np.sqrt( 2 * np.pi ) )
 
 def l2_norm(true_state, predicted_state):
     if true_state.shape != predicted_state.shape:

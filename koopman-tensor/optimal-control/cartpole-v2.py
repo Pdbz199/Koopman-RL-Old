@@ -2,12 +2,14 @@
 import gym
 import numpy as np
 
+from sklearn.kernel_approximation import RBFSampler
+
 import sys
 sys.path.append('../')
 from tensor import KoopmanTensor
 sys.path.append('../../')
 import algorithmsv2_parallel as algorithmsv2
-# import observables
+import observables
 
 #%% Load environment
 env = gym.make('CartPole-v0')
@@ -17,9 +19,11 @@ Q = np.eye(4) # np.eye(A_eq.shape[0])
 R = 1 # np.eye(2)
 
 #%% Construct datasets
-np.random.seed(123)
+seed = 123
+env.seed(seed)
+np.random.seed(seed)
 
-num_episodes = 100
+num_episodes = 200 # 100
 num_steps_per_episode = 200
 
 X = np.zeros([
@@ -49,8 +53,30 @@ X = np.array(X)[:, :-1]
 Y = np.array(Y)
 U = np.array(U)
 
-#%% 
-tensor = KoopmanTensor(X, Y, U)
+#%% Tensor
+# rbf_state_feature = RBFSampler(gamma=1, n_components=75, random_state=1)
+# rbf_action_feature = RBFSampler(gamma=1, n_components=75, random_state=1)
+
+# def phi(x):
+#     """ x must be one or a set column vectors """
+#     entry_0 = np.vstack(x[:,0])
+#     assert entry_0.shape[0] >= entry_0.shape[1]
+#     return rbf_state_feature.fit_transform(x.T).T
+
+# def psi(u):
+#     """ u must be one or a set of column vectors """
+#     entry_0 = np.vstack(u[:,0])
+#     assert entry_0.shape[0] >= entry_0.shape[1]
+#     return rbf_action_feature.fit_transform(u.T).T
+
+tensor = KoopmanTensor(
+    X,
+    Y,
+    U,
+    phi=observables.monomials(3),
+    psi=observables.monomials(3),
+    regressor='sindy'
+)
 
 #%% Define cost
 def cost(x, u):
@@ -64,7 +90,7 @@ All_U = np.array([[0, 1]])
 gamma = 0.5
 lamb = 1.0
 lr = 1e-1
-epsilon = 1e-3
+epsilon = 1e-2
 
 algos = algorithmsv2.algos(
     X,
@@ -81,8 +107,82 @@ algos = algorithmsv2.algos(
     optimizer='adam'
 )
 
-algos.w = np.load('bellman-weights.npy') # Current Bellman error: 841.875344129739
-# print("Weights before updating:", algos.w)
+# algos.w = np.load('bellman-weights.npy')
+# algos.w = np.array([
+#     [-6.25794665e-01],
+#     [-4.05142775e-03],
+#     [-1.14685414e-03],
+#     [ 1.22353767e-03],
+#     [ 9.93027095e-04],
+#     [ 1.93718097e+00],
+#     [ 1.98265639e-01],
+#     [-2.87556280e-01],
+#     [ 1.24441079e-01],
+#     [ 1.79162901e+00],
+#     [ 8.67723760e-01],
+#     [-3.18273490e-01],
+#     [ 1.04168751e+00],
+#     [ 7.99085284e-01],
+#     [ 1.88380483e+00],
+#     [ 1.40321488e+00],
+#     [ 1.31128608e+00],
+#     [ 8.63758080e-01],
+#     [ 6.88648832e-01],
+#     [ 6.85741896e-01],
+#     [ 5.78663495e-01],
+#     [ 1.07316362e+00],
+#     [-1.31681602e+00],
+#     [-1.49337352e-01],
+#     [ 3.77608156e-01],
+#     [ 5.11626221e-01],
+#     [ 6.16237556e-02],
+#     [ 9.61554647e-01],
+#     [-1.82980532e+00],
+#     [ 1.00552850e-01],
+#     [ 5.72135426e-01],
+#     [-1.58383704e+00],
+#     [-3.13481480e-01],
+#     [ 3.50395672e-03],
+#     [ 9.79144522e-02]
+# ])
+algos.w = np.array([
+    [-0.62659919],
+    [-0.00897014],
+    [-0.00959372],
+    [ 0.01252761],
+    [-0.00693892],
+    [ 1.90943469],
+    [ 0.1117488 ],
+    [-0.20447107],
+    [ 0.05952606],
+    [ 1.7917121 ],
+    [ 0.86840699],
+    [-0.32586552],
+    [ 1.0946938 ],
+    [ 0.70335887],
+    [ 1.89283258],
+    [ 0.74423775],
+    [ 0.78924267],
+    [ 0.56825446],
+    [ 0.69017369],
+    [ 0.33958384],
+    [ 0.10841765],
+    [ 1.00091402],
+    [-1.09894694],
+    [ 0.13813255],
+    [ 0.50455058],
+    [ 0.48329882],
+    [-0.20073181],
+    [ 0.86894308],
+    [-1.79097402],
+    [ 0.1235106 ],
+    [ 0.53904337],
+    [-1.64378235],
+    [-0.35879732],
+    [ 0.0086023 ],
+    [ 0.12826922]
+])
+print("Weights before updating:", algos.w)
 # bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
 # print("Weights after updating:", algos.w)
 

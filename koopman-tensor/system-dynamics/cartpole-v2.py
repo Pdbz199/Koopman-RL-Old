@@ -2,24 +2,28 @@
 import gym
 import numpy as np
 
+from sklearn.kernel_approximation import RBFSampler
+
 import sys
 sys.path.append('../')
 from tensor import KoopmanTensor
 sys.path.append('../../')
+import observables
 import utilities
 
 #%% Load environment
 env = gym.make('CartPole-v0')
+env.tau = 0.002
 
 #%% Construct dataset
 np.random.seed(123)
 
-num_episodes = 1
-num_steps_per_episode = 2
+num_episodes = 200
+num_steps_per_episode = 200
 
 X = np.zeros([
     env.observation_space.sample().shape[0],
-    num_episodes*(num_steps_per_episode+1)
+    num_episodes*num_steps_per_episode+1
 ])
 Y = np.zeros([
     env.observation_space.sample().shape[0],
@@ -32,20 +36,42 @@ U = np.zeros([
 
 for episode in range(num_episodes):
     x = env.reset()
-    X[:, episode] = x
+    X[:, episode*num_steps_per_episode] = x
     for step in range(num_steps_per_episode):
         u = env.action_space.sample() # Sampled from random agent
-        U[:, episode+step] = u
+        U[:, (episode*num_steps_per_episode)+step] = u
         y = env.step(u)[0]
-        X[:, episode+step+1] = y
-        Y[:, episode+step] = y
+        X[:, (episode*num_steps_per_episode)+(step+1)] = y
+        Y[:, (episode*num_steps_per_episode)+step] = y
 
 X = np.array(X)[:, :-1]
 Y = np.array(Y)
 U = np.array(U)
 
 #%% Compute koopman tensor 
-tensor = KoopmanTensor(X, Y, U)
+rbf_state_feature = RBFSampler(gamma=1, n_components=75, random_state=1)
+rbf_action_feature = RBFSampler(gamma=1, n_components=75, random_state=1)
+
+def phi(x):
+    """ x must be one or a set column vectors """
+    entry_0 = np.vstack(x[:,0])
+    assert entry_0.shape[0] >= entry_0.shape[1]
+    return rbf_state_feature.fit_transform(x.T).T
+
+def psi(u):
+    """ u must be one or a set of column vectors """
+    entry_0 = np.vstack(u[:,0])
+    assert entry_0.shape[0] >= entry_0.shape[1]
+    return rbf_action_feature.fit_transform(u.T).T
+
+tensor = KoopmanTensor(
+    X,
+    Y,
+    U,
+    phi=observables.monomials(3),
+    psi=observables.monomials(3),
+    regressor='sindy'
+)
 
 #%% Training error
 training_norms = np.zeros([num_episodes*num_steps_per_episode])
