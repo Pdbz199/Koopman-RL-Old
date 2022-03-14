@@ -2,7 +2,7 @@
 import gym
 import numpy as np
 
-from sklearn.kernel_approximation import RBFSampler
+# from sklearn.kernel_approximation import RBFSampler
 
 import sys
 sys.path.append('../')
@@ -15,8 +15,8 @@ import observables
 env = gym.make('CartPole-v0')
 
 #%% Define Q and R
-Q = np.eye(4)
-R = 0.0001
+# Q = np.eye(4)
+# R = 0.0001
 
 # Q = np.array([
 #     [10, 0,  0, 0],
@@ -87,10 +87,59 @@ tensor = KoopmanTensor(
 )
 
 #%% Define cost
+# def cost(x, u):
+#     # Assuming that data matrices are passed in for X and U. Columns vecs are snapshots
+#     mat = np.vstack(np.diag(x.T @ Q @ x)) + np.power(u, 2)*R
+#     return mat
+
+def reward(state, action):
+    #* assume state and action can be matrices where the columns are states/actions
+    x = state[0]
+    x_dot = state[1]
+    theta = state[2]
+    theta_dot = state[3]
+    # x, x_dot, theta, theta_dot = self.state
+    force = np.ones([state.shape[1]]) * -env.force_mag
+    force[np.where(action == 1)[1]] = env.force_mag
+    # force = env.force_mag if action == 1 else -env.force_mag
+    costheta = np.cos(theta)
+    sintheta = np.sin(theta)
+
+    # For the interested reader:
+    # https://coneural.org/florian/papers/05_cart_pole.pdf
+    temp = (
+        force + env.polemass_length * theta_dot ** 2 * sintheta
+    ) / env.total_mass
+    thetaacc = (env.gravity * sintheta - costheta * temp) / (
+        env.length * (4.0 / 3.0 - env.masspole * costheta ** 2 / env.total_mass)
+    )
+    xacc = temp - env.polemass_length * thetaacc * costheta / env.total_mass
+
+    if env.kinematics_integrator == "euler":
+        x = x + env.tau * x_dot
+        x_dot = x_dot + env.tau * xacc
+        theta = theta + env.tau * theta_dot
+        theta_dot = theta_dot + env.tau * thetaacc
+    else:  # semi-implicit euler
+        x_dot = x_dot + env.tau * xacc
+        x = x + env.tau * x_dot
+        theta_dot = theta_dot + env.tau * thetaacc
+        theta = theta + env.tau * theta_dot
+
+    # self.state = (x, x_dot, theta, theta_dot)
+
+    rewards = np.ones([state.shape[1]])
+    rewards[np.where(x < -env.x_threshold)] = 0.0
+    rewards[np.where(x > env.x_threshold)] = 0.0
+    rewards[np.where(theta < -env.theta_threshold_radians)] = 0.0
+    rewards[np.where(theta > env.theta_threshold_radians)] = 0.0
+
+    return rewards
+
+reward(np.array([[1, 1], [0, 0], [1, 1], [0, 0]]), np.array([[0, 0]]))
+
 def cost(x, u):
-    # Assuming that data matrices are passed in for X and U. Columns vecs are snapshots
-    mat = np.vstack(np.diag(x.T @ Q @ x)) + np.power(u, 2)*R
-    return mat
+    return -reward(x, u)
 
 #%% Learn control
 u_bounds = np.array([[0, 1]])

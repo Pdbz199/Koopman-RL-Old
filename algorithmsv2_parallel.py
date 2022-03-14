@@ -161,11 +161,11 @@ class algos:
                 BE = self.bellman_error()
                 bellman_errors.append(BE)
                 n += 1
-                print("Current Bellman error:", BE)
-                np.save('bellman-weights.npy', self.w)
-                # if n%100 == 0:
-                #     np.save('bellman-weights.npy', self.w)
-                #     print("Current Bellman error:", BE)
+                # print("Current Bellman error:", BE)
+                # np.save('bellman-weights.npy', self.w)
+                if n%100 == 0:
+                    np.save('bellman-weights.npy', self.w)
+                    print("Current Bellman error:", BE)
 
             return bellman_errors, gradient_norms
         
