@@ -85,30 +85,30 @@ class algos:
             normalization = (self.u_upper-self.u_lower)/self.u_batch_size
             return pi_us / (Z_x*normalization)
 
-    def discrete_bellman_error(self):
+    def discrete_bellman_error(self, batch_size):
         ''' Equation 12 in writeup '''
-
-        phi_xs = self.phi(self.X) # dim_phi x self.X.shape[1]
-        pis = self.pis(self.X) # self.All_U.shape[1] x self.X.shape[1]
+        x_batch_indices = np.random.choice(self.X.shape[1], batch_size, replace=False)
+        x_batch = self.X[:, x_batch_indices] # self.X.shape[0] x batch_size
+        phi_xs = self.phi(x_batch) # dim_phi x batch_size
+        pis = self.pis(x_batch) # self.All_U.shape[1] x batch_size
 
         # pi_sum = np.sum(pis)
         # assert np.isclose(pi_sum, 1, rtol=1e-3, atol=1e-4)
 
-        phi_x_primes = self.tensor.K_(self.All_U) @ phi_xs # self.All_U.shape[1] x dim_phi x self.X.shape[1]
-        weighted_phi_x_primes = (self.w.T @ phi_x_primes)[:,0] # self.All_U.shape[1] x self.X.shape[1]
-        costs = self.cost(self.X, self.All_U).T # self.All_U.shape[1] x self.X.shape[1]
-        expectation_us = (costs + self.weight_regularization_lambda*np.log(pis) + self.gamma * weighted_phi_x_primes) * pis # self.All_U.shape[1] x self.X.shape[1]
-        expectation_u = np.sum(expectation_us, axis=0) # self.X.shape[1]
+        phi_x_primes = self.tensor.K_(self.All_U) @ phi_xs # self.All_U.shape[1] x dim_phi x batch_size
+        weighted_phi_x_primes = (self.w.T @ phi_x_primes)[:,0] # self.All_U.shape[1] x batch_size
+        costs = self.cost(x_batch, self.All_U).T # self.All_U.shape[1] x batch_size
+        expectation_us = (costs + self.weight_regularization_lambda*np.log(pis) + self.gamma * weighted_phi_x_primes) * pis # self.All_U.shape[1] x batch_size
+        expectation_u = np.sum(expectation_us, axis=0) # batch_size
 
-        squared_differences = np.power((self.w.T @ phi_xs) - expectation_u, 2) # 1 x self.X.shape[1]
-        total = np.sum(squared_differences) # scalar
+        squared_differences = np.power((self.w.T @ phi_xs) - expectation_u, 2) # 1 x batch_size
+        total = np.sum(squared_differences)/batch_size # scalar
                 
         return total
 
     def algorithm2(self, batch_size):
         ''' Bellman error optimization '''
-
-        BE = self.bellman_error()
+        BE = self.bellman_error(batch_size*2)
         bellman_errors = [BE]
         gradient_norms = []
         print("Initial Bellman error:", BE)
@@ -137,7 +137,7 @@ class algos:
                 expectation_term_2 = np.einsum('ux,upx->px', pis, self.gamma * phi_x_primes) # dim_phi x batch_size
 
                 # Equations 22/23 in writeup
-                difference = ((weighted_phi_x_batch - expectation_term_1) * (phi_x_batch - expectation_term_2)) / batch_size # dim_phi x batch_size
+                difference = ((weighted_phi_x_batch - expectation_term_1) * (phi_x_batch - expectation_term_2)) # dim_phi x batch_size
                 if self.optimizer == 'sgd': # traditional SGD
                     nabla_w = np.sum(difference, axis=1).reshape((phi_x_batch.shape[0],1)) # dim_phi x 1
                 elif self.optimizer == 'sgdwm': # SGD w/ momentum
@@ -158,7 +158,7 @@ class algos:
                 self.w = self.w - (self.learning_rate * nabla_w)
 
                 # Recompute Bellman error
-                BE = self.bellman_error()
+                BE = self.bellman_error(batch_size*2)
                 bellman_errors.append(BE)
                 n += 1
                 # print("Current Bellman error:", BE)
