@@ -108,7 +108,7 @@ class algos:
 
     def algorithm2(self, batch_size):
         ''' Bellman error optimization '''
-        BE = self.bellman_error(batch_size*2)
+        BE = self.bellman_error(batch_size*3)
         bellman_errors = [BE]
         gradient_norms = []
         print("Initial Bellman error:", BE)
@@ -158,7 +158,7 @@ class algos:
                 self.w = self.w - (self.learning_rate * nabla_w)
 
                 # Recompute Bellman error
-                BE = self.bellman_error(batch_size*2)
+                BE = self.bellman_error(batch_size*3)
                 bellman_errors.append(BE)
                 n += 1
                 # print("Current Bellman error:", BE)

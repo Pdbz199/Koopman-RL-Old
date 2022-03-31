@@ -25,12 +25,12 @@ Q = np.array([
     [ 0, 0, 10, 0],
     [ 0, 0,  0, 1]
 ])
-R = 0.1 #! force_mag (?)
+R = 0.1
 
 #%% Construct datasets
-seed = 123
-env.seed(seed)
-np.random.seed(seed)
+# seed = 123
+# env.seed(seed)
+# np.random.seed(seed)
 
 num_datapoints = 50000
 
@@ -47,18 +47,21 @@ U = np.zeros([
     num_datapoints
 ])
 
-total_datapoints = 0
-while total_datapoints < num_datapoints:
-    x = env.reset()
-    done = False
-    while not done and total_datapoints < num_datapoints:
-        X[:, total_datapoints] = x
-        u = env.action_space.sample() # Sampled from random agent
-        U[:, total_datapoints] = u
-        y,reward,done,info = env.step(u)
-        Y[:, total_datapoints] = y
-        x = y
-        total_datapoints += 1
+# total_datapoints = 0
+# while total_datapoints < num_datapoints:
+#     x = env.reset()
+#     done = False
+#     while not done and total_datapoints < num_datapoints:
+#         X[:, total_datapoints] = x
+#         u = env.action_space.sample() # Sampled from random agent
+#         U[:, total_datapoints] = u
+#         y,reward,done,info = env.step(u)
+#         Y[:, total_datapoints] = y
+#         x = y
+#         total_datapoints += 1
+
+# U[U == 1] = 10
+# U[U == 0] = -10
 
 #%% Tensor
 # rbf_state_feature = RBFSampler(gamma=1, n_components=75, random_state=1)
@@ -76,6 +79,50 @@ while total_datapoints < num_datapoints:
 #     assert entry_0.shape[0] >= entry_0.shape[1]
 #     return rbf_action_feature.fit_transform(u.T).T
 
+gravity = 9.8
+masscart = 1.0
+masspole = 0.1
+total_mass = (masspole + masscart)
+length = 0.5 # actually half the pole's length
+polemass_length = (masspole * length)
+H = np.array([
+	[1, 0, 0, 0],
+	[0, total_mass, 0, - polemass_length],
+	[0, 0, 1, 0],
+	[0, - polemass_length, 0, (2 * length)**2 * masspole / 3]
+])
+
+Hinv = np.linalg.inv(H)
+
+A = Hinv @ np.array([
+    [0, 1, 0, 0],
+    [0, 0, 0, 0],
+    [0, 0, 0, 1],
+    [0, 0, - polemass_length * gravity, 0]
+])
+B = Hinv @ np.array([0, 1.0, 0, 0]).reshape([4, 1])
+
+def f(x, u):
+    return A @ x + B @ u
+
+for i in range(num_datapoints):
+    x = np.vstack(env.reset())
+
+    done = False
+    while not done:
+        X[:, i] = x[:, 0]
+        u = np.array([[env.action_space.sample()]]) # Sampled from random agent
+        U[:, i] = u
+        y = f(x, u)
+        Y[:, i] = y[:, 0]
+
+        x = y
+
+        done = x[0, 0] < -env.x_threshold or \
+               x[0, 0] > env.x_threshold or \
+               x[2, 0] < -env.theta_threshold_radians or \
+               x[2, 0] > env.theta_threshold_radians
+
 tensor = KoopmanTensor(
     X,
     Y,
@@ -90,19 +137,36 @@ print("\nTraining error:")
 
 training_norms = np.zeros([X.shape[1]])
 
-for i in range(X.shape[1]):
-    x = np.vstack(X[:, i])
-    phi_x = tensor.phi(x)
+for episode in range(200):
+# for i in range(X.shape[1]):
+    # x = np.vstack(X[:, i])
+    x = np.vstack(env.reset())
 
-    predicted_x_prime = tensor.B.T @ tensor.K_(U[:, i]) @ phi_x
-    true_x_prime = np.vstack(Y[:, i])
+    done = False
+    while not done:
+        phi_x = tensor.phi(x)
+        u = np.array([[env.action_space.sample()]]) # Sampled from random agent
 
-    training_norms[i] = utilities.l2_norm(true_x_prime, predicted_x_prime)
+        predicted_x_prime = tensor.B.T @ tensor.K_(u) @ phi_x
+        # true_x_prime = np.vstack(Y[:, i])
+        true_x_prime = f(x, u)
+
+        training_norms[i] = utilities.l2_norm(true_x_prime, predicted_x_prime)
+
+        x = true_x_prime
+
+        done = x[0, 0] < -env.x_threshold or \
+               x[0, 0] > env.x_threshold or \
+               x[2, 0] < -env.theta_threshold_radians or \
+               x[2, 0] > env.theta_threshold_radians
 
 print("Mean training norm:", np.mean(training_norms))
 
 #%% Define cost
 def cost(x, u):
+    # convertedU = copy.deepcopy(u)
+    # convertedU[u == 0] = -10
+    # convertedU[u == 1] = 10
     # Assuming that data matrices are passed in for X and U. Columns vecs are snapshots
     mat = np.vstack(np.diag(x.T @ Q @ x)) + np.power(u, 2)*R
     return mat
@@ -158,11 +222,11 @@ def cost(x, u):
 
 #%% Learn control
 u_bounds = np.array([[0, 1]])
-All_U = np.array([[0, 1]])
-gamma = 0.5
+All_U = np.array([[-10, 10]])
+gamma = 0.99
 lamb = 1.0
 lr = 1e-1
-epsilon = 4e-4
+epsilon = 1e-3
 
 algos = algorithmsv2.algos(
     X,
@@ -179,7 +243,6 @@ algos = algorithmsv2.algos(
     optimizer='adam'
 )
 
-# algos.w = np.load('bellman-weights.npy')
 # algos.w = np.array([
 #     [-6.25794665e-01],
 #     [-4.05142775e-03],
@@ -254,8 +317,9 @@ algos = algorithmsv2.algos(
 #     [ 0.0086023 ],
 #     [ 0.12826922]
 # ])
-print("Weights before updating:", algos.w)
-bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
+algos.w = np.load('bellman-weights.npy')
+# print("Weights before updating:", algos.w)
+# bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
 print("Weights after updating:", algos.w)
 
 #%% Extract policy
@@ -264,10 +328,11 @@ def policy(x):
     pis = algos.pis(x)[:,0]
     # Select action column at index sampled from policy distribution
     u_ind = np.random.choice(All_U_range, p=pis)
-    u = np.vstack(All_U[:,u_ind])
-    return u[0,0]
+    u = np.vstack(All_U[:,u_ind])[0,0]
+    u = 0 if u == -10 else 1
+    return u
 
-def random_policy(x):
+def random_policy():
     return env.action_space.sample()
 
 #%% Test policy by simulating system
@@ -275,15 +340,22 @@ num_episodes = 200
 rewards = np.zeros([num_episodes])
 for episode in range(num_episodes):
     x = np.vstack(env.reset())
+
     done = False
     while not done:
         # env.render()
-        u = policy(x)
+        u = np.array([[policy(x)]])
 
-        next_state,reward,done,info = env.step(u)
-        rewards[episode] += reward
+        # next_state,reward,done,info = env.step(u)
+        x = f(x, u)
 
-        x = np.vstack(next_state)
+        done = x[0, 0] < -env.x_threshold or \
+               x[0, 0] > env.x_threshold or \
+               x[2, 0] < -env.theta_threshold_radians or \
+               x[2, 0] > env.theta_threshold_radians
+
+        rewards[episode] += 1
+
 print("Mean reward per episode:", np.mean(rewards))
 
 #%%
