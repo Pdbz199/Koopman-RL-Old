@@ -59,4 +59,43 @@ def sortEig(A, evs=5, which='LM'):
     ind = d.argsort()[::-1] # [::-1] reverses the list of indices
     return (d[ind], V[:, ind])
 
+""" FINITE DINFFERENCING UTILITIES """
+
+def gradient(f, x, delta = 1e-5):
+    """
+    Returns the gradient of function f at the point x
+    Parameters:
+        f (numpy.array -> double): A scalar function accepts numpy array x
+        x (numpy.array): A numpy array which is the same form as the argument supplied to f
+        delta (double): delta used in the finite difference method
+    Returns:
+        ret (numpy.array): gradient of f at the point x
+    """
+
+    n = x.shape[0]
+    ret = np.zeros(n)
+    d = np.eye(n) * delta
+    for i in range(n):
+        ret[i] = (f(x+d[i]) - f(x-d[i])) / (2*delta)
+    return ret
+
+def jacobian(f, x, delta = 1e-5):
+    """
+    Returns the Jacobian of function f at the point x
+    Parameters:
+        f (numpy.array -> numpy.array): A function accepts numpy array x
+        x (numpy.array): A numpy array which is the same form as the argument supplied to f
+        delta (double): delta used in the finite difference method
+    Returns:
+        ret (numpy.array): A 2D numpy array with shape (f(x).shape[0], x.shape[0])
+                            which is the jacobian of f at the point x
+    """
+    
+    n = x.shape[0]
+    m = f(x).shape[0]
+    ret = np.zeros((m, n))
+    for i in range(m):
+        ret[i,:] = gradient(lambda v: f(v)[i], x, delta)
+    return ret
+
 #%%

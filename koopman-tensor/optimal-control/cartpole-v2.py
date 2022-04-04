@@ -1,6 +1,7 @@
 #%% Imports
 import gym
 import numpy as np
+# from scipy.integrate import odeint
 
 # from sklearn.kernel_approximation import RBFSampler
 
@@ -32,7 +33,7 @@ R = 0.1
 # env.seed(seed)
 # np.random.seed(seed)
 
-num_datapoints = 50000
+num_datapoints = 20000 # 50000
 
 X = np.zeros([
     env.observation_space.sample().shape[0],
@@ -47,18 +48,18 @@ U = np.zeros([
     num_datapoints
 ])
 
-# total_datapoints = 0
-# while total_datapoints < num_datapoints:
-#     x = env.reset()
-#     done = False
-#     while not done and total_datapoints < num_datapoints:
-#         X[:, total_datapoints] = x
-#         u = env.action_space.sample() # Sampled from random agent
-#         U[:, total_datapoints] = u
-#         y,reward,done,info = env.step(u)
-#         Y[:, total_datapoints] = y
-#         x = y
-#         total_datapoints += 1
+total_datapoints = 0
+while total_datapoints < num_datapoints:
+    x = env.reset()
+    done = False
+    while not done and total_datapoints < num_datapoints:
+        X[:, total_datapoints] = x
+        u = env.action_space.sample() # Sampled from random agent
+        U[:, total_datapoints] = u
+        y,reward,done,info = env.step(u)
+        Y[:, total_datapoints] = y
+        x = y
+        total_datapoints += 1
 
 # U[U == 1] = 10
 # U[U == 0] = -10
@@ -79,97 +80,209 @@ U = np.zeros([
 #     assert entry_0.shape[0] >= entry_0.shape[1]
 #     return rbf_action_feature.fit_transform(u.T).T
 
-gravity = 9.8
-masscart = 1.0
-masspole = 0.1
-total_mass = (masspole + masscart)
-length = 0.5 # actually half the pole's length
-polemass_length = (masspole * length)
-H = np.array([
-	[1, 0, 0, 0],
-	[0, total_mass, 0, - polemass_length],
-	[0, 0, 1, 0],
-	[0, - polemass_length, 0, (2 * length)**2 * masspole / 3]
-])
+# gravity = 9.8
+# masscart = 1.0
+# masspole = 0.1
+# total_mass = (masspole + masscart)
+# length = 0.5 # actually half the pole's length
+# polemass_length = (masspole * length)
+# H = np.array([
+# 	[1, 0, 0, 0],
+# 	[0, total_mass, 0, - polemass_length],
+# 	[0, 0, 1, 0],
+# 	[0, - polemass_length, 0, (2 * length)**2 * masspole / 3]
+# ])
+# Hinv = np.linalg.inv(H)
+# A = Hinv @ np.array([
+#     [0, 1, 0, 0],
+#     [0, 0, 0, 0],
+#     [0, 0, 0, 1],
+#     [0, 0, - polemass_length * gravity, 0]
+# ])
+# B = Hinv @ np.array([0, 1.0, 0, 0]).reshape([4, 1])
 
-Hinv = np.linalg.inv(H)
+# mass_pole = 1
+# mass_cart = 5
+# pole_position = 1
+# pole_length = 2
+# gravity = -10
+# cart_damping = 1
+# A = np.array([
+#     [0, 1, 0, 0],
+#     [0, -cart_damping / mass_cart, pole_position * mass_pole * gravity / mass_cart, 0],
+#     [0, 0, 0, 1],
+#     [0, -pole_position * cart_damping / mass_cart * pole_length, -pole_position * (mass_pole + mass_cart) * gravity / mass_cart * pole_length]
+# ]) #* From Databook V2
+# B = np.array([
+#     [0],
+#     [1 / mass_cart],
+#     [0],
+#     [pole_position / mass_cart * pole_length]
+# ])
 
-A = Hinv @ np.array([
-    [0, 1, 0, 0],
-    [0, 0, 0, 0],
-    [0, 0, 0, 1],
-    [0, 0, - polemass_length * gravity, 0]
-])
-B = Hinv @ np.array([0, 1.0, 0, 0]).reshape([4, 1])
+# def f(x, u):
+#     return A @ x + B @ u
 
 def f(x, u):
+    assert x.shape == (4,)
+    assert u.shape == (1,)
+
+    env = gym.make('CartPole-v0')
+    env.reset(state = x)
+    observation, cost, done, info = env.step(int(u[0]))
+    env.close()
+
+    return observation
+
+def compute_A(x_s, u_s):
+    return utilities.jacobian(lambda v: f(v, u_s), x_s)
+
+def compute_B(x_s, u_s):
+    return utilities.jacobian(lambda v: f(x_s, v), u_s)
+
+unique_X = np.unique(X, axis=1)
+unique_U = np.unique(U, axis=1)
+# A = np.zeros((X.shape[0], X.shape[0]))
+# B = np.zeros((X.shape[0], U.shape[0]))
+
+# count = 0
+# for i in range(unique_X.shape[1]):
+#     for j in range(unique_U.shape[1]):
+#         A += compute_A(unique_X[:, i], unique_U[:, j])
+#         B += compute_B(unique_X[:, i], unique_U[:, j])
+#         count += 1
+
+# A /= count
+# B /= count
+
+# A = np.array([
+#     [1, 0.02, 0,            0],
+#     [0, 1,   -0.0134839336, 0.0000927891961],
+#     [0, 0,    1,            0.02],
+#     [0, 0,    0.312741646,  1]
+# ])
+A = np.array([
+    [0.1, 0.02, 0,            0],
+    [0,   0.1, -0.0134839336, 0.0000927891961],
+    [0,   0,    0.1,          0.02],
+    [0,   0,    0.312741646,  0.1]
+])
+B = np.array([
+    [0.],
+    [9750.11179],
+    [0],
+    [-14563.45848858]
+])
+# B = np.array([
+#     [0],
+#     [0.1],
+#     [0],
+#     [-0.1]
+# ])
+
+#%%
+def lqr_dynamics(x, u):
     return A @ x + B @ u
 
-for i in range(num_datapoints):
+total_datapoints = 0
+while total_datapoints < num_datapoints:
     x = np.vstack(env.reset())
-
     done = False
-    while not done:
-        X[:, i] = x[:, 0]
+    while not done and total_datapoints < num_datapoints:
+        X[:, total_datapoints] = x[:, 0]
         u = np.array([[env.action_space.sample()]]) # Sampled from random agent
-        U[:, i] = u
-        y = f(x, u)
-        Y[:, i] = y[:, 0]
-
+        U[:, total_datapoints] = u[:, 0]
+        y = lqr_dynamics(x, u)
+        Y[:, total_datapoints] = y[:, 0]
         x = y
+        total_datapoints += 1
 
-        done = x[0, 0] < -env.x_threshold or \
-               x[0, 0] > env.x_threshold or \
-               x[2, 0] < -env.theta_threshold_radians or \
-               x[2, 0] > env.theta_threshold_radians
+#%%
+
+# num_episodes = 200
+# num_steps_per_episode = 200
+# x0 = np.array([
+#     [-1],
+#     [0],
+#     [np.pi],
+#     [0]
+# ])
+# action_range = np.arange(-1, 1, 0.1) # -1 to 1 in increments of 0.1
+# for episode in range(num_episodes):
+#     perturbation = np.array([
+#         [0],
+#         [0],
+#         [np.random.normal(0, 0.05)],
+#         [0]
+#     ])
+#     x = x0 + perturbation
+
+#     for step in range(num_steps_per_episode):
+#         X[:, episode+step] = x[:, 0]
+#         u = np.random.choice(action_range) # random sample
+#         U[:, episode+step] = u
+#         # y = f(x, u)
+#         y = odeint(f, x, tspan, args=(u))
+#         Y[:, episode+step] = y[:, 0]
+
+#         x = y
 
 tensor = KoopmanTensor(
     X,
     Y,
     U,
-    phi=observables.monomials(2), # 3
-    psi=observables.monomials(2), # 3
+    phi=observables.monomials(2),
+    psi=observables.monomials(2),
     regressor='ols'
 )
 
 #%% Training error
-print("\nTraining error:")
+print("\nTesting error:")
 
-training_norms = np.zeros([X.shape[1]])
+num_episodes = 100
+num_steps_per_episode = 200
+testing_norms = np.zeros([X.shape[1]])
 
-for episode in range(200):
-# for i in range(X.shape[1]):
-    # x = np.vstack(X[:, i])
+for episode in range(num_episodes):
+    # perturbation = np.random.normal(0, 0.05)
+    # x = np.array([
+    #     [-1],
+    #     [0],
+    #     [np.pi + perturbation],
+    #     [0]
+    # ])
     x = np.vstack(env.reset())
 
-    done = False
-    while not done:
+    for step in range(num_steps_per_episode):
         phi_x = tensor.phi(x)
         u = np.array([[env.action_space.sample()]]) # Sampled from random agent
 
         predicted_x_prime = tensor.B.T @ tensor.K_(u) @ phi_x
         # true_x_prime = np.vstack(Y[:, i])
-        true_x_prime = f(x, u)
+        true_x_prime = lqr_dynamics(x, u)
 
-        training_norms[i] = utilities.l2_norm(true_x_prime, predicted_x_prime)
+        testing_norms[(episode*num_steps_per_episode)+step] = utilities.l2_norm(true_x_prime, predicted_x_prime)
 
         x = true_x_prime
 
-        done = x[0, 0] < -env.x_threshold or \
-               x[0, 0] > env.x_threshold or \
-               x[2, 0] < -env.theta_threshold_radians or \
-               x[2, 0] > env.theta_threshold_radians
-
-print("Mean training norm:", np.mean(training_norms))
+print("Mean testing norm:", np.mean(testing_norms))
 
 #%% Define cost
 def cost(x, u):
-    # convertedU = copy.deepcopy(u)
-    # convertedU[u == 0] = -10
-    # convertedU[u == 1] = 10
     # Assuming that data matrices are passed in for X and U. Columns vecs are snapshots
     mat = np.vstack(np.diag(x.T @ Q @ x)) + np.power(u, 2)*R
     return mat
+
+# From Wen's homework (PA1)
+# def c(x, u):
+#     assert x.shape == (4,)
+#     assert u.shape == (1,)
+#     env = gym.make("env:CartPoleControlEnv-v0")
+#     env.reset(state=x)
+#     env.step(u)
+#     observation, cost, done, info = env.step(u)
+#     env.close()
+#     return cost
 
 # def reward_func(state, action):
 #     #* assume state and action can be matrices where the columns are states/actions
@@ -243,83 +356,9 @@ algos = algorithmsv2.algos(
     optimizer='adam'
 )
 
-# algos.w = np.array([
-#     [-6.25794665e-01],
-#     [-4.05142775e-03],
-#     [-1.14685414e-03],
-#     [ 1.22353767e-03],
-#     [ 9.93027095e-04],
-#     [ 1.93718097e+00],
-#     [ 1.98265639e-01],
-#     [-2.87556280e-01],
-#     [ 1.24441079e-01],
-#     [ 1.79162901e+00],
-#     [ 8.67723760e-01],
-#     [-3.18273490e-01],
-#     [ 1.04168751e+00],
-#     [ 7.99085284e-01],
-#     [ 1.88380483e+00],
-#     [ 1.40321488e+00],
-#     [ 1.31128608e+00],
-#     [ 8.63758080e-01],
-#     [ 6.88648832e-01],
-#     [ 6.85741896e-01],
-#     [ 5.78663495e-01],
-#     [ 1.07316362e+00],
-#     [-1.31681602e+00],
-#     [-1.49337352e-01],
-#     [ 3.77608156e-01],
-#     [ 5.11626221e-01],
-#     [ 6.16237556e-02],
-#     [ 9.61554647e-01],
-#     [-1.82980532e+00],
-#     [ 1.00552850e-01],
-#     [ 5.72135426e-01],
-#     [-1.58383704e+00],
-#     [-3.13481480e-01],
-#     [ 3.50395672e-03],
-#     [ 9.79144522e-02]
-# ])
-# algos.w = np.array([
-#     [-0.62659919],
-#     [-0.00897014],
-#     [-0.00959372],
-#     [ 0.01252761],
-#     [-0.00693892],
-#     [ 1.90943469],
-#     [ 0.1117488 ],
-#     [-0.20447107],
-#     [ 0.05952606],
-#     [ 1.7917121 ],
-#     [ 0.86840699],
-#     [-0.32586552],
-#     [ 1.0946938 ],
-#     [ 0.70335887],
-#     [ 1.89283258],
-#     [ 0.74423775],
-#     [ 0.78924267],
-#     [ 0.56825446],
-#     [ 0.69017369],
-#     [ 0.33958384],
-#     [ 0.10841765],
-#     [ 1.00091402],
-#     [-1.09894694],
-#     [ 0.13813255],
-#     [ 0.50455058],
-#     [ 0.48329882],
-#     [-0.20073181],
-#     [ 0.86894308],
-#     [-1.79097402],
-#     [ 0.1235106 ],
-#     [ 0.53904337],
-#     [-1.64378235],
-#     [-0.35879732],
-#     [ 0.0086023 ],
-#     [ 0.12826922]
-# ])
-algos.w = np.load('bellman-weights.npy')
-# print("Weights before updating:", algos.w)
-# bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
+# algos.w = np.load('bellman-weights.npy')
+print("Weights before updating:", algos.w)
+bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
 print("Weights after updating:", algos.w)
 
 #%% Extract policy
@@ -339,7 +378,13 @@ def random_policy():
 num_episodes = 200
 rewards = np.zeros([num_episodes])
 for episode in range(num_episodes):
-    x = np.vstack(env.reset())
+    perturbation = np.random.normal(0, 0.05)
+    x = np.array([
+        [-1],
+        [0],
+        [np.pi + perturbation],
+        [0]
+    ])
 
     done = False
     while not done:
