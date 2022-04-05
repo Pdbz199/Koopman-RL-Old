@@ -24,6 +24,7 @@ class KoopmanTensor:
         phi=observables.monomials(2),
         psi=observables.monomials(2),
         regressor='ols',
+        is_generator=False,
         p_inv=True
     ):
         self.X = X
@@ -39,6 +40,8 @@ class KoopmanTensor:
         self.Phi_X = self.phi(X)
         self.Phi_Y = self.phi(Y)
         self.Psi_U = self.psi(U)
+
+        # TODO: Create Koopman Generator Tensor if is_generator is True
 
         # Get dimensions
         self.dim_phi = self.Phi_X.shape[0]
