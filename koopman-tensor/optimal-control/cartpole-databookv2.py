@@ -136,7 +136,8 @@ tensor = KoopmanTensor(
     Y,
     U,
     phi=observables.monomials(2),
-    psi=observables.monomials(2)
+    psi=observables.monomials(2),
+    regressor='ols'
 )
 
 #%% Define cost
@@ -168,10 +169,10 @@ algos = algorithmsv2.algos(
     optimizer='adam'
 )
 
-# algos.w = np.load('bellman-weights.npy')
+algos.w = np.load('bellman-weights.npy')
 print("Weights before updating:", algos.w)
-bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
-print("Weights after updating:", algos.w)
+# bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
+# print("Weights after updating:", algos.w)
 
 #%% Extract policy
 All_U_range = np.arange(All_U.shape[1])
@@ -183,7 +184,7 @@ def learned_policy(x):
     return u
 
 #%% Test policy by simulating system
-num_episodes = 1
+num_episodes = 100
 num_steps_per_episode = 300
 
 episode_rewards = np.zeros([num_episodes])
