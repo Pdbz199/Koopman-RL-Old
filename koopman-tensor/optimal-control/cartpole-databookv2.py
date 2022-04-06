@@ -82,7 +82,7 @@ w_r = np.array([
     [0]
 ])
 
-action_range = np.arange(-500, 500)
+action_range = np.arange(-20, 20)
 def random_policy(x):
     return np.array([[np.random.choice(action_range)]])
 
@@ -90,24 +90,24 @@ def optimal_policy(x):
     return -K @ (x - w_r[:, 0])
 
 #%%
-# tspan = np.arange(0, 10, 0.001)
-# _x = integrate.odeint(pendcart, x[:, 0], tspan, args=(m, M, L, g, d, optimal_policy))
+tspan = np.arange(0, 10, 0.0001)
+_x = integrate.odeint(pendcart, x[:, 0], tspan, args=(m, M, L, g, d, optimal_policy))
 
-# for i in range(4):
-#     plt.plot(_x[:, i])
-# plt.show()
+for i in range(4):
+    plt.plot(_x[:, i])
+plt.show()
 
 #%% Define Simple Dynamics Function
-seconds_per_step = 0.002
-timespan = np.arange(0, seconds_per_step, 0.001)
+seconds_per_step = 0.02
+timespan = np.arange(0, seconds_per_step, 0.0001)
 def f(x, u):
     policy = lambda state: u
     _x = integrate.odeint(pendcart, x[:, 0], timespan, args=(m, M, L, g, d, policy))
     return np.vstack(_x[-1])
 
 #%% Construct Datasets
-num_episodes = 1000
-num_steps_per_episode = 300
+num_episodes = 200
+num_steps_per_episode = 100
 
 X = np.zeros([4, num_episodes*num_steps_per_episode])
 Y = np.zeros([4, num_episodes*num_steps_per_episode])
@@ -142,17 +142,18 @@ tensor = KoopmanTensor(
 
 #%% Define cost
 def cost(x, u):
-    # Assuming that data matrices are passed in for X and U. Columns vecs are snapshots
-    mat = np.vstack(np.diag((x.T-w_r.T) @ Q @ (x-w_r))) + np.power(u, 2)*R
+    # Assuming that data matrices are passed in for X and U. Columns vectors are snapshots
+    _x = x - w_r
+    mat = np.vstack(np.diag(_x.T @ Q @ _x)) + np.power(u, 2)*R
     return mat
 
 #%% Learn control
-u_bounds = np.array([[-500, 500]])
+u_bounds = np.array([[-20, 20]])
 All_U = np.array([np.arange(u_bounds[0,0], u_bounds[0,1], 0.1)])
 gamma = 0.99
 lamb = 0.1
 lr = 1e-1
-epsilon = 1e-3
+epsilon = 1e-2
 
 algos = algorithmsv2.algos(
     X,
@@ -169,10 +170,10 @@ algos = algorithmsv2.algos(
     optimizer='adam'
 )
 
-algos.w = np.load('bellman-weights.npy')
+# algos.w = np.load('bellman-weights.npy')
 print("Weights before updating:", algos.w)
-# bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
-# print("Weights after updating:", algos.w)
+bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
+print("Weights after updating:", algos.w)
 
 #%% Extract policy
 All_U_range = np.arange(All_U.shape[1])
@@ -184,30 +185,41 @@ def learned_policy(x):
     return u
 
 #%% Test policy by simulating system
-num_episodes = 100
-num_steps_per_episode = 300
+num_episodes = 1
 
 episode_rewards = np.zeros([num_episodes])
 
+visited_states = []
+
 for episode in range(num_episodes):
     perturbation = np.array([
-            [0],
-            [0],
-            [np.random.normal(0, 0.1)], # np.random.normal(0, 0.05)
-            [0]
+        [0],
+        [0],
+        [np.random.normal(0, 0.1)], # np.random.normal(0, 0.05)
+        [0]
     ])
     x = x0 + perturbation
 
     done = False
-    while not done:
+    step = 0
+    while not done and step != int(10 / seconds_per_step):
+        visited_states.append(x[:, 0])
+
         u = learned_policy(x)
         y = f(x, u)
         episode_rewards[episode] += 1.0
 
         done = y[1,0] > np.pi/2 and y[1,0] < 3*np.pi/2
+        step += 1
 
         x = y
 
 print("Mean reward per episode:", np.mean(episode_rewards))
+
+#%%
+visited_states = np.array(visited_states)
+for i in range(4):
+    plt.plot(visited_states[:, i])
+plt.show()
 
 #%%
