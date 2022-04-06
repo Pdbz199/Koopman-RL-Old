@@ -82,7 +82,7 @@ w_r = np.array([
     [0]
 ])
 
-action_range = np.arange(-20, 20)
+action_range = np.arange(-20, 20, 0.1)
 def random_policy(x):
     return np.array([[np.random.choice(action_range)]])
 
@@ -90,16 +90,16 @@ def optimal_policy(x):
     return -K @ (x - w_r[:, 0])
 
 #%%
-tspan = np.arange(0, 10, 0.0001)
-_x = integrate.odeint(pendcart, x[:, 0], tspan, args=(m, M, L, g, d, optimal_policy))
+# tspan = np.arange(0, 10, 0.001)
+# _x = integrate.odeint(pendcart, x[:, 0], tspan, args=(m, M, L, g, d, optimal_policy))
 
-for i in range(4):
-    plt.plot(_x[:, i])
-plt.show()
+# for i in range(4):
+#     plt.plot(_x[:, i])
+# plt.show()
 
 #%% Define Simple Dynamics Function
 seconds_per_step = 0.02
-timespan = np.arange(0, seconds_per_step, 0.0001)
+timespan = np.arange(0, seconds_per_step, 0.001)
 def f(x, u):
     policy = lambda state: u
     _x = integrate.odeint(pendcart, x[:, 0], timespan, args=(m, M, L, g, d, policy))
