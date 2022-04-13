@@ -1,8 +1,9 @@
 #%% Imports
 import gym
 import numpy as np
-# from scipy.integrate import odeint
 
+from control.matlab import dlqr
+# from scipy.integrate import odeint
 # from sklearn.kernel_approximation import RBFSampler
 
 import sys
@@ -14,7 +15,8 @@ import observables
 import utilities
 
 #%% Load environment
-env = gym.make('CartPole-v0')
+# env = gym.make('CartPole-v0')
+env = gym.make("env:CartPoleControlEnv-v0")
 
 #%% Define Q and R
 # Q = np.eye(4)
@@ -29,11 +31,15 @@ Q = np.array([
 R = 0.1
 
 #%% Construct datasets
-# seed = 123
-# env.seed(seed)
-# np.random.seed(seed)
+seed = 123
+env.seed(seed)
+np.random.seed(seed)
 
 num_datapoints = 20000 # 50000
+
+u_bounds = np.array([[-50, 50]])
+step_size = 0.1
+All_U = np.array([np.arange(u_bounds[0,0], u_bounds[0,1], step_size)])
 
 X = np.zeros([
     env.observation_space.sample().shape[0],
@@ -54,7 +60,8 @@ while total_datapoints < num_datapoints:
     done = False
     while not done and total_datapoints < num_datapoints:
         X[:, total_datapoints] = x
-        u = env.action_space.sample() # Sampled from random agent
+        # u = env.action_space.sample() # Sampled from random agent
+        u = np.array([np.random.choice(All_U[0])])
         U[:, total_datapoints] = u
         y,reward,done,info = env.step(u)
         Y[:, total_datapoints] = y
@@ -124,24 +131,47 @@ while total_datapoints < num_datapoints:
 #     return A @ x + B @ u
 
 def f(x, u):
-    assert x.shape == (4,)
+    assert x.shape == (4,1)
     assert u.shape == (1,)
 
-    env = gym.make('CartPole-v0')
-    env.reset(state = x)
-    observation, cost, done, info = env.step(int(u[0]))
-    env.close()
+    environment = gym.make("env:CartPoleControlEnv-v0")
+    environment.reset(state=x[:,0])
+    observation, cost, done, info = environment.step(u)
+    environment.close()
 
     return observation
 
-def compute_A(x_s, u_s):
-    return utilities.jacobian(lambda v: f(v, u_s), x_s)
+# def compute_A(x_s, u_s):
+#     return utilities.jacobian(lambda v:f(v, u_s), x_s)
 
-def compute_B(x_s, u_s):
-    return utilities.jacobian(lambda v: f(x_s, v), u_s)
+# def compute_B(x_s, u_s):
+#     return utilities.jacobian(lambda v:f(x_s, v), u_s)
 
-unique_X = np.unique(X, axis=1)
-unique_U = np.unique(U, axis=1)
+# x_s = np.array([0, 0, 0, 0])
+# u_s = np.array([0])
+
+# A = compute_A(x_s, u_s)
+# B = compute_B(x_s, u_s)
+
+# print(A)
+# print(B)
+
+A = np.array([
+    [1, 0.02,  0,          0],
+    [0, 1,    -0.01434146, 0],
+    [0, 0,     1,          0.02],
+    [0, 0,     0.3155122,  1]
+])
+
+B = np.array([
+    [0],
+    [0.0195122],
+    [0],
+    [-0.02926829]
+])
+
+# unique_X = np.unique(X, axis=1)
+# unique_U = np.unique(U, axis=1)
 # A = np.zeros((X.shape[0], X.shape[0]))
 # B = np.zeros((X.shape[0], U.shape[0]))
 
@@ -161,41 +191,41 @@ unique_U = np.unique(U, axis=1)
 #     [0, 0,    1,            0.02],
 #     [0, 0,    0.312741646,  1]
 # ])
-A = np.array([
-    [0.1, 0.02, 0,            0],
-    [0,   0.1, -0.0134839336, 0.0000927891961],
-    [0,   0,    0.1,          0.02],
-    [0,   0,    0.312741646,  0.1]
-])
-B = np.array([
-    [0.],
-    [9750.11179],
-    [0],
-    [-14563.45848858]
-])
+# A = np.array([
+#     [0.1, 0.02, 0,            0],
+#     [0,   0.1, -0.0134839336, 0.0000927891961],
+#     [0,   0,    0.1,          0.02],
+#     [0,   0,    0.312741646,  0.1]
+# ]) # number 2
 # B = np.array([
 #     [0],
 #     [0.1],
 #     [0],
 #     [-0.1]
 # ])
+# B = np.array([
+#     [0.],
+#     [9750.11179],
+#     [0],
+#     [-14563.45848858]
+# ]) # number 2
 
 #%%
-def lqr_dynamics(x, u):
-    return A @ x + B @ u
+# def lqr_dynamics(x, u):
+#     return A @ x + B @ u
 
-total_datapoints = 0
-while total_datapoints < num_datapoints:
-    x = np.vstack(env.reset())
-    done = False
-    while not done and total_datapoints < num_datapoints:
-        X[:, total_datapoints] = x[:, 0]
-        u = np.array([[env.action_space.sample()]]) # Sampled from random agent
-        U[:, total_datapoints] = u[:, 0]
-        y = lqr_dynamics(x, u)
-        Y[:, total_datapoints] = y[:, 0]
-        x = y
-        total_datapoints += 1
+# total_datapoints = 0
+# while total_datapoints < num_datapoints:
+#     x = np.vstack(env.reset())
+#     done = False
+#     while not done and total_datapoints < num_datapoints:
+#         X[:, total_datapoints] = x[:, 0]
+#         u = np.array([[env.action_space.sample()]]) # Sampled from random agent
+#         U[:, total_datapoints] = u[:, 0]
+#         y = lqr_dynamics(x, u)
+#         Y[:, total_datapoints] = y[:, 0]
+#         x = y
+#         total_datapoints += 1
 
 #%%
 
@@ -240,32 +270,51 @@ tensor = KoopmanTensor(
 print("\nTesting error:")
 
 num_episodes = 100
-num_steps_per_episode = 200
-testing_norms = np.zeros([X.shape[1]])
+# num_steps_per_episode = 20
+testing_norms = []
 
 for episode in range(num_episodes):
-    # perturbation = np.random.normal(0, 0.05)
-    # x = np.array([
-    #     [-1],
-    #     [0],
-    #     [np.pi + perturbation],
-    #     [0]
-    # ])
     x = np.vstack(env.reset())
 
-    for step in range(num_steps_per_episode):
+    done = False
+    while not done:
         phi_x = tensor.phi(x)
-        u = np.array([[env.action_space.sample()]]) # Sampled from random agent
+        # u = np.array([[env.action_space.sample()]]) # Sampled from random agent
+        u = np.array([[np.random.choice(All_U[0])]])
 
         predicted_x_prime = tensor.B.T @ tensor.K_(u) @ phi_x
         # true_x_prime = np.vstack(Y[:, i])
-        true_x_prime = lqr_dynamics(x, u)
+        observation, cost, done, info = env.step(u[:,0])
+        true_x_prime = np.vstack(observation)
 
-        testing_norms[(episode*num_steps_per_episode)+step] = utilities.l2_norm(true_x_prime, predicted_x_prime)
+        testing_norms.append(utilities.l2_norm(true_x_prime, predicted_x_prime))
 
         x = true_x_prime
 
+testing_norms = np.array(testing_norms)
 print("Mean testing norm:", np.mean(testing_norms))
+
+#%% Traditional LQR
+C = np.array(dlqr(A, B, Q, R)[0])
+
+#%% Test optimal policy
+num_episodes = 100
+optimal_costs = []
+for episode in range(num_episodes):
+    x = env.reset()
+
+    done = False
+    steps = 0
+    while not done and steps <= 200:
+        # env.render()
+        u = -C@x
+        observation, cost, done, info = env.step(u)
+        optimal_costs.append(cost)
+        x = observation
+        steps += 1
+env.close()
+optimal_costs = np.array(optimal_costs)
+print(f"Mean optimal cost over {num_episodes} episodes:", np.mean(optimal_costs))
 
 #%% Define cost
 def cost(x, u):
@@ -334,12 +383,10 @@ def cost(x, u):
 #     return -reward_func(x, u)
 
 #%% Learn control
-u_bounds = np.array([[0, 1]])
-All_U = np.array([[-10, 10]])
 gamma = 0.99
 lamb = 1.0
 lr = 1e-1
-epsilon = 1e-3
+epsilon = 1e-2
 
 algos = algorithmsv2.algos(
     X,
@@ -367,40 +414,29 @@ def policy(x):
     pis = algos.pis(x)[:,0]
     # Select action column at index sampled from policy distribution
     u_ind = np.random.choice(All_U_range, p=pis)
-    u = np.vstack(All_U[:,u_ind])[0,0]
-    u = 0 if u == -10 else 1
+    u = np.vstack(All_U[:,u_ind])
     return u
 
 def random_policy():
     return env.action_space.sample()
 
 #%% Test policy by simulating system
-num_episodes = 200
-rewards = np.zeros([num_episodes])
+num_episodes = 100
+learned_costs = []
 for episode in range(num_episodes):
-    perturbation = np.random.normal(0, 0.05)
-    x = np.array([
-        [-1],
-        [0],
-        [np.pi + perturbation],
-        [0]
-    ])
+    x = env.reset()
 
     done = False
-    while not done:
+    steps = 0
+    while not done and steps <= 200:
         # env.render()
-        u = np.array([[policy(x)]])
-
-        # next_state,reward,done,info = env.step(u)
-        x = f(x, u)
-
-        done = x[0, 0] < -env.x_threshold or \
-               x[0, 0] > env.x_threshold or \
-               x[2, 0] < -env.theta_threshold_radians or \
-               x[2, 0] > env.theta_threshold_radians
-
-        rewards[episode] += 1
-
-print("Mean reward per episode:", np.mean(rewards))
+        u = policy(np.vstack(x))
+        observation, cost, done, info = env.step(u[:,0])
+        learned_costs.append(cost)
+        x = observation
+        steps += 1
+env.close()
+learned_costs = np.array(learned_costs)
+print(f"Mean learned cost over {num_episodes} episodes:", np.mean(learned_costs))
 
 #%%

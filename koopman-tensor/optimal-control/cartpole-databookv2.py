@@ -56,6 +56,18 @@ def pendcart(x,t,m,M,L,g,d,uf):
     dx[3] = (1/D)*((m+M)*m*g*L*Sx - m*L*Cx*(m*L*(x[3]**2)*Sx - d*x[1])) - m*L*Cx*(1/D)*u
     return dx
 
+def pendcart_v2(x,tau,m,M,L,g,d,u):
+    x = x[:,0]
+    Sx = np.sin(x[2])
+    Cx = np.cos(x[2])
+    D = m*L*L*(M+m*(1-Cx**2))
+    dx = np.zeros(4)
+    dx[0] = x[1]*tau
+    dx[1] = tau*((1/D)*(-(m**2)*(L**2)*g*Cx*Sx + m*(L**2)*(m*L*(x[3]**2)*Sx - d*x[1])) + m*L*L*(1/D)*u)
+    dx[2] = x[3]*tau
+    dx[3] = tau*((1/D)*((m+M)*m*g*L*Sx - m*L*Cx*(m*L*(x[3]**2)*Sx - d*x[1])) - m*L*Cx*(1/D)*u)
+    return (x + dx)
+
 #%% Traditional LQR
 K = lqr(A, B, Q, R)[0]
 
@@ -68,10 +80,10 @@ x0 = np.array([
 ])
 
 perturbation = np.array([
-        [0],
-        [0],
-        [np.random.normal(0, 0.1)], # np.random.normal(0, 0.05)
-        [0]
+    [0],
+    [0],
+    [np.random.normal(0, 0.1)], # np.random.normal(0, 0.05)
+    [0]
 ])
 x = x0 + perturbation
 
@@ -98,16 +110,18 @@ def optimal_policy(x):
 # plt.show()
 
 #%% Define Simple Dynamics Function
-seconds_per_step = 0.02
-timespan = np.arange(0, seconds_per_step, 0.001)
-def f(x, u):
-    policy = lambda state: u
-    _x = integrate.odeint(pendcart, x[:, 0], timespan, args=(m, M, L, g, d, policy))
-    return np.vstack(_x[-1])
+# seconds_per_step = 0.02
+# timespan = np.arange(0, seconds_per_step, 0.001)
+# def f(x, u):
+#     policy = lambda state: u
+#     _x = integrate.odeint(pendcart, x[:, 0], timespan, args=(m, M, L, g, d, policy))
+#     return np.vstack(_x[-1])
 
 #%% Construct Datasets
 num_episodes = 200
-num_steps_per_episode = 100
+num_steps_per_episode = 1000
+
+seconds_per_step = 0.002
 
 X = np.zeros([4, num_episodes*num_steps_per_episode])
 Y = np.zeros([4, num_episodes*num_steps_per_episode])
@@ -126,9 +140,9 @@ for episode in range(num_episodes):
         X[:, (episode*num_steps_per_episode)+step] = x[:, 0]
         u = random_policy(x)
         U[:, (episode*num_steps_per_episode)+step] = u
-        y = f(x, u)
-        Y[:, (episode*num_steps_per_episode)+step] = y[:, 0]
-        x = y
+        y = pendcart_v2(x,seconds_per_step,m,M,L,g,d,u)
+        Y[:, (episode*num_steps_per_episode)+step] = y
+        x = np.vstack(y)
 
 #%% Koopman Tensor
 tensor = KoopmanTensor(
@@ -170,10 +184,10 @@ algos = algorithmsv2.algos(
     optimizer='adam'
 )
 
-# algos.w = np.load('bellman-weights.npy')
+algos.w = np.load('bellman-weights.npy')
 print("Weights before updating:", algos.w)
-bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
-print("Weights after updating:", algos.w)
+# bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
+# print("Weights after updating:", algos.w)
 
 #%% Extract policy
 All_U_range = np.arange(All_U.shape[1])
@@ -185,7 +199,7 @@ def learned_policy(x):
     return u
 
 #%% Test policy by simulating system
-num_episodes = 1
+num_episodes = 100
 
 episode_rewards = np.zeros([num_episodes])
 
@@ -206,7 +220,7 @@ for episode in range(num_episodes):
         visited_states.append(x[:, 0])
 
         u = learned_policy(x)
-        y = f(x, u)
+        y = np.vstack(pendcart_v2(x,seconds_per_step,m,M,L,g,d,u))
         episode_rewards[episode] += 1.0
 
         done = y[1,0] > np.pi/2 and y[1,0] < 3*np.pi/2

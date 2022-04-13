@@ -14,27 +14,47 @@ import observables
 from control import dlqr, dare
 
 #%% System dynamics
-gamma = 0.8
-lamb = 1.0
-# gamma = 0.5
-# lamb = 0.6
-# gamma = 0.9
-# lamb = 1.0
+gamma = 0.5
+lamb = 1.0 # 0.6
+tau = 0.002
 
-A = np.array([
-    [0.5, 0.0],
-    [0.0, 0.3]
-], dtype=np.float64)
-B = np.array([
-    [1.0], # Try changing so that we get dampening on control
-    [1.0] #! (A-BC)x --test 
-], dtype=np.float64)
-Q = np.array([
-    [1.0, 0.0],
-    [0.0, 1.0]
-], dtype=np.float64) #* gamma
-# R = 1
-R = np.array([[1.0]], dtype=np.float64) #* gamma
+#%% True System Dynamics
+m = 1 # pendulum mass
+M = 5 # cart mass
+L = 2 # pendulum length
+g = -10 # gravitational acceleration
+d = 1 # (delta) cart damping
+
+b = 1 # pendulum up (b = 1)
+w_r = np.array([
+    [1],
+    [0],
+    [np.pi],
+    [0]
+])
+
+A = tau * np.array([
+    [1 / tau, 1, 0, 0],
+    [0, 1 / tau - d / M, b * m * g / M, 0],
+    [0, 0, 1/tau, 1],
+    [0, -b * d / (M * L), -b * (m + M) * g / (M * L), 1 / tau]
+])
+# print(np.linalg.eig(A))
+# np.array([1.0, 0.99953272, 0.99513775, 1.00492952])
+# np.array([
+#     [1.00000000e+00, -9.73767702e-01, 1.31603805e-01, -1.09515682e-01],
+#     [0.00000000e+00, 2.27510483e-01, -3.19945037e-01, -2.69930132e-01],
+#     [0.00000000e+00, 3.82665589e-03, -3.56918366e-01, 3.59649831e-01],
+#     [0.00000000e+00, -8.94057513e-04, 8.67712448e-01, 8.86451374e-01]
+# ])
+B = tau * np.array([
+    [0],
+    [1/M],
+    [0],
+    [b/(M*L)]
+])
+Q = np.eye(4) # state cost, 4x4 identity matrix
+R = 0.0001 # control cost
 
 def f(x, u):
     return A @ x + B @ u
@@ -42,22 +62,33 @@ def f(x, u):
 #%% Traditional LQR
 # lq = dlqr(A, B, Q, R)
 # C = lq[0]
-# lq[0] == [[ 8.96688317 -6.28428936]]
-# lq[1] == [[ 79.40499383 -70.43811066]
-#           [-70.43811066  64.1538213 ]]
-# lq[2] == [-1.474176 +0.j -0.4084178+0.j]
 
 #%% Solve riccati equation
-soln = dare(A*np.sqrt(gamma), B*np.sqrt(gamma), Q, R)
+soln = dare(A * np.sqrt(gamma), B * np.sqrt(gamma), Q, R)
 P = soln[0]
-C = np.linalg.inv(R + gamma*B.T @ P @ B) @ (gamma*B.T @ P @ A)
+C = np.linalg.inv(R + gamma * B.T @ P @ B) @ (gamma * B.T @ P @ A)
 
 #%% Construct snapshots of u from random agent and initial states x0
+x0 = np.array([
+    [-1],
+    [0],
+    [np.pi],
+    [0]
+])
+
+perturbation = np.array([
+    [0],
+    [0],
+    [np.random.normal(0, 0.05)],
+    [0]
+])
+x = x0 + perturbation
+
 N = 10000
-action_range = 10
+action_range = 50
 state_range = 10
-U = np.random.rand(1,N)*action_range*np.random.choice(np.array([-1,1]), size=(1,N))
-X0 = np.random.rand(2,N)*state_range*np.random.choice(np.array([-1,1]), size=(2,N))
+U = np.random.rand(1,N) * action_range * np.random.choice(np.array([-1,1]), size=(1,N))
+X0 = np.random.rand(4,N) * state_range * np.random.choice(np.array([-1,1]), size=(4,N))
 
 #%% Construct snapshots of states following dynamics f
 Y = f(X0, U)
@@ -73,22 +104,27 @@ tensor = KoopmanTensor(
 )
 
 #%% Define cost function
-# def cost(x, u):
-#     return x.T @ Q @ x + u.T @ R @ u
 
+#%% Define cost
 def cost(x, u):
-    # Assuming that data matrices are passed in for X and U. Columns vecs are snapshots
-    mat = np.vstack(np.diag(x.T @ Q @ x)) + np.power(u, 2)*R
+    # Assuming that data matrices are passed in for X and U. Columns vectors are snapshots
+    _x = x - w_r
+    mat = np.vstack(np.diag(_x.T @ Q @ _x)) + np.power(u, 2)*R
     return mat
 
 #%% Discretize all controls
 u_bounds = np.array([[-action_range, action_range]])
-step_size = 0.01
+step_size = 0.1
 All_U = np.arange(start=u_bounds[0,0], stop=u_bounds[0,1], step=step_size).reshape(1,-1)
 All_U = np.round(All_U, decimals=1)
 # All_U = U.reshape(1,-1) # continuous case is just original domain
 
 #%% Learn control
+gamma = 0.9
+lamb = 0.1
+lr = 1e-1
+epsilon = 1e-2
+
 algos = algorithmsv2.algos(
     X0,
     All_U,
@@ -96,33 +132,17 @@ algos = algorithmsv2.algos(
     tensor,
     cost,
     gamma=gamma,
-    epsilon=0.01,
+    epsilon=epsilon,
     bellman_error_type=0,
-    learning_rate=1e-1,
+    learning_rate=lr,
     weight_regularization_bool=True,
     weight_regularization_lambda=lamb,
     optimizer='adam'
 )
-# algos.w = np.load('bellman-weights.npy')
-# algos.w = np.array([
-#     [-9.63500888e+00],
-#     [ 6.44128461e-06],
-#     [ 5.91321286e-06],
-#     [ 1.10210390e+00],
-#     [-4.33773261e-02],
-#     [ 1.03527409e+00]
-# ]) # epsilon = 0.01
-# algos.w = np.array([
-#     [-9.63863338e+00],
-#     [-4.31300696e-05],
-#     [-3.47747365e-06],
-#     [ 1.10211780e+00],
-#     [-4.33771878e-02],
-#     [ 1.03530115e+00]
-# ]) # epsilon = 0.001
+algos.w = np.load('bellman-weights.npy')
 print("Weights before updating:", algos.w)
-bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
-print("Weights after updating:", algos.w)
+# bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
+# print("Weights after updating:", algos.w)
 
 # plt.plot(bellmanErrors)
 # plt.show()
@@ -133,8 +153,8 @@ print("Weights after updating:", algos.w)
 np.random.seed(123)
 
 num_episodes = 100
-num_steps_per_episode = 100
-initial_Xs = np.random.rand(2,num_episodes)*state_range*np.random.choice(np.array([-1,1]), size=(2,num_episodes)) # random initial states
+num_steps_per_episode = 1000
+initial_Xs = np.random.rand(4,num_episodes) * state_range * np.random.choice(np.array([-1,1]), size=(4,num_episodes)) # random initial states
 
 #%% Construct policy
 All_U_range = np.arange(All_U.shape[1])
@@ -180,15 +200,23 @@ def policyDensity(u, u_ind, x, policyType):
 # lamb = 1e-2 # 1.0?
 opt_x0s = []
 opt_x1s = []
+opt_x2s = []
+opt_x3s = []
 
 learned_x0s = []
 learned_x1s = []
+learned_x2s = []
+learned_x3s = []
 for episode in range(1): #num_episodes
     x = np.vstack(initial_Xs[:,episode])
     opt_x0s.append(x[0,0])
     opt_x1s.append(x[1,0])
+    opt_x3s.append(x[2,0])
+    opt_x2s.append(x[3,0])
     learned_x0s.append(x[0,0])
     learned_x1s.append(x[1,0])
+    learned_x2s.append(x[2,0])
+    learned_x3s.append(x[3,0])
     # print("Initial x:", x)
     # cost_sum = 0
     for step in range(num_steps_per_episode):
@@ -197,12 +225,16 @@ for episode in range(1): #num_episodes
 
         opt_x0s.append(opt_x_prime[0,0])
         opt_x1s.append(opt_x_prime[1,0])
+        opt_x2s.append(opt_x_prime[2,0])
+        opt_x3s.append(opt_x_prime[3,0])
 
         learned_u, learned_u_ind = policy(x, 'learned')
         learned_x_prime = f(x, learned_u)
 
         learned_x0s.append(learned_x_prime[0,0])
         learned_x1s.append(learned_x_prime[1,0])
+        learned_x2s.append(learned_x_prime[2,0])
+        learned_x3s.append(learned_x_prime[3,0])
 
         # pis = algos.pis(x)[:,0]
         # (beta**step)*
@@ -215,9 +247,13 @@ for episode in range(1): #num_episodes
 # print("Mean cost per episode:", np.mean(costs)) # Cost should be minimized
 plt.plot(np.arange(num_steps_per_episode+1), opt_x0s)
 plt.plot(np.arange(num_steps_per_episode+1), opt_x1s)
+plt.plot(np.arange(num_steps_per_episode+1), opt_x2s)
+plt.plot(np.arange(num_steps_per_episode+1), opt_x3s)
 plt.show()
 plt.plot(np.arange(num_steps_per_episode+1), learned_x0s)
 plt.plot(np.arange(num_steps_per_episode+1), learned_x1s)
+plt.plot(np.arange(num_steps_per_episode+1), learned_x2s)
+plt.plot(np.arange(num_steps_per_episode+1), learned_x3s)
 plt.show()
 
 #%%
