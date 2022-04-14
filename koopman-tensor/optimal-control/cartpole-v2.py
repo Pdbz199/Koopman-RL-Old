@@ -2,7 +2,7 @@
 import gym
 import numpy as np
 
-from control.matlab import dlqr
+from control.matlab import dare, dlqr
 # from scipy.integrate import odeint
 # from sklearn.kernel_approximation import RBFSampler
 
@@ -38,7 +38,7 @@ np.random.seed(seed)
 num_datapoints = 20000 # 50000
 
 u_bounds = np.array([[-50, 50]])
-step_size = 0.1
+step_size = 0.01
 All_U = np.array([np.arange(u_bounds[0,0], u_bounds[0,1], step_size)])
 
 X = np.zeros([
@@ -130,16 +130,16 @@ while total_datapoints < num_datapoints:
 # def f(x, u):
 #     return A @ x + B @ u
 
-def f(x, u):
-    assert x.shape == (4,1)
-    assert u.shape == (1,)
+# def f(x, u):
+#     assert x.shape == (4,1)
+#     assert u.shape == (1,)
 
-    environment = gym.make("env:CartPoleControlEnv-v0")
-    environment.reset(state=x[:,0])
-    observation, cost, done, info = environment.step(u)
-    environment.close()
+#     environment = gym.make("env:CartPoleControlEnv-v0")
+#     environment.reset(state=x[:,0])
+#     observation, cost, done, info = environment.step(u)
+#     environment.close()
 
-    return observation
+#     return observation
 
 # def compute_A(x_s, u_s):
 #     return utilities.jacobian(lambda v:f(v, u_s), x_s)
@@ -294,44 +294,41 @@ for episode in range(num_episodes):
 testing_norms = np.array(testing_norms)
 print("Mean testing norm:", np.mean(testing_norms))
 
-#%% Traditional LQR
-C = np.array(dlqr(A, B, Q, R)[0])
+#%% LQR w/ Entropy
+gamma = 0.99
+lamb = 0.1
+
+soln = dare(A*np.sqrt(gamma), B*np.sqrt(gamma), Q, R)
+P = soln[0]
+# C = np.array(dlqr(A, B, Q, R)[0])
+#! Check this again
+C = np.linalg.inv(R + gamma*B.T @ P @ B) @ (gamma*B.T @ P @ A)
+sigma_t = sigma_t = np.linalg.inv(R + B.T @ P @ B)
 
 #%% Test optimal policy
 num_episodes = 100
-optimal_costs = []
+optimal_costs = np.zeros([num_episodes])
+optimal_steps = np.zeros([num_episodes])
 for episode in range(num_episodes):
     x = env.reset()
 
     done = False
-    steps = 0
-    while not done and steps <= 200:
+    while not done and optimal_steps[episode] < 200:
         # env.render()
-        u = -C@x
+        u = np.random.normal(-C @ x, sigma_t)[:,0] # -C @ x
         observation, cost, done, info = env.step(u)
-        optimal_costs.append(cost)
+        optimal_costs[episode] += cost
+        optimal_steps[episode] += 1
         x = observation
-        steps += 1
-env.close()
-optimal_costs = np.array(optimal_costs)
-print(f"Mean optimal cost over {num_episodes} episodes:", np.mean(optimal_costs))
+# env.close()
+print(f"Mean optimal cost per episode over {num_episodes} episodes:", np.mean(optimal_costs))
+print(f"Mean number of optimal steps taken per episode over {num_episodes} episodes:", np.mean(optimal_steps))
 
 #%% Define cost
 def cost(x, u):
     # Assuming that data matrices are passed in for X and U. Columns vecs are snapshots
     mat = np.vstack(np.diag(x.T @ Q @ x)) + np.power(u, 2)*R
     return mat
-
-# From Wen's homework (PA1)
-# def c(x, u):
-#     assert x.shape == (4,)
-#     assert u.shape == (1,)
-#     env = gym.make("env:CartPoleControlEnv-v0")
-#     env.reset(state=x)
-#     env.step(u)
-#     observation, cost, done, info = env.step(u)
-#     env.close()
-#     return cost
 
 # def reward_func(state, action):
 #     #* assume state and action can be matrices where the columns are states/actions
@@ -383,8 +380,6 @@ def cost(x, u):
 #     return -reward_func(x, u)
 
 #%% Learn control
-gamma = 0.99
-lamb = 1.0
 lr = 1e-1
 epsilon = 1e-2
 
@@ -422,21 +417,21 @@ def random_policy():
 
 #%% Test policy by simulating system
 num_episodes = 100
-learned_costs = []
+learned_costs = np.zeros([num_episodes])
+learned_steps = np.zeros([num_episodes])
 for episode in range(num_episodes):
     x = env.reset()
 
     done = False
-    steps = 0
-    while not done and steps <= 200:
+    while not done and learned_steps[episode] < 200:
         # env.render()
         u = policy(np.vstack(x))
         observation, cost, done, info = env.step(u[:,0])
-        learned_costs.append(cost)
+        learned_costs[episode] += cost
+        learned_steps[episode] += 1
         x = observation
-        steps += 1
-env.close()
-learned_costs = np.array(learned_costs)
-print(f"Mean learned cost over {num_episodes} episodes:", np.mean(learned_costs))
+# env.close()
+print(f"Mean learned cost per episode over {num_episodes} episodes:", np.mean(learned_costs))
+print(f"Mean number of learned steps taken per episode over {num_episodes} episodes:", np.mean(learned_steps))
 
 #%%

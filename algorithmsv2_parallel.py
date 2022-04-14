@@ -1,4 +1,8 @@
 import numpy as np
+# import torch
+
+from scipy.special import logsumexp
+# from torch import logsumexp
 
 # def rho(u, o='unif', a=0, b=1):
 #     if o == 'unif':
@@ -67,12 +71,14 @@ class algos:
             inner_pi_us = self.inner_pi_us(self.All_U, xs) # self.All_U.shape[1] x self.xs.shape[1]
             inner_pi_us = np.real(inner_pi_us) # self.All_U.shape[1] x self.xs.shape[1]
             max_inner_pi_u = np.amax(inner_pi_us, axis=0) # self.xs.shape[1]
-            pi_us = np.exp(inner_pi_us - max_inner_pi_u) # self.All_U.shape[1] x self.xs.shape[1]
+            # min_inner_pi_u = np.amin(inner_pi_us, axis=0) # self.xs.shape[1]
+            diff = inner_pi_us - max_inner_pi_u
+            pi_us = np.exp(diff) # self.All_U.shape[1] x self.xs.shape[1]
             Z_x = np.sum(pi_us, axis=0) # self.xs.shape[1]
 
-            #normalization = (self.u_upper-self.u_lower)
+            # normalization = (self.u_upper-self.u_lower)
             normalization = 1
-            return pi_us / (Z_x*normalization) # self.All_U.shape[1] x self.xs.shape[1]
+            return [inner_pi_us, diff, pi_us / (Z_x * normalization)] # self.All_U.shape[1] x self.xs.shape[1]
             
         else: # Continuous
             inner_pi_us = self.inner_pi_us(self.All_U, xs)
@@ -90,7 +96,9 @@ class algos:
         x_batch_indices = np.random.choice(self.X.shape[1], batch_size, replace=False)
         x_batch = self.X[:, x_batch_indices] # self.X.shape[0] x batch_size
         phi_xs = self.phi(x_batch) # dim_phi x batch_size
-        pis = self.pis(x_batch) # self.All_U.shape[1] x batch_size
+        pis_response = self.pis(x_batch)
+        pis = pis_response[2] # self.All_U.shape[1] x batch_size
+        log_pis = pis_response[0] - logsumexp(pis_response[1]) # logsumexp(torch.from_numpy(pis_response[1]), dim=0).detach().cpu().numpy()
 
         # pi_sum = np.sum(pis)
         # assert np.isclose(pi_sum, 1, rtol=1e-3, atol=1e-4)
@@ -98,11 +106,11 @@ class algos:
         phi_x_primes = self.tensor.K_(self.All_U) @ phi_xs # self.All_U.shape[1] x dim_phi x batch_size
         weighted_phi_x_primes = (self.w.T @ phi_x_primes)[:,0] # self.All_U.shape[1] x batch_size
         costs = self.cost(x_batch, self.All_U).T # self.All_U.shape[1] x batch_size
-        expectation_us = (costs + self.weight_regularization_lambda*np.log(pis) + self.gamma * weighted_phi_x_primes) * pis # self.All_U.shape[1] x batch_size
+        expectation_us = (costs + self.weight_regularization_lambda*log_pis + self.gamma * weighted_phi_x_primes) * pis # self.All_U.shape[1] x batch_size
         expectation_u = np.sum(expectation_us, axis=0) # batch_size
 
         squared_differences = np.power((self.w.T @ phi_xs) - expectation_u, 2) # 1 x batch_size
-        total = np.sum(squared_differences)/batch_size # scalar
+        total = np.sum(squared_differences) / batch_size # scalar
                 
         return total
 
@@ -126,8 +134,9 @@ class algos:
 
                 weighted_phi_x_batch = (self.w.T @ phi_x_batch) # 1 x batch_size
 
-                pis = np.vstack(self.pis(x_batch)) # self.All_U.shape[1] x batch_size
-                log_pis = np.log(pis) # self.All_U.shape[1] x batch_size
+                pis_response = self.pis(x_batch)
+                pis = np.vstack(pis_response[2]) # self.All_U.shape[1] x batch_size
+                log_pis = pis_response[0] - logsumexp(pis_response[1]) # logsumexp(torch.from_numpy(pis_response[1]), dim=0).detach().cpu().numpy() # self.All_U.shape[1] x batch_size
                 K_us = self.tensor.K_(self.All_U) # self.All_U.shape[1] x dim_phi x dim_phi
                 phi_x_primes = K_us @ phi_x_batch # self.All_U.shape[1] x dim_phi x batch_size
                 weighted_phi_x_primes = (self.w.T @ phi_x_primes)[:,0] # self.All_U.shape[1] x batch_size
