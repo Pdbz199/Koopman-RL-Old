@@ -14,8 +14,10 @@ import observables
 from control import dlqr, dare
 
 #%% System dynamics
-gamma = 0.5
-lamb = 1.0
+gamma = 0.99
+lamb = 0.01
+# gamma = 0.5
+# lamb = 1.0
 # gamma = 0.5
 # lamb = 0.6
 # gamma = 0.9
@@ -83,7 +85,7 @@ def cost(x, u):
 
 #%% Discretize all controls
 u_bounds = np.array([[-action_range, action_range]])
-step_size = 0.01
+step_size = 0.1 # 0.01
 All_U = np.arange(start=u_bounds[0,0], stop=u_bounds[0,1], step=step_size).reshape(1,-1)
 All_U = np.round(All_U, decimals=1)
 # All_U = U.reshape(1,-1) # continuous case is just original domain
@@ -102,7 +104,7 @@ algos = algorithmsv2.algos(
     weight_regularization_bool=True,
     weight_regularization_lambda=lamb,
     optimizer='adam',
-    load=True
+    load=False
 )
 # algos.w = np.load('bellman-weights.npy')
 # algos.w = np.array([
@@ -122,7 +124,7 @@ algos = algorithmsv2.algos(
 #     [ 1.03530115e+00]
 # ]) # epsilon = 0.001
 print("Weights before updating:", algos.w)
-# bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
+bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
 print("Weights after updating:", algos.w)
 
 # plt.plot(bellmanErrors)

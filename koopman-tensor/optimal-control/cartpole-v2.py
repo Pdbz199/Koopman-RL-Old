@@ -2,7 +2,7 @@
 import gym
 import numpy as np
 
-from control.matlab import dare, dlqr
+from control.matlab import dare#, dlqr
 # from scipy.integrate import odeint
 # from sklearn.kernel_approximation import RBFSampler
 
@@ -395,7 +395,8 @@ algos = algorithmsv2.algos(
     learning_rate=lr,
     weight_regularization_bool=True,
     weight_regularization_lambda=lamb,
-    optimizer='adam'
+    optimizer='adam',
+    load=False
 )
 
 # algos.w = np.load('bellman-weights.npy')
@@ -406,7 +407,7 @@ print("Weights after updating:", algos.w)
 #%% Extract policy
 All_U_range = np.arange(All_U.shape[1])
 def policy(x):
-    pis = algos.pis(x)[:,0]
+    pis = algos.pis(x)[2][:,0]
     # Select action column at index sampled from policy distribution
     u_ind = np.random.choice(All_U_range, p=pis)
     u = np.vstack(All_U[:,u_ind])
@@ -424,13 +425,13 @@ for episode in range(num_episodes):
 
     done = False
     while not done and learned_steps[episode] < 200:
-        # env.render()
+        env.render()
         u = policy(np.vstack(x))
         observation, cost, done, info = env.step(u[:,0])
         learned_costs[episode] += cost
         learned_steps[episode] += 1
         x = observation
-# env.close()
+env.close()
 print(f"Mean learned cost per episode over {num_episodes} episodes:", np.mean(learned_costs))
 print(f"Mean number of learned steps taken per episode over {num_episodes} episodes:", np.mean(learned_steps))
 

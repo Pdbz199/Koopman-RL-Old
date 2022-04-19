@@ -69,13 +69,14 @@ class algos:
         return inner_pi_us*(1/self.weight_regularization_lambda)
 
     def pis(self, xs):
+        delta = 1e-6
         if self.bellman_error_type == 0: # Discrete
             inner_pi_us = self.inner_pi_us(self.All_U, xs) # self.All_U.shape[1] x self.xs.shape[1]
             inner_pi_us = np.real(inner_pi_us) # self.All_U.shape[1] x self.xs.shape[1]
             max_inner_pi_u = np.amax(inner_pi_us, axis=0) # self.xs.shape[1]
             # min_inner_pi_u = np.amin(inner_pi_us, axis=0) # self.xs.shape[1]
             diff = inner_pi_us - max_inner_pi_u
-            pi_us = np.exp(diff) # self.All_U.shape[1] x self.xs.shape[1]
+            pi_us = np.exp(diff) + delta # self.All_U.shape[1] x self.xs.shape[1]
             Z_x = np.sum(pi_us, axis=0) # self.xs.shape[1]
 
             # normalization = (self.u_upper-self.u_lower)
@@ -100,7 +101,8 @@ class algos:
         phi_xs = self.phi(x_batch) # dim_phi x batch_size
         pis_response = self.pis(x_batch)
         pis = pis_response[2] # self.All_U.shape[1] x batch_size
-        # log_pis = pis_response[0] - logsumexp(pis_response[1]) # logsumexp(torch.from_numpy(pis_response[1]), dim=0).detach().cpu().numpy()
+        # log_pis = pis_response[0] - logsumexp(pis_response[1], axis=0) # logsumexp(torch.from_numpy(pis_response[1]), dim=0).detach().cpu().numpy()
+        #! check the axis and broadcasting for the logsumexp method of calculating log_pis
         log_pis = np.log(pis)
 
         # pi_sum = np.sum(pis)
@@ -140,7 +142,7 @@ class algos:
 
                 pis_response = self.pis(x_batch)
                 pis = np.vstack(pis_response[2]) # self.All_U.shape[1] x batch_size
-                # log_pis = pis_response[0] - logsumexp(pis_response[1]) # logsumexp(torch.from_numpy(pis_response[1]), dim=0).detach().cpu().numpy() # self.All_U.shape[1] x batch_size
+                # log_pis = pis_response[0] - logsumexp(pis_response[1], axis=0) # logsumexp(torch.from_numpy(pis_response[1]), dim=0).detach().cpu().numpy() # self.All_U.shape[1] x batch_size
                 log_pis = np.log(pis)
                 K_us = self.tensor.K_(self.All_U) # self.All_U.shape[1] x dim_phi x dim_phi
                 phi_x_primes = K_us @ phi_x_batch # self.All_U.shape[1] x dim_phi x batch_size
@@ -176,7 +178,7 @@ class algos:
                 bellman_errors = np.append(bellman_errors, BE)
                 n += 1
 
-                if n%100 == 0:
+                if n%25 == 0:
                     np.save('bellman_errors.npy', bellman_errors)
                     np.save('gradient_norms.npy', gradient_norms)
                     np.save('bellman-weights.npy', self.w)
