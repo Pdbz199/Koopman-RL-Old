@@ -14,7 +14,7 @@ import observables
 from control import dlqr, dare
 
 #%% System dynamics
-gamma = 0.8
+gamma = 0.5
 lamb = 1.0
 # gamma = 0.5
 # lamb = 0.6
@@ -101,7 +101,8 @@ algos = algorithmsv2.algos(
     learning_rate=1e-1,
     weight_regularization_bool=True,
     weight_regularization_lambda=lamb,
-    optimizer='adam'
+    optimizer='adam',
+    load=True
 )
 # algos.w = np.load('bellman-weights.npy')
 # algos.w = np.array([
@@ -121,7 +122,7 @@ algos = algorithmsv2.algos(
 #     [ 1.03530115e+00]
 # ]) # epsilon = 0.001
 print("Weights before updating:", algos.w)
-bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
+# bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
 print("Weights after updating:", algos.w)
 
 # plt.plot(bellmanErrors)
@@ -142,7 +143,7 @@ All_U_range = np.arange(All_U.shape[1])
 sigma_t = np.linalg.inv(R + B.T @ P @ B)
 def policy(x, policyType):
     if policyType == 'learned':
-        pis = algos.pis(x)[:,0]
+        pis = algos.pis(x)[2][:,0]
         # Select action column at index sampled from policy distribution
         u_ind = np.random.choice(All_U_range, p=pis)
         u = np.vstack(

@@ -36,6 +36,7 @@ class algos:
         weight_regularization_bool=False,
         weight_regularization_lambda=1,
         u_batch_size=50,
+        load=False,
         optimizer='sgd'
     ):
         self.X = X # Collection of observations
@@ -55,10 +56,11 @@ class algos:
         self.bellman_error = self.discrete_bellman_error if bellman_error_type == 0 else self.continuous_bellman_error
         self.learning_rate = learning_rate
         self.epsilon = epsilon
-        self.w = np.ones([self.Phi_X.shape[0],1], dtype=np.float64) # Default weights of 1s
+        self.w = np.load('bellman-weights.npy') if load else np.ones([self.Phi_X.shape[0],1], dtype=np.float64) # Default weights of 1s
 
         self.weight_regularization_bool = weight_regularization_bool #Bool for including weight regularization in Bellman loss functions
         self.weight_regularization_lambda = weight_regularization_lambda
+        self.load = load
         self.optimizer = optimizer
 
     def inner_pi_us(self, us, xs):
@@ -98,7 +100,8 @@ class algos:
         phi_xs = self.phi(x_batch) # dim_phi x batch_size
         pis_response = self.pis(x_batch)
         pis = pis_response[2] # self.All_U.shape[1] x batch_size
-        log_pis = pis_response[0] - logsumexp(pis_response[1]) # logsumexp(torch.from_numpy(pis_response[1]), dim=0).detach().cpu().numpy()
+        # log_pis = pis_response[0] - logsumexp(pis_response[1]) # logsumexp(torch.from_numpy(pis_response[1]), dim=0).detach().cpu().numpy()
+        log_pis = np.log(pis)
 
         # pi_sum = np.sum(pis)
         # assert np.isclose(pi_sum, 1, rtol=1e-3, atol=1e-4)
@@ -116,16 +119,17 @@ class algos:
 
     def algorithm2(self, batch_size):
         ''' Bellman error optimization '''
-        BE = self.bellman_error(batch_size*3)
-        bellman_errors = [BE]
-        gradient_norms = []
+
+        bellman_errors = np.load('bellman_errors.npy') if self.load else np.array([self.bellman_error(batch_size*3)])
+        BE = bellman_errors[-1]
+        gradient_norms = np.load('gradient_norms.npy') if self.load else np.array([])
         print("Initial Bellman error:", BE)
 
         if self.bellman_error_type == 0: # if discrete BE
-            n = 0
+            n = np.load('n.npy') if self.load else 0
             nabla_w = 0
-            momentum = 0
-            second_moment = 0
+            momentum = np.load('momentum.npy') if self.load else 0
+            second_moment = np.load('second-moment.npy') if self.load else 0
             small_num = 1e-6
             while BE > self.epsilon:
                 x_batch_indices = np.random.choice(self.X.shape[1], batch_size, replace=False)
@@ -136,7 +140,8 @@ class algos:
 
                 pis_response = self.pis(x_batch)
                 pis = np.vstack(pis_response[2]) # self.All_U.shape[1] x batch_size
-                log_pis = pis_response[0] - logsumexp(pis_response[1]) # logsumexp(torch.from_numpy(pis_response[1]), dim=0).detach().cpu().numpy() # self.All_U.shape[1] x batch_size
+                # log_pis = pis_response[0] - logsumexp(pis_response[1]) # logsumexp(torch.from_numpy(pis_response[1]), dim=0).detach().cpu().numpy() # self.All_U.shape[1] x batch_size
+                log_pis = np.log(pis)
                 K_us = self.tensor.K_(self.All_U) # self.All_U.shape[1] x dim_phi x dim_phi
                 phi_x_primes = K_us @ phi_x_batch # self.All_U.shape[1] x dim_phi x batch_size
                 weighted_phi_x_primes = (self.w.T @ phi_x_primes)[:,0] # self.All_U.shape[1] x batch_size
@@ -160,7 +165,7 @@ class algos:
                     nabla_w = mom_normalized/(np.sqrt(sec_moment_normalized)+small_num)
 
                 gradient_norm = l2_norm(nabla_w, np.zeros_like(nabla_w)) # scalar
-                gradient_norms.append(gradient_norm)
+                gradient_norms = np.append(gradient_norms, gradient_norm)
 
                 # Update weights
                 assert self.w.shape == nabla_w.shape
@@ -168,12 +173,16 @@ class algos:
 
                 # Recompute Bellman error
                 BE = self.bellman_error(batch_size*3)
-                bellman_errors.append(BE)
+                bellman_errors = np.append(bellman_errors, BE)
                 n += 1
-                # print("Current Bellman error:", BE)
-                # np.save('bellman-weights.npy', self.w)
+
                 if n%100 == 0:
+                    np.save('bellman_errors.npy', bellman_errors)
+                    np.save('gradient_norms.npy', gradient_norms)
                     np.save('bellman-weights.npy', self.w)
+                    np.save('momentum.npy', momentum)
+                    np.save('second-moment.npy', second_moment)
+                    np.save('n.npy', n)
                     print("Current Bellman error:", BE)
 
             return bellman_errors, gradient_norms
