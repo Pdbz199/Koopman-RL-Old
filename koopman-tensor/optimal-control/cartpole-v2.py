@@ -29,6 +29,16 @@ Q = np.array([
     [ 0, 0,  0, 1]
 ])
 R = 0.1
+# From environment
+# Q = np.array([
+#     [10, 0,  0, 0],
+#     [ 0, 1,  0, 0],
+#     [ 0, 0, 10, 0],
+#     [ 0, 0,  0, 1]
+# ])
+# R = np.array([[0.1]])
+# state = np.array(self.state)
+# cost = ( state @ Q @ state ) + ( action @ R @ action )
 
 #%% Construct datasets
 seed = 123
@@ -303,7 +313,7 @@ P = soln[0]
 # C = np.array(dlqr(A, B, Q, R)[0])
 #! Check this again
 C = np.linalg.inv(R + gamma*B.T @ P @ B) @ (gamma*B.T @ P @ A)
-sigma_t = sigma_t = np.linalg.inv(R + B.T @ P @ B)
+sigma_t = lamb * np.linalg.inv(R + B.T @ P @ B)
 
 #%% Test optimal policy
 num_episodes = 100
@@ -401,8 +411,8 @@ algos = algorithmsv2.algos(
 
 # algos.w = np.load('bellman-weights.npy')
 print("Weights before updating:", algos.w)
-bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
-print("Weights after updating:", algos.w)
+# bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
+# print("Weights after updating:", algos.w)
 
 #%% Extract policy
 All_U_range = np.arange(All_U.shape[1])
@@ -425,13 +435,13 @@ for episode in range(num_episodes):
 
     done = False
     while not done and learned_steps[episode] < 200:
-        env.render()
+        # env.render()
         u = policy(np.vstack(x))
         observation, cost, done, info = env.step(u[:,0])
         learned_costs[episode] += cost
         learned_steps[episode] += 1
         x = observation
-env.close()
+# env.close()
 print(f"Mean learned cost per episode over {num_episodes} episodes:", np.mean(learned_costs))
 print(f"Mean number of learned steps taken per episode over {num_episodes} episodes:", np.mean(learned_steps))
 

@@ -78,6 +78,7 @@ class algos:
             diff = inner_pi_us - max_inner_pi_u
             pi_us = np.exp(diff) + delta # self.All_U.shape[1] x self.xs.shape[1]
             Z_x = np.sum(pi_us, axis=0) # self.xs.shape[1]
+            
 
             # normalization = (self.u_upper-self.u_lower)
             normalization = 1

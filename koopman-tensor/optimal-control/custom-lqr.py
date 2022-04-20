@@ -11,11 +11,11 @@ sys.path.append('../../')
 import algorithmsv2_parallel as algorithmsv2
 import observables
 
-from control import dlqr, dare
+from control import dare #, dlqr
 
 #%% System dynamics
 gamma = 0.99
-lamb = 0.01
+lamb = 0.1
 # gamma = 0.5
 # lamb = 1.0
 # gamma = 0.5
@@ -23,10 +23,22 @@ lamb = 0.01
 # gamma = 0.9
 # lamb = 1.0
 
-A = np.array([
-    [0.5, 0.0],
-    [0.0, 0.3]
-], dtype=np.float64)
+A = np.zeros([2,2])
+max_real_eigen_val = 1
+while max_real_eigen_val >= 1 or max_real_eigen_val <= 0.7:
+    Z = np.random.rand(2,2)
+    A = Z.T @ Z
+    W,V = np.linalg.eig(A)
+    max_real_eigen_val = np.max(np.real(W))
+print("A:", A)
+# A = np.array([
+#     [0.5, 0.0],
+#     [0.0, 0.3]
+# ], dtype=np.float64)
+# A = np.array([
+#     [2.0, 0.0],
+#     [0.0, 1.2]
+# ], dtype=np.float64)
 B = np.array([
     [1.0], # Try changing so that we get dampening on control
     [1.0] #! (A-BC)x --test 
@@ -55,9 +67,9 @@ P = soln[0]
 C = np.linalg.inv(R + gamma*B.T @ P @ B) @ (gamma*B.T @ P @ A)
 
 #%% Construct snapshots of u from random agent and initial states x0
-N = 10000
-action_range = 10
-state_range = 10
+N = 20000
+action_range = 25
+state_range = 25
 U = np.random.rand(1,N)*action_range*np.random.choice(np.array([-1,1]), size=(1,N))
 X0 = np.random.rand(2,N)*state_range*np.random.choice(np.array([-1,1]), size=(2,N))
 
@@ -98,7 +110,7 @@ algos = algorithmsv2.algos(
     tensor,
     cost,
     gamma=gamma,
-    epsilon=0.01,
+    epsilon=1e-2,
     bellman_error_type=0,
     learning_rate=1e-1,
     weight_regularization_bool=True,
@@ -135,14 +147,14 @@ print("Weights after updating:", algos.w)
 #%% Reset seed and compute initial x0s
 np.random.seed(123)
 
-num_episodes = 100
+num_episodes = 1
 num_steps_per_episode = 100
 initial_Xs = np.random.rand(2,num_episodes)*state_range*np.random.choice(np.array([-1,1]), size=(2,num_episodes)) # random initial states
 
 #%% Construct policy
 All_U_range = np.arange(All_U.shape[1])
 
-sigma_t = np.linalg.inv(R + B.T @ P @ B)
+sigma_t = lamb * np.linalg.inv(R + B.T @ P @ B)
 def policy(x, policyType):
     if policyType == 'learned':
         pis = algos.pis(x)[2][:,0]
@@ -165,7 +177,7 @@ def policy(x, policyType):
 
 def policyDensity(u, u_ind, x, policyType):
     if policyType == 'learned':
-        pi_term = algos.pis(x)[u_ind,0]
+        pi_term = algos.pis(x)[2][u_ind,0]
         return pi_term
 
     elif policyType == 'optimalEntropy':
@@ -181,41 +193,46 @@ def policyDensity(u, u_ind, x, policyType):
 # policy_type = 'learned'
 # costs = np.empty((num_episodes))
 # lamb = 1e-2 # 1.0?
+
 opt_x0s = []
 opt_x1s = []
 
 learned_x0s = []
 learned_x1s = []
-for episode in range(1): #num_episodes
-    x = np.vstack(initial_Xs[:,episode])
-    opt_x0s.append(x[0,0])
-    opt_x1s.append(x[1,0])
-    learned_x0s.append(x[0,0])
-    learned_x1s.append(x[1,0])
-    # print("Initial x:", x)
-    # cost_sum = 0
+
+optimal_cost_per_episode = np.zeros([num_episodes])
+learned_cost_per_episode = np.zeros([num_episodes])
+for episode in range(num_episodes):
+    opt_x = np.vstack(initial_Xs[:,episode])
+    learned_x = np.vstack(initial_Xs[:,episode])
+    opt_x0s.append(opt_x[0,0])
+    learned_x0s.append(learned_x[0,0])
+    opt_x1s.append(opt_x[1,0])
+    learned_x1s.append(learned_x[1,0])
+    
     for step in range(num_steps_per_episode):
-        opt_u, opt_u_ind = policy(x, 'optimalEntropy')
-        opt_x_prime = f(x, opt_u)
+        opt_u, opt_u_ind = policy(opt_x, 'optimalEntropy')
+        opt_x_prime = f(opt_x, opt_u)
 
         opt_x0s.append(opt_x_prime[0,0])
         opt_x1s.append(opt_x_prime[1,0])
 
-        learned_u, learned_u_ind = policy(x, 'learned')
-        learned_x_prime = f(x, learned_u)
+        optimal_cost_per_episode[episode] += (gamma**step)*(cost(opt_x, opt_u) + lamb*np.log(policyDensity(opt_u, opt_u_ind, opt_x, 'optimalEntropy')))
+
+        learned_u, learned_u_ind = policy(learned_x, 'learned')
+        learned_x_prime = f(learned_x, learned_u)
 
         learned_x0s.append(learned_x_prime[0,0])
         learned_x1s.append(learned_x_prime[1,0])
 
-        # pis = algos.pis(x)[:,0]
-        # (beta**step)*
-        # cost_sum += (gamma**step)*(cost(x, u) + lamb*np.log(policyDensity(u, u_ind, x, policy_type)))
+        learned_cost_per_episode[episode] += (gamma**step)*(cost(learned_x, learned_u) + lamb*np.log(policyDensity(learned_u, learned_u_ind, learned_x, 'learned')))
 
-        # x = x_prime
-        # if step%250 == 0:
-        #     print("Current x:", x)
-    # costs[episode] = cost_sum
-# print("Mean cost per episode:", np.mean(costs)) # Cost should be minimized
+        opt_x = opt_x_prime
+        learned_x = learned_x_prime
+
+print("Mean cost per optimal episode:", np.mean(optimal_cost_per_episode))
+print("Mean cost per learned episode:", np.mean(learned_cost_per_episode))
+
 plt.plot(np.arange(num_steps_per_episode+1), opt_x0s)
 plt.plot(np.arange(num_steps_per_episode+1), opt_x1s)
 plt.show()
