@@ -1,7 +1,7 @@
 import numpy as np
 # import torch
 
-from scipy.special import logsumexp
+# from scipy.special import logsumexp
 # from torch import logsumexp
 
 # def rho(u, o='unif', a=0, b=1):
@@ -56,7 +56,7 @@ class algos:
         self.bellman_error = self.discrete_bellman_error if bellman_error_type == 0 else self.continuous_bellman_error
         self.learning_rate = learning_rate
         self.epsilon = epsilon
-        self.w = np.load('bellman-weights.npy') if load else np.ones([self.Phi_X.shape[0],1], dtype=np.float64) # Default weights of 1s
+        self.w = np.load('bellman-weights.npy') if load else np.zeros([self.Phi_X.shape[0],1], dtype=np.float64) # Default weights of 1s
 
         self.weight_regularization_bool = weight_regularization_bool #Bool for including weight regularization in Bellman loss functions
         self.weight_regularization_lambda = weight_regularization_lambda

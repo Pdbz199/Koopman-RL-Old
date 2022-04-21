@@ -128,7 +128,7 @@ while total_datapoints < num_datapoints:
 #     [0, 1, 0, 0],
 #     [0, -cart_damping / mass_cart, pole_position * mass_pole * gravity / mass_cart, 0],
 #     [0, 0, 0, 1],
-#     [0, -pole_position * cart_damping / mass_cart * pole_length, -pole_position * (mass_pole + mass_cart) * gravity / mass_cart * pole_length]
+#     [0, -pole_position * cart_damping / mass_cart * pole_length, -pole_position * (mass_pole + mass_cart) * gravity / mass_cart * pole_length, 0.0]
 # ]) #* From Databook V2
 # B = np.array([
 #     [0],
