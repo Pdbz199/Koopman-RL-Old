@@ -56,7 +56,7 @@ class algos:
         self.bellman_error = self.discrete_bellman_error if bellman_error_type == 0 else self.continuous_bellman_error
         self.learning_rate = learning_rate
         self.epsilon = epsilon
-        self.w = np.load('bellman-weights.npy') if load else np.zeros([self.Phi_X.shape[0],1], dtype=np.float64) # Default weights of 1s
+        self.w = np.load('bellman-weights.npy') if load else np.zeros([self.Phi_X.shape[0],1], dtype=np.float64) # Default weights of 0s
 
         self.weight_regularization_bool = weight_regularization_bool #Bool for including weight regularization in Bellman loss functions
         self.weight_regularization_lambda = weight_regularization_lambda
@@ -189,23 +189,49 @@ class algos:
                     print("Current Bellman error:", BE)
 
             return bellman_errors, gradient_norms
-        
-        
-        
-# def init_adam_states(feature_dim):
-#     v_w, v_b = torch.zeros((feature_dim, 1)), torch.zeros(1)
-#     s_w, s_b = torch.zeros((feature_dim, 1)), torch.zeros(1)
-#     return ((v_w, s_w), (v_b, s_b))
 
-# def adam(params, states, hyperparams):
-#     beta1, beta2, eps = 0.9, 0.999, 1e-6
-#     for p, (v, s) in zip(params, states):
-#         with torch.no_grad():
-#             v[:] = beta1 * v + (1 - beta1) * p.grad
-#             s[:] = beta2 * s + (1 - beta2) * torch.square(p.grad)
-#             v_bias_corr = v / (1 - beta1 ** hyperparams['t'])
-#             s_bias_corr = s / (1 - beta2 ** hyperparams['t'])
-#             p[:] -= hyperparams['lr'] * v_bias_corr / (torch.sqrt(s_bias_corr)
-#                                                        + eps)
-#         p.grad.data.zero_()
-#     hyperparams['t'] += 1
+
+    def REINFORCE(self, f, reward, sigma, step_size=0.01):
+        """
+            Monte-Carlo policy gradient algorithm
+
+            INPUTS
+            f: Function of system dynamics
+            reward: Reward function that can take in multiple states and actions
+            sigma: variance in action space
+            step_size: How much to step in direction of gradient
+
+            OUTPUTS
+            theta: Parameters that optimize output of Gaussian policy N(mu(s), sigma^2)
+        """
+
+        theta = np.zeros([self.Phi_X.shape[0],1], dtype=np.float64)
+        sigma_squared = np.power(sigma, 2)
+        def pi(x, theta):
+            return np.random.normal(self.phi(x).T @ theta, sigma_squared)
+
+        num_episodes = 300 #! randomly chosen
+        num_steps_per_episode = 20 #! randomly chosen
+        state_range = 20 #! randomly chosen
+
+        x_path = np.zeros([self.X.shape[0],num_steps_per_episode+1])
+        u_path = np.zeros([1,num_steps_per_episode])
+        for episode in range(num_episodes):
+            x = np.random.rand(self.X.shape[0],1) * state_range * np.random.choice([-1,1]) # random initial state
+
+            x_path[:,0] = x[:,0]
+            for step in range(num_steps_per_episode):
+                u = pi(x, theta)
+                x = f(x, u) #! Use Koopman dynamics (?)
+                x_path[:,step+1] = x[:,0]
+                u_path[:,step] = u
+
+            for step in range(num_steps_per_episode):
+                u = np.vstack(u_path[:,step])
+                x = np.vstack(x_path[:,step])
+                phi_x = self.phi(x)
+                G = np.sum(reward(x_path[:,step:-1], u_path[:,step:]))
+                theta = theta + step_size * G * (((u - (phi_x.T @ theta)) * phi_x) / sigma_squared) # Using Gaussian policy
+
+            #* Might want to use advantage instead of simple sum of rewards, but idk how to do that
+        return theta

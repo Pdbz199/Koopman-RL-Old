@@ -142,7 +142,7 @@ def f(x, u):
 soln = dare(A*np.sqrt(gamma), B*np.sqrt(gamma), Q, R)
 P = soln[0]
 C = np.linalg.inv(R + gamma*B.T @ P @ B) @ (gamma*B.T @ P @ A)
-
+sigma_t = lamb * np.linalg.inv(R + B.T @ P @ B)
 
 #! Condition number check, rank check
 #! Controlability of the matrices
@@ -220,9 +220,14 @@ algos = algorithmsv2.algos(
 #     [-4.33771878e-02],
 #     [ 1.03530115e+00]
 # ]) # epsilon = 0.001
-print("Weights before updating:", algos.w)
+# print("Weights before updating:", algos.w)
 # bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
 # print("Weights after updating:", algos.w)
+
+def reward(x, u):
+    return -cost(x, u)
+theta = algos.REINFORCE(f, reward, sigma_t)
+print(theta)
 
 # plt.plot(bellmanErrors)
 # plt.show()
@@ -248,7 +253,6 @@ initial_Xs = np.random.rand(A.shape[0],num_episodes)*state_range*np.random.choic
 #%% Construct policy
 All_U_range = np.arange(All_U.shape[1])
 
-sigma_t = lamb * np.linalg.inv(R + B.T @ P @ B)
 def policy(x, policyType):
     if policyType == 'learned':
         pis = algos.pis(x)[2][:,0]
@@ -268,6 +272,10 @@ def policy(x, policyType):
     elif policyType == 'random':
         return [np.random.rand(1,1)*(action_range)*np.random.choice(np.array([-1,1])),0] # sample random action
         #! Issue with log of policy density on action_range (-10, 10)
+
+sigma_squared = np.power(sigma_t, 2)
+def pi(x, theta):
+    return np.random.normal(tensor.phi(x).T @ theta, sigma_squared)
 
 def policyDensity(u, u_ind, x, policyType):
     if policyType == 'learned':
@@ -326,7 +334,8 @@ for episode in range(num_episodes):
 
         optimal_cost_per_episode[episode] += cost(opt_x, opt_u) # (gamma**step)*(cost(opt_x, opt_u) + lamb*np.log(policyDensity(opt_u, opt_u_ind, opt_x, 'optimalEntropy')))
 
-        learned_u, learned_u_ind = policy(learned_x, 'learned')
+        # learned_u, learned_u_ind = policy(learned_x, 'learned')
+        learned_u = pi(learned_x, theta)
         learned_x_prime = f(learned_x, learned_u)
 
         learned_x0s.append(learned_x_prime[0,0])
