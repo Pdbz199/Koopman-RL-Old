@@ -12,6 +12,7 @@ import algorithmsv2_parallel as algorithmsv2
 import observables
 
 from control import dare #, dlqr
+from scipy.integrate import quad_vec
 
 #%% System dynamics
 gamma = 0.99
@@ -34,13 +35,13 @@ lamb = 0.00001 # 0.1
 # print("Cartpole eigenvalues of A:", W)
 # print("Cartpole eigenvectors of A:", V)
 
-A = np.zeros([2,2])
-max_real_eigen_val = 1.0
-while max_real_eigen_val >= 1.0 or max_real_eigen_val <= 0.7:
-    Z = np.random.rand(2,2)
-    A = Z.T @ Z
-    W,V = np.linalg.eig(A)
-    max_real_eigen_val = np.max(np.real(W))
+# A = np.zeros([2,2])
+# max_real_eigen_val = 1.0
+# while max_real_eigen_val >= 1.0 or max_real_eigen_val <= 0.7:
+#     Z = np.random.rand(2,2)
+#     A = Z.T @ Z
+#     W,V = np.linalg.eig(A)
+#     max_real_eigen_val = np.max(np.real(W))
 # print("A:", A)
 # A = np.array([
 #     [0.5, 0.0],
@@ -50,16 +51,16 @@ while max_real_eigen_val >= 1.0 or max_real_eigen_val <= 0.7:
 #     [2.0, 0.0],
 #     [0.0, 1.2]
 # ], dtype=np.float64)
-B = np.array([
-    [1.0], # Try changing so that we get dampening on control
-    [1.0] #! (A-BC)x --test 
-], dtype=np.float64)
-Q = np.array([
-    [1.0, 0.0],
-    [0.0, 1.0]
-], dtype=np.float64) #* gamma
+# B = np.array([
+#     [1.0], # Try changing so that we get dampening on control
+#     [1.0]
+# ], dtype=np.float64)
+# Q = np.array([
+#     [1.0, 0.0],
+#     [0.0, 1.0]
+# ], dtype=np.float64) #* gamma
 # R = 1
-R = np.array([[1.0]], dtype=np.float64) #* gamma
+# R = np.array([[1.0]], dtype=np.float64) #* gamma
 
 # Cartpole A, B, Q, and R matrices from Wen's homework
 # A = np.array([
@@ -68,62 +69,64 @@ R = np.array([[1.0]], dtype=np.float64) #* gamma
 #     [0, 0,     1,          0.02],
 #     [0, 0,     0.3155122,  1]
 # ])
-A = np.array([
-    [1.0, 0.02,  0,          0],
-    [0,   1.0,  -0.01434146, 0],
-    [0,   0,     1.0,        0.02],
-    [0,   0,     0.3155122,  1.0]
-])
-#! e^{A*delta_t}
+# A = np.array([
+#     [1.0, 0.02,  0,          0],
+#     [0,   1.0,  -0.01434146, 0],
+#     [0,   0,     1.0,        0.02],
+#     [0,   0,     0.3155122,  1.0]
+# ])
 # A = np.array([
 #     [0.9, 0.02],
 #     [0, 0.9]
 # ])
-B = np.array([
-    [0],
-    [0.0195122],
-    [0],
-    [-0.02926829]
-])
+# B = np.array([
+#     [0],
+#     [0.0195122],
+#     [0],
+#     [-0.02926829]
+# ])
 # B = np.array([
 #     [0],
 #     [0.0195122]
 # ])
 # B = np.ones([A.shape[0],1])
 
-Q = np.array([
-    [10, 0,  0, 0],
-    [ 0, 1,  0, 0],
-    [ 0, 0, 10, 0],
-    [ 0, 0,  0, 1]
-])
+# Q = np.array([
+#     [10, 0,  0, 0],
+#     [ 0, 1,  0, 0],
+#     [ 0, 0, 10, 0],
+#     [ 0, 0,  0, 1]
+# ])
 # Q = np.array([
 #     [10, 0],
 #     [ 0, 1]
 # ])
-R = 0.1
+# R = 0.1
 
 # Cartpole A, B, Q, and R matrices from Steve's databook v2
-# mass_pole = 1.0
-# mass_cart = 5.0
-# pole_position = 1.0
-# pole_length = 2.0
-# gravity = -10.0
-# cart_damping = 1.0
-# A = np.array([
-#     [0.0, 1.0, 0.0, 0.0],
-#     [0.0, -cart_damping / mass_cart, pole_position * mass_pole * gravity / mass_cart, 0.0],
-#     [0.0, 0.0, 0.0, 1.0],
-#     [0.0, -pole_position * cart_damping / mass_cart * pole_length, -pole_position * (mass_pole + mass_cart) * gravity / mass_cart * pole_length, 0.0]
-# ])
-# B = np.array([
-#     [0.0],
-#     [1.0 / mass_cart],
-#     [0.0],
-#     [pole_position / mass_cart * pole_length]
-# ])
-# Q = np.eye(4)
-# R = 0.0001
+mass_pole = 1.0
+mass_cart = 5.0
+pole_position = 1.0
+pole_length = 2.0
+gravity = -10.0
+cart_damping = 1.0
+continuous_A = np.array([
+    [0.0, 1.0, 0.0, 0.0],
+    [0.0, -cart_damping / mass_cart, pole_position * mass_pole * gravity / mass_cart, 0.0],
+    [0.0, 0.0, 0.0, 1.0],
+    [0.0, -pole_position * cart_damping / mass_cart * pole_length, -pole_position * (mass_pole + mass_cart) * gravity / mass_cart * pole_length, 0.0]
+])
+delta_t = 0.02
+A = np.exp(continuous_A * delta_t)
+continuous_B = np.array([
+    [0.0],
+    [1.0 / mass_cart],
+    [0.0],
+    [pole_position / mass_cart * pole_length]
+])
+B = quad_vec(lambda tau: np.exp(continuous_A * tau) @ continuous_B, 0, delta_t)[0]
+Q = np.eye(4)
+R = 0.0001
 
 def f(x, u):
     return A @ x + B @ u
@@ -220,14 +223,14 @@ algos = algorithmsv2.algos(
 #     [-4.33771878e-02],
 #     [ 1.03530115e+00]
 # ]) # epsilon = 0.001
-# print("Weights before updating:", algos.w)
+print("Weights before updating:", algos.w)
 # bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
 # print("Weights after updating:", algos.w)
 
-def reward(x, u):
-    return -cost(x, u)
-theta = algos.REINFORCE(f, reward, sigma_t)
-print(theta)
+# def reward(x, u):
+#     return -cost(x, u)
+# theta = algos.REINFORCE(f, reward, sigma_t)
+# print(theta)
 
 # plt.plot(bellmanErrors)
 # plt.show()
@@ -237,7 +240,7 @@ print(theta)
 #%% Reset seed and compute initial x0s
 np.random.seed(123)
 
-num_episodes = 1#00
+num_episodes = 10#0
 num_steps_per_episode = 100
 np.random.rand(A.shape[0],num_episodes)
 np.random.rand(A.shape[0],num_episodes)
@@ -334,8 +337,8 @@ for episode in range(num_episodes):
 
         optimal_cost_per_episode[episode] += cost(opt_x, opt_u) # (gamma**step)*(cost(opt_x, opt_u) + lamb*np.log(policyDensity(opt_u, opt_u_ind, opt_x, 'optimalEntropy')))
 
-        # learned_u, learned_u_ind = policy(learned_x, 'learned')
-        learned_u = pi(learned_x, theta)
+        learned_u, learned_u_ind = policy(learned_x, 'learned')
+        # learned_u = pi(learned_x, theta)
         learned_x_prime = f(learned_x, learned_u)
 
         learned_x0s.append(learned_x_prime[0,0])

@@ -197,7 +197,7 @@ class algos:
 
             INPUTS
             f: Function of system dynamics
-            reward: Reward function that can take in multiple states and actions
+            reward: Reward function that can support input arrays
             sigma: variance in action space
             step_size: How much to step in direction of gradient
 
@@ -211,7 +211,7 @@ class algos:
             return np.random.normal(self.phi(x).T @ theta, sigma_squared)
 
         num_episodes = 300 #! randomly chosen
-        num_steps_per_episode = 20 #! randomly chosen
+        num_steps_per_episode = 200 #! randomly chosen
         state_range = 20 #! randomly chosen
 
         x_path = np.zeros([self.X.shape[0],num_steps_per_episode+1])
@@ -231,6 +231,7 @@ class algos:
                 x = np.vstack(x_path[:,step])
                 phi_x = self.phi(x)
                 G = np.sum(reward(x_path[:,step:-1], u_path[:,step:]))
+                #! theta blows up which eventually makes grad log(pi_theta) +/- inf
                 theta = theta + step_size * G * (((u - (phi_x.T @ theta)) * phi_x) / sigma_squared) # Using Gaussian policy
 
             #* Might want to use advantage instead of simple sum of rewards, but idk how to do that
