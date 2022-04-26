@@ -12,11 +12,12 @@ import algorithmsv2_parallel as algorithmsv2
 import observables
 
 from control import dare #, dlqr
-from scipy.integrate import quad_vec
+from scipy.integrate import quad_vec, odeint
+from scipy.stats import norm
 
 #%% System dynamics
 gamma = 0.99
-lamb = 0.00001 # 0.1
+lamb = 0.000001 # 0.1
 # gamma = 0.5
 # lamb = 1.0
 # gamma = 0.5
@@ -64,20 +65,10 @@ lamb = 0.00001 # 0.1
 
 # Cartpole A, B, Q, and R matrices from Wen's homework
 # A = np.array([
-#     [1, 0.02,  0,          0],
-#     [0, 1,    -0.01434146, 0],
-#     [0, 0,     1,          0.02],
-#     [0, 0,     0.3155122,  1]
-# ])
-# A = np.array([
-#     [1.0, 0.02,  0,          0],
-#     [0,   1.0,  -0.01434146, 0],
-#     [0,   0,     1.0,        0.02],
-#     [0,   0,     0.3155122,  1.0]
-# ])
-# A = np.array([
-#     [0.9, 0.02],
-#     [0, 0.9]
+#     [1.0, 0.02,  0.0,        0.0 ],
+#     [0.0, 1.0,  -0.01434146, 0.0 ],
+#     [0.0, 0.0,   1.0,        0.02],
+#     [0.0, 0.0,   0.3155122,  1.0 ]
 # ])
 # B = np.array([
 #     [0],
@@ -85,11 +76,6 @@ lamb = 0.00001 # 0.1
 #     [0],
 #     [-0.02926829]
 # ])
-# B = np.array([
-#     [0],
-#     [0.0195122]
-# ])
-# B = np.ones([A.shape[0],1])
 
 # Q = np.array([
 #     [10, 0,  0, 0],
@@ -125,8 +111,19 @@ continuous_B = np.array([
     [pole_position / mass_cart * pole_length]
 ])
 B = quad_vec(lambda tau: np.exp(continuous_A * tau) @ continuous_B, 0, delta_t)[0]
+# t_span = np.arange(0, 0.02, 0.0001)
+# B = odeint(lambda tau: np.exp(continuous_A * tau) @ continuous_B, continuous_B, t_span)[0][-1]
+print(B)
 Q = np.eye(4)
 R = 0.0001
+# Reference state
+w_r = np.array([
+    [1],
+    [0],
+    [np.pi],
+    [0]
+])
+# w_r = np.zeros([4,1])
 
 def f(x, u):
     return A @ x + B @ u
@@ -177,11 +174,10 @@ tensor = KoopmanTensor(
 #%% Define cost function
 # def cost(x, u):
 #     return x.T @ Q @ x + u.T @ R @ u
-
 def cost(x, u):
     # Assuming that data matrices are passed in for X and U. Columns vecs are snapshots
-    mat = np.vstack(np.diag(x.T @ Q @ x)) + np.power(u, 2)*R
-    return mat
+    x_r = x - w_r
+    return np.vstack(np.diag(x_r.T @ Q @ x_r)) + np.power(u, 2)*R
 
 #%% Discretize all controls
 u_bounds = np.array([[-action_range, action_range]])
@@ -240,7 +236,7 @@ print("Weights before updating:", algos.w)
 #%% Reset seed and compute initial x0s
 np.random.seed(123)
 
-num_episodes = 10#0
+num_episodes = 1#00
 num_steps_per_episode = 100
 np.random.rand(A.shape[0],num_episodes)
 np.random.rand(A.shape[0],num_episodes)
@@ -267,10 +263,10 @@ def policy(x, policyType):
         return [u, u_ind]
 
     elif policyType == 'optimal':
-        return [-C @ x, 0]
+        return [-C @ (x - w_r), 0]
 
     elif policyType == 'optimalEntropy':
-        return [np.random.normal(-C @ x, sigma_t), 0]
+        return [np.random.normal(-C @ (x - w_r), sigma_t), 0]
 
     elif policyType == 'random':
         return [np.random.rand(1,1)*(action_range)*np.random.choice(np.array([-1,1])),0] # sample random action
@@ -286,7 +282,7 @@ def policyDensity(u, u_ind, x, policyType):
         return pi_term
 
     elif policyType == 'optimalEntropy':
-        mu = -C @ x
+        mu = -C @ (x - w_r)
         pi_term = np.exp((-(u-mu)**2)/(2*sigma_t**2))/(sigma_t*np.sqrt(2*np.pi))
         return pi_term
 
@@ -354,7 +350,18 @@ for episode in range(num_episodes):
 print(f"Mean cost per optimal episode over {num_episodes} episode(s):", np.mean(optimal_cost_per_episode))
 print(f"Mean cost per learned episode over {num_episodes} episode(s):", np.mean(learned_cost_per_episode))
 
-#%% Plot
+#%% Plot action distribution
+x = np.vstack(env.reset())
+# x = np.vstack(initial_Xs[:,0])
+fig, axs = plt.subplots(2)
+fig.suptitle('Policy distribution')
+axs[0].set_title('Optimal entropy distribution')
+axs[0].plot(All_U[0], norm.pdf(All_U[0], (-C @ (x - w_r))[0,0], sigma_t[0,0]))
+axs[1].set_title('Learned distribution')
+axs[1].plot(All_U[0], algos.pis(x)[2][:,0])
+plt.show()
+
+#%% Plot states over time
 if num_episodes == 1:
     x_axis = np.arange(num_steps_per_episode+1)
     fig, axs = plt.subplots(2)

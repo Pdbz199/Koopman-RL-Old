@@ -69,7 +69,7 @@ class algos:
         return inner_pi_us*(1/self.weight_regularization_lambda)
 
     def pis(self, xs):
-        delta = 1e-6
+        delta = 1e-25
         if self.bellman_error_type == 0: # Discrete
             inner_pi_us = self.inner_pi_us(self.All_U, xs) # self.All_U.shape[1] x self.xs.shape[1]
             inner_pi_us = np.real(inner_pi_us) # self.All_U.shape[1] x self.xs.shape[1]
@@ -191,7 +191,7 @@ class algos:
             return bellman_errors, gradient_norms
 
 
-    def REINFORCE(self, f, reward, sigma, step_size=0.01):
+    def REINFORCE(self, f, reward, sigma, step_size=0.0001):
         """
             Monte-Carlo policy gradient algorithm
 
