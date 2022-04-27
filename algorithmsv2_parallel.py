@@ -191,7 +191,7 @@ class algos:
             return bellman_errors, gradient_norms
 
 
-    def REINFORCE(self, f, reward, sigma, step_size=0.0001):
+    def REINFORCE(self, f, reward, sigma, step_size=0.001):
         """
             Monte-Carlo policy gradient algorithm
 
@@ -216,23 +216,34 @@ class algos:
 
         x_path = np.zeros([self.X.shape[0],num_steps_per_episode+1])
         u_path = np.zeros([1,num_steps_per_episode])
+        discounted_rewards = np.zeros([num_steps_per_episode])
         for episode in range(num_episodes):
             x = np.random.rand(self.X.shape[0],1) * state_range * np.random.choice([-1,1]) # random initial state
 
             x_path[:,0] = x[:,0]
             for step in range(num_steps_per_episode):
                 u = pi(x, theta)
+                discounted_rewards[step] = discounted_rewards[step-1] + (self.gamma**step * reward(x, u))
                 x = f(x, u) #! Use Koopman dynamics (?)
                 x_path[:,step+1] = x[:,0]
                 u_path[:,step] = u
 
+            # discounted_rewards = (discounted_rewards - np.mean(discounted_rewards)) / np.std(discounted_rewards)
             for step in range(num_steps_per_episode):
                 u = np.vstack(u_path[:,step])
                 x = np.vstack(x_path[:,step])
                 phi_x = self.phi(x)
-                G = np.sum(reward(x_path[:,step:-1], u_path[:,step:]))
+                G = discounted_rewards[step]
                 #! theta blows up which eventually makes grad log(pi_theta) +/- inf
                 theta = theta + step_size * G * (((u - (phi_x.T @ theta)) * phi_x) / sigma_squared) # Using Gaussian policy
+                if np.isnan(np.sum(theta)):
+                    print(episode)
+                    print(step)
+                    break
+            if np.isnan(np.sum(theta)):
+                print(episode)
+                print(step)
+                break
 
             #* Might want to use advantage instead of simple sum of rewards, but idk how to do that
         return theta

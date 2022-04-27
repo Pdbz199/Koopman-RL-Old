@@ -113,7 +113,6 @@ continuous_B = np.array([
 B = quad_vec(lambda tau: np.exp(continuous_A * tau) @ continuous_B, 0, delta_t)[0]
 # t_span = np.arange(0, 0.02, 0.0001)
 # B = odeint(lambda tau: np.exp(continuous_A * tau) @ continuous_B, continuous_B, t_span)[0][-1]
-print(B)
 Q = np.eye(4)
 R = 0.0001
 # Reference state
@@ -219,14 +218,14 @@ algos = algorithmsv2.algos(
 #     [-4.33771878e-02],
 #     [ 1.03530115e+00]
 # ]) # epsilon = 0.001
-print("Weights before updating:", algos.w)
+# print("Weights before updating:", algos.w)
 # bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
 # print("Weights after updating:", algos.w)
 
-# def reward(x, u):
-#     return -cost(x, u)
-# theta = algos.REINFORCE(f, reward, sigma_t)
-# print(theta)
+def reward(x, u):
+    return -cost(x, u)
+theta = algos.REINFORCE(f, reward, sigma_t)
+print(theta)
 
 # plt.plot(bellmanErrors)
 # plt.show()
