@@ -1,6 +1,8 @@
 #%% Imports
+import gym
 import matplotlib.pyplot as plt
 import numpy as np
+env = gym.make("env:CartPoleControlEnv-v0")
 np.random.seed(123)
 
 import sys
@@ -9,6 +11,7 @@ from tensor import KoopmanTensor
 sys.path.append('../../')
 # import algorithmsv2
 import algorithmsv2_parallel as algorithmsv2
+import cartpole_reward
 import observables
 
 from control import dare #, dlqr
@@ -64,65 +67,61 @@ lamb = 0.000001 # 0.1
 # R = np.array([[1.0]], dtype=np.float64) #* gamma
 
 # Cartpole A, B, Q, and R matrices from Wen's homework
-# A = np.array([
-#     [1.0, 0.02,  0.0,        0.0 ],
-#     [0.0, 1.0,  -0.01434146, 0.0 ],
-#     [0.0, 0.0,   1.0,        0.02],
-#     [0.0, 0.0,   0.3155122,  1.0 ]
-# ])
-# B = np.array([
-#     [0],
-#     [0.0195122],
-#     [0],
-#     [-0.02926829]
-# ])
+A = np.array([
+    [1.0, 0.02,  0.0,        0.0 ],
+    [0.0, 1.0,  -0.01434146, 0.0 ],
+    [0.0, 0.0,   1.0,        0.02],
+    [0.0, 0.0,   0.3155122,  1.0 ]
+])
+B = np.array([
+    [0],
+    [0.0195122],
+    [0],
+    [-0.02926829]
+])
 
-# Q = np.array([
-#     [10, 0,  0, 0],
-#     [ 0, 1,  0, 0],
-#     [ 0, 0, 10, 0],
-#     [ 0, 0,  0, 1]
-# ])
-# Q = np.array([
-#     [10, 0],
-#     [ 0, 1]
-# ])
-# R = 0.1
+Q = np.array([
+    [10, 0,  0, 0],
+    [ 0, 1,  0, 0],
+    [ 0, 0, 10, 0],
+    [ 0, 0,  0, 1]
+])
+R = 0.1
 
 # Cartpole A, B, Q, and R matrices from Steve's databook v2
-mass_pole = 1.0
-mass_cart = 5.0
-pole_position = 1.0
-pole_length = 2.0
-gravity = -10.0
-cart_damping = 1.0
-continuous_A = np.array([
-    [0.0, 1.0, 0.0, 0.0],
-    [0.0, -cart_damping / mass_cart, pole_position * mass_pole * gravity / mass_cart, 0.0],
-    [0.0, 0.0, 0.0, 1.0],
-    [0.0, -pole_position * cart_damping / mass_cart * pole_length, -pole_position * (mass_pole + mass_cart) * gravity / mass_cart * pole_length, 0.0]
-])
-delta_t = 0.02
-A = np.exp(continuous_A * delta_t)
-continuous_B = np.array([
-    [0.0],
-    [1.0 / mass_cart],
-    [0.0],
-    [pole_position / mass_cart * pole_length]
-])
-B = quad_vec(lambda tau: np.exp(continuous_A * tau) @ continuous_B, 0, delta_t)[0]
+# mass_pole = 1.0
+# mass_cart = 5.0
+# pole_position = 1.0
+# pole_length = 2.0
+# gravity = -10.0
+# cart_damping = 1.0
+# continuous_A = np.array([
+#     [0.0, 1.0, 0.0, 0.0],
+#     [0.0, -cart_damping / mass_cart, pole_position * mass_pole * gravity / mass_cart, 0.0],
+#     [0.0, 0.0, 0.0, 1.0],
+#     [0.0, -pole_position * cart_damping / mass_cart * pole_length, -pole_position * (mass_pole + mass_cart) * gravity / mass_cart * pole_length, 0.0]
+# ])
+# delta_t = 0.02
+# A = np.exp(continuous_A * delta_t)
+# continuous_B = np.array([
+#     [0.0],
+#     [1.0 / mass_cart],
+#     [0.0],
+#     [pole_position / mass_cart * pole_length]
+# ])
+# B = quad_vec(lambda tau: np.exp(continuous_A * tau) @ continuous_B, 0, delta_t)[0]
 # t_span = np.arange(0, 0.02, 0.0001)
 # B = odeint(lambda tau: np.exp(continuous_A * tau) @ continuous_B, continuous_B, t_span)[0][-1]
-Q = np.eye(4)
-R = 0.0001
+# Q = np.eye(4)
+# R = 0.0001
 # Reference state
-w_r = np.array([
-    [1],
-    [0],
-    [np.pi],
-    [0]
-])
-# w_r = np.zeros([4,1])
+# w_r = np.array([
+#     [1],
+#     [0],
+#     [np.pi],
+#     [0]
+# ])
+w_r = np.zeros([4,1])
 
 def f(x, u):
     return A @ x + B @ u
@@ -222,9 +221,9 @@ algos = algorithmsv2.algos(
 # bellmanErrors, gradientNorms = algos.algorithm2(batch_size=512)
 # print("Weights after updating:", algos.w)
 
-def reward(x, u):
-    return -cost(x, u)
-theta = algos.REINFORCE(f, reward, sigma_t)
+# def reward(x, u):
+#     return -cost(x, u)
+theta = algos.REINFORCE(f, env, cartpole_reward.defaultCartpoleReward, sigma_t)
 print(theta)
 
 # plt.plot(bellmanErrors)
@@ -290,8 +289,6 @@ def policyDensity(u, u_ind, x, policyType):
         return pi_term
 
 #%% Test policy by simulating system
-import gym
-env = gym.make("env:CartPoleControlEnv-v0")
 # policy_type = 'learned'
 # costs = np.empty((num_episodes))
 # lamb = 1e-2 # 1.0?
@@ -332,8 +329,8 @@ for episode in range(num_episodes):
 
         optimal_cost_per_episode[episode] += cost(opt_x, opt_u) # (gamma**step)*(cost(opt_x, opt_u) + lamb*np.log(policyDensity(opt_u, opt_u_ind, opt_x, 'optimalEntropy')))
 
-        learned_u, learned_u_ind = policy(learned_x, 'learned')
-        # learned_u = pi(learned_x, theta)
+        # learned_u, learned_u_ind = policy(learned_x, 'learned')
+        learned_u = pi(learned_x, theta)
         learned_x_prime = f(learned_x, learned_u)
 
         learned_x0s.append(learned_x_prime[0,0])

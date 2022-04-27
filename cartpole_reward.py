@@ -67,7 +67,8 @@ def cartpoleReward(state, action):
 def defaultCartpoleReward(state, action):
     x, x_dot, theta, theta_dot = state
 
-    force = force_mag if action[0,0] == 1 else -force_mag
+    # force = force_mag if action >= 0 else -force_mag
+    force = action
     costheta = math.cos(theta)
     sintheta = math.sin(theta)
 
