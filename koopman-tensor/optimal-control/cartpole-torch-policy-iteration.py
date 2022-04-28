@@ -1,9 +1,11 @@
 import gym
 import numpy as np
+import random
 import torch
 
 seed = 123
 np.random.seed(seed)
+random.seed(seed)
 torch.manual_seed(seed)
 
 from matplotlib import pyplot as plt
@@ -13,43 +15,14 @@ import sys
 sys.path.append('../')
 from tensor import KoopmanTensor
 sys.path.append('../../')
-# import cartpole_reward
 import observables
 
+#%% Initialize environment
 env = gym.make('CartPole-v0')
 
-#%% System dynamics
-# Cartpole A, B, Q, and R matrices from Wen's homework
-# A = np.array([
-#     [1.0, 0.02,  0.0,        0.0 ],
-#     [0.0, 1.0,  -0.01434146, 0.0 ],
-#     [0.0, 0.0,   1.0,        0.02],
-#     [0.0, 0.0,   0.3155122,  1.0 ]
-# ])
-# B = np.array([
-#     [0],
-#     [0.0195122],
-#     [0],
-#     [-0.02926829]
-# ])
-# Q = np.array([
-#     [10, 0,  0, 0],
-#     [ 0, 1,  0, 0],
-#     [ 0, 0, 10, 0],
-#     [ 0, 0,  0, 1]
-# ])
-# R = 0.1
-
-# def f(x, u):
-#     return A @ x + B @ u
-
 #%% Construct snapshots of u from random agent and initial states x0
-N = 20000
-# action_range = 25
-# state_range = 25
-# U = np.random.rand(1,N)*action_range*np.random.choice(np.array([-1,1]), size=(1,N))
+N = 20000 # Number of datapoints
 U = np.zeros([1,N])
-# X0 = np.random.rand(A.shape[0],N)*state_range*np.random.choice(np.array([-1,1]), size=(A.shape[0],N))
 X = np.zeros([4,N+1])
 Y = np.zeros([4,N])
 i = 0
@@ -77,8 +50,8 @@ tensor = KoopmanTensor(
 
 # obs_size = env.observation_space.shape[0]
 state_dim = env.observation_space.shape[0]
-Ns = np.arange( state_dim - 1, state_dim - 1 + (order+1) )
-obs_size = int( np.sum( comb( Ns, np.ones_like(Ns) * (order+1) ) ) )
+M_plus_N_minus_ones = np.arange( (state_dim-1), order + (state_dim-1) + 1 )
+obs_size = int( np.sum( comb( M_plus_N_minus_ones, np.ones_like(M_plus_N_minus_ones) * (state_dim-1) ) ) )
 n_actions = env.action_space.n
 # HIDDEN_SIZE = 256
 
@@ -92,29 +65,29 @@ model = torch.nn.Sequential(
     torch.nn.Linear(obs_size, n_actions),
     torch.nn.Softmax(dim=0)
 )
-print("Model:", model)
+# print("Model:", model)
 
-# learning_rate = 0.003
 learning_rate = 0.003
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
 Horizon = 500
-MAX_TRAJECTORIES = 5000 # 500, 750
+MAX_TRAJECTORIES = 4000 # 500, 750 with other NN spec
 gamma = 0.99
 score = []
 
 for trajectory in range(MAX_TRAJECTORIES):
-    curr_state = np.vstack(env.reset()) # column vector
+    curr_state = np.vstack(env.reset())
     done = False
     transitions = []
 
     for t in range(Horizon):
-        phi_curr_state = tensor.phi(curr_state) # column vector
+        phi_curr_state = tensor.phi(curr_state)
         act_prob = model(torch.from_numpy(phi_curr_state[:,0]).float())
         action = np.random.choice(np.array([0,1]), p=act_prob.data.numpy())
         prev_state = curr_state[:,0]
-        # curr_state, _, done, info = env.step(action)
-        curr_state = tensor.B.T @ tensor.K_(np.array([[action]])) @ phi_curr_state
+        curr_state, _, done, info = env.step(action)
+        curr_state = np.vstack(curr_state)
+        # curr_state = tensor.B.T @ tensor.K_(np.array([[action]])) @ phi_curr_state
         done = bool(
             curr_state[0,0] < -env.x_threshold
             or curr_state[0,0] > env.x_threshold
@@ -126,6 +99,8 @@ for trajectory in range(MAX_TRAJECTORIES):
             break
     score.append(len(transitions))
     reward_batch = torch.Tensor([r for (s,a,r) in transitions]).flip(dims=(0,))
+
+    def w_hat()
 
     batch_Gvals = []
     for i in range(len(transitions)):
@@ -150,12 +125,26 @@ for trajectory in range(MAX_TRAJECTORIES):
     loss.backward()
     optimizer.step()
 
+    # Online learning
+    X = np.append(X, tensor.B.T @ state_batch.T.data.numpy(), axis=1)
+    Y = np.roll(X, -1)[:,:-1]
+    X = X[:,:-1]
+    U = np.append(U, np.array([action_batch.data.numpy()]), axis=1)
+    tensor = KoopmanTensor(
+        X,
+        Y,
+        U,
+        phi=observables.monomials(order),
+        psi=observables.monomials(order),
+        regressor='ols'
+    )
+
+    # Average score for trajectory
     if trajectory % 50 == 0 and trajectory>0:
-        print('Trajectory {}\tAverage Score: {:.2f}'
-                .format(trajectory, np.mean(score[-50:-1])))
+        print(f'Trajectory {trajectory}\tAverage Score: {np.mean(score[-50:-1])}')
 
 def running_mean(x):
-    N=50
+    N = 50
     kernel = np.ones(N)
     conv_len = x.shape[0]-N
     y = np.zeros(conv_len)

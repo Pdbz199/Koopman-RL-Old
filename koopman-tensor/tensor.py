@@ -106,3 +106,25 @@ class KoopmanTensor:
             return K_u[0]
 
         return K_u
+
+    def f(self, x, u):
+        """
+            INPUTS:
+            x - state column vector (could also be a matrix)
+            u - action column vector (could also be a matrix)
+
+            OUTPUTS:
+            state column vector (could also be a matrix)
+        """
+        return self.B.T @ self.K_(u) @ self.phi(x)
+
+    def phi_f(self, x, u):
+        """
+            INPUTS:
+            x - state column vector (could also be a matrix)
+            u - action column vector (could also be a matrix)
+
+            OUTPUTS:
+            phi(state) column vector (could also be a matrix)
+        """
+        return self.K_(u) @ self.phi(x)
