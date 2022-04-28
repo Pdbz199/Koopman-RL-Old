@@ -1,9 +1,11 @@
 import gym
 import numpy as np
+import random
 import torch
 
 seed = 123
 np.random.seed(seed)
+random.seed(seed)
 torch.manual_seed(seed)
 
 from matplotlib import pyplot as plt
@@ -54,33 +56,19 @@ obs_size = int( np.sum( comb( Ns, np.ones_like(Ns) * (order+1) ) ) )
 n_actions = env.action_space.n
 # HIDDEN_SIZE = 256
 
-# model = torch.nn.Sequential(
-#     torch.nn.Linear(obs_size, HIDDEN_SIZE),
-#     torch.nn.ReLU(),
-#     torch.nn.Linear(HIDDEN_SIZE, n_actions),
-#     torch.nn.Softmax(dim=0)
-# )
 model = torch.nn.Sequential(
     torch.nn.Linear(obs_size, 1)
-    # torch.nn.Softmax(dim=0)
 )
-print("Model:", model)
-input = torch.from_numpy(tensor.phi(np.vstack(env.reset()))[:,0]).float()
-print("Input:", input)
-print("Output:", model(input))
+# print("Model:", model)
+# input = torch.from_numpy(tensor.phi(np.vstack(env.reset()))[:,0]).float()
+# print("Input:", input)
+# print("Output:", model(input))
 
-# learning_rate = 0.003
+gamma = 0.99
+lamb = 0.0001
 learning_rate = 0.003
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
-Horizon = 500
-MAX_TRAJECTORIES = 5000 # 500, 750
-gamma = 0.99
-lamb = 0.0001
-# score = []
-
-# action_range = 25
-# u_bounds = np.array([[-action_range, action_range]])
 u_bounds = np.array([[0, 2]])
 step_size = 1
 All_U = np.arange(start=u_bounds[0,0], stop=u_bounds[0,1], step=step_size).reshape(1,-1)
@@ -90,13 +78,13 @@ def cost(x, u):
     return -cartpole_reward.defaultCartpoleRewardMatrix(x, u)
 
 def inner_pi_us(us, xs):
-    phi_x_primes = tensor.K_(us) @ tensor.phi(xs) # All_U.shape[1] x dim_phi x xs.shape[1] (2, 15, 1536)
+    phi_x_primes = tensor.K_(us) @ tensor.phi(xs) # us.shape[1] x dim_phi x xs.shape[1]
     V_x_primes_arr = np.zeros([All_U.shape[1], xs.shape[1]])
     for u in range(phi_x_primes.shape[0]):
-        V_x_primes = model(torch.from_numpy(phi_x_primes[u].T).float()).T # 1 x xs.shape[1] (1, 1536)
+        V_x_primes = model(torch.from_numpy(phi_x_primes[u].T).float()).T # 1 x xs.shape[1]
         V_x_primes_arr[u] = V_x_primes.data.numpy()
-    inner_pi_us_values = -(cost(xs, us) + gamma * V_x_primes_arr) # All_U.shape[1] x xs.shape[1] (2, 1536)
-    return inner_pi_us_values * (1 / lamb) # / lamb
+    inner_pi_us_values = -(cost(xs, us) + gamma * V_x_primes_arr) # us.shape[1] x xs.shape[1]
+    return inner_pi_us_values * (1 / lamb) # us.shape[1] x xs.shape[1]
 
 def pis(xs):
     delta = 1e-25
@@ -113,9 +101,9 @@ def discrete_bellman_error(batch_size):
     x_batch_indices = np.random.choice(X.shape[1], batch_size, replace=False)
     x_batch = X[:, x_batch_indices] # X.shape[0] x batch_size
     phi_xs = tensor.phi(x_batch) # dim_phi x batch_size
-    phi_x_primes = tensor.K_(All_U) @ phi_xs
-    pis_response = pis(x_batch) # All_U.shape[1] x batch_size
-    log_pis = np.log(pis_response) # All_U.shape[1] x batch_size (2, 1536)
+    phi_x_primes = tensor.K_(All_U) @ phi_xs # All_U.shape[1] x dim_phi x batch_size
+    pis_response = pis(x_batch) # All_U.shape[1] x x_batch_size
+    log_pis = np.log(pis_response) # All_U.shape[1] x batch_size
 
     # pi_sum = np.sum(pis_response)
     # assert np.isclose(pi_sum, 1, rtol=1e-3, atol=1e-4)
@@ -124,9 +112,9 @@ def discrete_bellman_error(batch_size):
     for u in range(phi_x_primes.shape[0]):
         V_x_primes = model(torch.from_numpy(phi_x_primes[u].T).float()).T
         V_x_primes_arr[u] = V_x_primes.data.numpy()
-    costs = cost(x_batch, All_U) # All_U.shape[1] x batch_size (2, 1536)
+    costs = cost(x_batch, All_U) # All_U.shape[1] x batch_size
     expectation_us = (costs + lamb*log_pis + gamma*V_x_primes_arr) * pis_response # All_U.shape[1] x batch_size
-    expectation_u = np.sum(expectation_us, axis=0) # batch_size (1536,)
+    expectation_u = np.sum(expectation_us, axis=0) # batch_size
 
     V_xs = model(torch.from_numpy(phi_xs.T).float()) # batch_size x 1 (1536, 1)
     squared_differences = np.power(V_xs[:,0].data.numpy() - expectation_u, 2) # 1 x batch_size
@@ -134,15 +122,16 @@ def discrete_bellman_error(batch_size):
 
     return total
 
+epochs = 7500
 epsilon = 1e-2
 batch_size = 512
-bellman_errors = [discrete_bellman_error(batch_size*3)] #! 3 is randomly chosen
+bellman_errors = [discrete_bellman_error(batch_size*3)] #* 3 is randomly chosen
 BE = bellman_errors[-1]
-gradient_norms = []
 print("Initial Bellman error:", BE)
 
 count = 0
-while BE > epsilon:
+# while BE > epsilon:
+for _ in range(epochs):
     x_batch_indices = np.random.choice(X.shape[1], batch_size, replace=False)
     x_batch = X[:,x_batch_indices] # X.shape[0] x batch_size
     phi_x_batch = tensor.phi(x_batch) # dim_phi x batch_size
@@ -162,7 +151,10 @@ while BE > epsilon:
     expectation_term_2 = np.einsum('ux,upx->px', pis_response, gamma*phi_x_primes) # dim_phi x batch_size
 
     # Equations 22/23 in writeup
-    difference = torch.sum((V_x - torch.tensor(expectation_term_1)) * (torch.tensor(phi_x_batch) - torch.tensor(expectation_term_2)))
+    difference = torch.sum(
+        (V_x - torch.tensor(expectation_term_1)) * \
+        (torch.tensor(phi_x_batch) - torch.tensor(expectation_term_2))
+    )
     
     optimizer.zero_grad()
     difference.backward()
@@ -172,13 +164,20 @@ while BE > epsilon:
     BE = discrete_bellman_error(batch_size*3)
     bellman_errors = np.append(bellman_errors, BE)
 
-    if count % 25 == 0:
+    if count % 500 == 0:
         np.save('bellman_errors.npy', bellman_errors)
         print("Current Bellman error:", BE)
 
     count += 1
 
-num_episodes = 5
+All_U_range = np.arange(All_U.shape[1])
+def policy(x):
+    pis_response = pis(x)[:,0]
+    u_ind = np.random.choice(All_U_range, p=pis_response)
+    u = np.vstack(All_U[:,u_ind])
+    return u[0,0]
+
+num_episodes = 1000
 def watch_agent():
     rewards = np.zeros([num_episodes])
     for episode in range(num_episodes):
@@ -186,16 +185,12 @@ def watch_agent():
         done = False
         episode_rewards = []
         while not done:
-            env.render()
-            phi_state = tensor.phi(state)
-            pred = model(torch.from_numpy(phi_state[:,0]).float())
-            action = np.random.choice(np.array([0,1]), p=pred.data.numpy())
+            # env.render()
+            action = policy(state)
             state, reward, done, _ = env.step(action)
             state = np.vstack(state)
             episode_rewards.append(reward)
-            if done:
-                rewards[episode] = np.sum(episode_rewards)
-                print("Reward:", rewards[episode])
-    env.close()
+        rewards[episode] = np.sum(episode_rewards)
+    # env.close()
     print(f"Mean reward per episode over {num_episodes} episodes:", np.mean(rewards))
 watch_agent()
