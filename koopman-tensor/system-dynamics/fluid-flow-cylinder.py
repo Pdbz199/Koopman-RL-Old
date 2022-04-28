@@ -1,7 +1,6 @@
 #%% Imports
 import numpy as np
 import scipy as sp
-import torch
 
 from scipy.integrate import odeint
 

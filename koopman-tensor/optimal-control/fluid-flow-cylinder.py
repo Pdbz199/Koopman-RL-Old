@@ -10,7 +10,6 @@ sys.path.append('../')
 from tensor import KoopmanTensor
 sys.path.append('../../')
 import observables
-import utilities
 
 #%% System dynamics
 u_range = np.array([-1, 1])
