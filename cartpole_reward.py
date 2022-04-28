@@ -103,38 +103,48 @@ def defaultCartpoleReward(state, action):
 
     return reward
 #%%
-# Could look at current state instead of next state
-# (Might only need to pass states without actions)
 def defaultCartpoleRewardMatrix(states, actions):
     # x, x_dot, theta, theta_dot = state
 
-    forces = np.ones([actions.shape[1]]) * force_mag
-    forces[(actions!=1)[0]] = -force_mag
-    costheta = np.cos(states[2])
-    sintheta = np.sin(states[2])
+    # forces = np.ones([actions.shape[1]]) * force_mag
+    # forces[(actions!=1)[0]] = -force_mag
+    # costheta = np.cos(states[2])
+    # sintheta = np.sin(states[2])
 
     # For the interested reader:
     # https://coneural.org/florian/papers/05_cart_pole.pdf
-    temp = (forces + polemass_length * states[3] ** 2 * sintheta) / total_mass
-    thetaacc = (gravity * sintheta - costheta * temp) / (length * (4.0 / 3.0 - masspole * costheta ** 2 / total_mass))
-    xacc = temp - polemass_length * thetaacc * costheta / total_mass
+    # temp = (forces + polemass_length * states[3] ** 2 * sintheta) / total_mass
+    # thetaacc = (gravity * sintheta - costheta * temp) / (length * (4.0 / 3.0 - masspole * costheta ** 2 / total_mass))
+    # xacc = temp - polemass_length * thetaacc * costheta / total_mass
 
-    if kinematics_integrator == 'euler':
-        x = states[0] + tau * states[1]
-        x_dot = states[1] + tau * xacc
-        theta = states[2] + tau * states[3]
-        theta_dot = states[3] + tau * thetaacc
-    else:  # semi-implicit euler
-        x_dot = states[1] + tau * xacc
-        x = states[0] + tau * x_dot
-        theta_dot = states[3] + tau * thetaacc
-        theta = states[2] + tau * theta_dot
+    # if kinematics_integrator == 'euler':
+    #     x = states[0] + tau * states[1]
+    #     x_dot = states[1] + tau * xacc
+    #     theta = states[2] + tau * states[3]
+    #     theta_dot = states[3] + tau * thetaacc
+    # else:  # semi-implicit euler
+    #     x_dot = states[1] + tau * xacc
+    #     x = states[0] + tau * x_dot
+    #     theta_dot = states[3] + tau * thetaacc
+    #     theta = states[2] + tau * theta_dot
 
-    rewards = np.ones(states.shape[1])
-    rewards[x < -x_threshold] = 0.0
-    rewards[x > x_threshold] = 0.0
-    rewards[theta < -theta_threshold_radians] = 0.0
-    rewards[theta > theta_threshold_radians] = 0.0
+    # rewards = np.ones(states.shape[1])
+    # rewards[x < -x_threshold] = 0.0
+    # rewards[x > x_threshold] = 0.0
+    # rewards[theta < -theta_threshold_radians] = 0.0
+    # rewards[theta > theta_threshold_radians] = 0.0
+
+    rewards = np.ones([actions.shape[1], states.shape[1]])
+    for action_ind in range(actions.shape[1]):
+        for state_ind in range(states.shape[1]):
+            state = states[:,state_ind]
+            x = state[0] + tau * state[1]
+            # x_dot = state[1] + tau * xacc
+            theta = state[2] + tau * state[3]
+            # theta_dot = state[3] + tau * thetaacc
+
+            if x < -x_threshold or x > x_threshold or theta < -theta_threshold_radians or theta > theta_threshold_radians:
+                rewards[action_ind,state_ind] = 0.0
 
     return rewards
 # %%
