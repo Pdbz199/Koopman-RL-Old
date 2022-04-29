@@ -16,6 +16,7 @@ sys.path.append('../')
 from tensor import KoopmanTensor
 sys.path.append('../../')
 import cartpole_reward
+import estimate_L
 import observables
 
 #%% Initialize environment
@@ -91,13 +92,22 @@ def w_hat_t(x):
         costs[i] = cost(x, all_us[i]) * pi_response[i]
     expectation_term_1 = torch.mean(phi_x_primes)
     expectation_term_2 = torch.mean(costs)
-    # linear regression to find w?
-    return torch.sum(
-        torch.pow(
-            (w.T @ (phi_x - expectation_term_1)) - expectation_term_2,
-            2
-        )
+
+    # torch.sum(
+    #     torch.pow(
+    #         (w.T @ (phi_x - expectation_term_1)) - expectation_term_2,
+    #         2
+    #     )
+    # )
+
+    # || Y      - XB  ||
+    # || B^TX^T - Y^T ||
+    w_hat = estimate_L.ols(
+        (phi_x - expectation_term_1).T,
+        expectation_term_2.T
     )
+
+    return w_hat
 
 def Q(x, u):
     return cost(x, u) + w_hat_t(x).T @ tensor.phi_f(x, u)
