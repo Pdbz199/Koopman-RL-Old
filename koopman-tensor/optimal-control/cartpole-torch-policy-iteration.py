@@ -105,7 +105,7 @@ def w_hat_t(x):
     w_hat = estimate_L.ols(
         (phi_x - expectation_term_1).T,
         expectation_term_2.T
-    )
+    ).T
 
     return w_hat
 
