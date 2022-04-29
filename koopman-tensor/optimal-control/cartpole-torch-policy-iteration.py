@@ -15,10 +15,13 @@ import sys
 sys.path.append('../')
 from tensor import KoopmanTensor
 sys.path.append('../../')
+import cartpole_reward
 import observables
 
 #%% Initialize environment
 env = gym.make('CartPole-v0')
+def cost(xs, us):
+    return -cartpole_reward.defaultCartpoleRewardMatrix(xs, us)
 
 #%% Construct snapshots of u from random agent and initial states x0
 N = 20000 # Number of datapoints
@@ -51,8 +54,11 @@ tensor = KoopmanTensor(
 # obs_size = env.observation_space.shape[0]
 state_dim = env.observation_space.shape[0]
 M_plus_N_minus_ones = np.arange( (state_dim-1), order + (state_dim-1) + 1 )
-obs_size = int( np.sum( comb( M_plus_N_minus_ones, np.ones_like(M_plus_N_minus_ones) * (state_dim-1) ) ) )
-n_actions = env.action_space.n
+phi_dim = int( np.sum( comb( M_plus_N_minus_ones, np.ones_like(M_plus_N_minus_ones) * (state_dim-1) ) ) )
+action_dim = env.action_space.n
+u_range = np.array([0, 2])
+all_us = np.arange(u_range[0], u_range[1])
+
 # HIDDEN_SIZE = 256
 
 # model = torch.nn.Sequential(
@@ -62,7 +68,7 @@ n_actions = env.action_space.n
 #     torch.nn.Softmax(dim=0)
 # )
 model = torch.nn.Sequential(
-    torch.nn.Linear(obs_size, n_actions),
+    torch.nn.Linear(phi_dim, action_dim),
     torch.nn.Softmax(dim=0)
 )
 # print("Model:", model)
@@ -74,6 +80,27 @@ Horizon = 500
 MAX_TRAJECTORIES = 4000 # 500, 750 with other NN spec
 gamma = 0.99
 score = []
+
+def w_hat_t(x):
+    phi_x = tensor.phi(x)
+    pi_response = model(torch.from_numpy(phi_x).float())
+    phi_x_primes = np.zeros_like(all_us)
+    costs = np.zeros_like(all_us)
+    for i in range(all_us.shape[0]):
+        phi_x_primes[i] = tensor.K_(all_us[i]) @ phi_x * pi_response[i]
+        costs[i] = cost(x, all_us[i]) * pi_response[i]
+    expectation_term_1 = torch.mean(phi_x_primes)
+    expectation_term_2 = torch.mean(costs)
+    # linear regression to find w?
+    return torch.sum(
+        torch.pow(
+            (w.T @ (phi_x - expectation_term_1)) - expectation_term_2,
+            2
+        )
+    )
+
+def Q(x, u):
+    return cost(x, u) + w_hat_t(x).T @ tensor.phi_f(x, u)
 
 for trajectory in range(MAX_TRAJECTORIES):
     curr_state = np.vstack(env.reset())
@@ -87,7 +114,6 @@ for trajectory in range(MAX_TRAJECTORIES):
         prev_state = curr_state[:,0]
         curr_state, _, done, info = env.step(action)
         curr_state = np.vstack(curr_state)
-        # curr_state = tensor.B.T @ tensor.K_(np.array([[action]])) @ phi_curr_state
         done = bool(
             curr_state[0,0] < -env.x_threshold
             or curr_state[0,0] > env.x_threshold
@@ -99,8 +125,6 @@ for trajectory in range(MAX_TRAJECTORIES):
             break
     score.append(len(transitions))
     reward_batch = torch.Tensor([r for (s,a,r) in transitions]).flip(dims=(0,))
-
-    def w_hat()
 
     batch_Gvals = []
     for i in range(len(transitions)):
