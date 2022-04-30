@@ -95,7 +95,7 @@ class KoopmanTensor:
         ''' Pick out Koopman operator given an action '''
 
         # If array, convert to column vector
-        if isinstance(u, int) or isinstance(u, float):
+        if isinstance(u, int) or isinstance(u, float) or isinstance(u, np.int64) or isinstance(u, np.float64):
             u = np.array([[u]])
         elif len(u.shape) == 1:
             u = np.vstack(u)

@@ -21,8 +21,10 @@ import observables
 
 #%% Initialize environment
 env = gym.make('CartPole-v0')
+def reward(xs, us):
+    return cartpole_reward.defaultCartpoleRewardMatrix(xs, us)
 def cost(xs, us):
-    return -cartpole_reward.defaultCartpoleRewardMatrix(xs, us)
+    return -reward(xs, us)
 
 #%% Construct snapshots of u from random agent and initial states x0
 N = 20000 # Number of datapoints
@@ -42,13 +44,13 @@ while i < N:
 X = X[:,:-1]
 
 #%% Estimate Koopman tensor
-order = 2
+order = 2 # 3
 tensor = KoopmanTensor(
     X,
     Y,
     U,
     phi=observables.monomials(order),
-    psi=observables.monomials(order),
+    psi=observables.monomials(2),
     regressor='ols'
 )
 
@@ -62,6 +64,7 @@ all_us = np.arange(u_range[0], u_range[1])
 
 # HIDDEN_SIZE = 256
 
+# Other NN spec:
 # model = torch.nn.Sequential(
 #     torch.nn.Linear(obs_size, HIDDEN_SIZE),
 #     torch.nn.ReLU(),
@@ -78,40 +81,28 @@ learning_rate = 0.003
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
 Horizon = 500
-MAX_TRAJECTORIES = 4000 # 500, 750 with other NN spec
+MAX_TRAJECTORIES = 6000 # 4000 with trad REINFORCE | 500, 750 with other NN spec
 gamma = 0.99
 score = []
 
 def w_hat_t(x):
     phi_x = tensor.phi(x)
-    pi_response = model(torch.from_numpy(phi_x).float())
-    phi_x_primes = np.zeros_like(all_us)
-    costs = np.zeros_like(all_us)
+    pi_response = model(torch.from_numpy(phi_x[:,0]).float())
+    phi_x_primes = np.zeros([all_us.shape[0], phi_x.shape[0]])
+    costs = np.zeros([all_us.shape[0]])
     for i in range(all_us.shape[0]):
-        phi_x_primes[i] = tensor.K_(all_us[i]) @ phi_x * pi_response[i]
-        costs[i] = cost(x, all_us[i]) * pi_response[i]
-    expectation_term_1 = torch.mean(phi_x_primes)
-    expectation_term_2 = torch.mean(costs)
+        phi_x_primes[i] = ( tensor.phi_f(x, all_us[i]) * pi_response[i].data.numpy() )[:, 0]
+        costs[i] = -cost(x, np.array([[all_us[i]]]))[0,0] * pi_response[i].data.numpy()
+    expectation_term_1 = torch.sum(torch.from_numpy(phi_x_primes))
+    expectation_term_2 = torch.sum(torch.from_numpy(costs))
 
-    # torch.sum(
-    #     torch.pow(
-    #         (w.T @ (phi_x - expectation_term_1)) - expectation_term_2,
-    #         2
-    #     )
-    # )
-
-    # || Y      - XB  ||
-    # || B^TX^T - Y^T ||
-
-    w_hat = estimate_L.ols(
-        (phi_x - expectation_term_1).T,
-        expectation_term_2.T
+    return estimate_L.ols(
+        (phi_x - gamma*expectation_term_1.data.numpy().T).T,
+        np.array([[expectation_term_2.T.data.numpy()]])
     )
 
-    return w_hat
-
 def Q(x, u):
-    return cost(x, u) + w_hat_t(x).T @ tensor.phi_f(x, u)
+    return -cost(x, u) + gamma*w_hat_t(x).T @ tensor.phi_f(x, u)
 
 for trajectory in range(MAX_TRAJECTORIES):
     curr_state = np.vstack(env.reset())
@@ -135,23 +126,27 @@ for trajectory in range(MAX_TRAJECTORIES):
         if done:
             break
     score.append(len(transitions))
+
+    state_batch = torch.from_numpy(np.array([s for (s,a,r) in transitions]).T)
+    action_batch = torch.Tensor([a for (s,a,r) in transitions])
     reward_batch = torch.Tensor([r for (s,a,r) in transitions]).flip(dims=(0,))
 
     batch_Gvals = []
+    errors = []
     for i in range(len(transitions)):
         new_Gval = 0
         power = 0
         for j in range(i, len(transitions)):
             new_Gval = new_Gval + ((gamma**power) * reward_batch[j]).numpy()
             power += 1
-        batch_Gvals.append(new_Gval)
+        batch_Gvals.append( new_Gval )
+        Q_val = Q( np.vstack(state_batch[:,i]), np.array([[action_batch[i]]]) )[0,0]
+        # batch_Gvals.append( Q_val )
+        errors.append( np.abs(Q_val - new_Gval) )
     expected_returns_batch = torch.FloatTensor(batch_Gvals)
-    expected_returns_batch /= expected_returns_batch.max()
+    expected_returns_batch /= expected_returns_batch.max() # expected_returns_batch.min()
 
-    state_batch = torch.Tensor(tensor.phi(np.array([s for (s,a,r) in transitions]).T).T)
-    action_batch = torch.Tensor([a for (s,a,r) in transitions])
-
-    pred_batch = model(state_batch)
+    pred_batch = model(torch.from_numpy(tensor.phi(state_batch.data.numpy())).float().T)
     prob_batch = pred_batch.gather(dim=1, index=action_batch.long().view(-1,1)).squeeze()
 
     loss = -torch.sum(torch.log(prob_batch) * expected_returns_batch)
@@ -161,22 +156,23 @@ for trajectory in range(MAX_TRAJECTORIES):
     optimizer.step()
 
     # Online learning
-    X = np.append(X, tensor.B.T @ state_batch.T.data.numpy(), axis=1)
-    Y = np.roll(X, -1)[:,:-1]
-    X = X[:,:-1]
-    U = np.append(U, np.array([action_batch.data.numpy()]), axis=1)
-    tensor = KoopmanTensor(
-        X,
-        Y,
-        U,
-        phi=observables.monomials(order),
-        psi=observables.monomials(order),
-        regressor='ols'
-    )
+    # X = np.append(X, tensor.B.T @ tensor.phi(state_batch.data.numpy()), axis=1)
+    # Y = np.roll(X, -1)[:,:-1]
+    # X = X[:,:-1]
+    # U = np.append(U, np.array([action_batch.data.numpy()]), axis=1)
+    # tensor = KoopmanTensor(
+    #     X,
+    #     Y,
+    #     U,
+    #     phi=observables.monomials(order),
+    #     psi=observables.monomials(order),
+    #     regressor='ols'
+    # )
 
     # Average score for trajectory
     if trajectory % 50 == 0 and trajectory>0:
         print(f'Trajectory {trajectory}\tAverage Score: {np.mean(score[-50:-1])}')
+        print("Mean error between Q and G:", np.mean(errors))
 
 def running_mean(x):
     N = 50
@@ -195,9 +191,9 @@ plt.xlabel("Training Epochs", fontsize=12)
 plt.plot(score, color='gray' , linewidth=1)
 plt.plot(avg_score, color='blue', linewidth=3)
 plt.scatter(np.arange(score.shape[0]), score, color='green' , linewidth=0.3)
-# plt.show()
+plt.show()
 
-num_episodes = 5
+num_episodes = 10
 def watch_agent():
     rewards = np.zeros([num_episodes])
     for episode in range(num_episodes):
