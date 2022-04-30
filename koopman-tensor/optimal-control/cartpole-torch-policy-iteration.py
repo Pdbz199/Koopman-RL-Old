@@ -57,7 +57,7 @@ state_dim = env.observation_space.shape[0]
 M_plus_N_minus_ones = np.arange( (state_dim-1), order + (state_dim-1) + 1 )
 phi_dim = int( np.sum( comb( M_plus_N_minus_ones, np.ones_like(M_plus_N_minus_ones) * (state_dim-1) ) ) )
 action_dim = env.action_space.n
-u_range = np.array([0, 2])
+u_range = np.array([0, action_dim])
 all_us = np.arange(u_range[0], u_range[1])
 
 # HIDDEN_SIZE = 256
@@ -102,10 +102,11 @@ def w_hat_t(x):
 
     # || Y      - XB  ||
     # || B^TX^T - Y^T ||
+
     w_hat = estimate_L.ols(
         (phi_x - expectation_term_1).T,
         expectation_term_2.T
-    ).T
+    )
 
     return w_hat
 
