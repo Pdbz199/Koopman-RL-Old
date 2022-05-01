@@ -4,9 +4,9 @@ import numpy as np
 np.random.seed(123)
 
 import sys
-sys.path.append('../')
-from tensor import KoopmanTensor
 sys.path.append('../../')
+from tensor import KoopmanTensor
+sys.path.append('../../../')
 # import algorithmsv2
 import algorithmsv2_parallel as algorithmsv2
 import observables

@@ -7,9 +7,9 @@ from control.matlab import dare#, dlqr
 # from sklearn.kernel_approximation import RBFSampler
 
 import sys
-sys.path.append('../')
-from tensor import KoopmanTensor
 sys.path.append('../../')
+from tensor import KoopmanTensor
+sys.path.append('../../../')
 import algorithmsv2_parallel as algorithmsv2
 import observables
 import utilities

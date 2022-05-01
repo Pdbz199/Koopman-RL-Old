@@ -7,7 +7,7 @@ if __name__ == '__main__':
     import time
 
     import sys
-    sys.path.append('../../')
+    sys.path.append('../../../')
     import algorithmsv2
     import cartpole_reward
     import estimate_L

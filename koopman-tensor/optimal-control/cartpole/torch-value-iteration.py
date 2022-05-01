@@ -12,9 +12,9 @@ from matplotlib import pyplot as plt
 from scipy.special import comb
 
 import sys
-sys.path.append('../')
-from tensor import KoopmanTensor
 sys.path.append('../../')
+from tensor import KoopmanTensor
+sys.path.append('../../../')
 import cartpole_reward
 import observables
 

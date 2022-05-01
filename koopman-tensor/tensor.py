@@ -1,9 +1,7 @@
+#%%
 import numpy as np
-
-import sys
-sys.path.append('../../')
-import estimate_L
-import observables
+import scipy as sp
+import numba as nb
 
 def checkMatrixRank(X, name):
     rank = np.linalg.matrix_rank(X)
@@ -15,14 +13,59 @@ def checkConditionNumber(X, name, threshold=200):
     if cond_num > threshold:
         raise ValueError(f"Condition number of {name} is too large ({cond_num} > {threshold})")
 
+
+def gedmd(X, Y, rank=8):
+    U, Sigma, VT = sp.linalg.svd(X, full_matrices=False)
+    U_tilde = U[:, :rank]
+    Sigma_tilde = np.diag(Sigma[:rank])
+    VT_tilde = VT[:rank]
+
+    M_tilde = sp.linalg.solve(Sigma_tilde.T, (U_tilde.T @ Y @ VT_tilde.T).T).T
+    L = M_tilde.T # estimate of Koopman generator
+    return L
+
+#%% (Theta=Psi_X_T, dXdt=dPsi_X_T, lamb=0.05, n=d)
+def SINDy(Theta, dXdt, lamb=0.05):
+    d = dXdt.shape[1]
+    Xi = np.linalg.lstsq(Theta, dXdt, rcond=None)[0] # Initial guess: Least-squares
+    
+    for k in range(10): #which parameter should we be tuning here for RRR comp
+        smallinds = np.abs(Xi) < lamb # Find small coefficients
+        Xi[smallinds] = 0                          # and threshold
+        for ind in range(d):                       # n is state dimension
+            biginds = smallinds[:, ind] == 0
+            # Regress dynamics onto remaining terms to find sparse Xi
+            Xi[biginds, ind] = np.linalg.lstsq(Theta[:, biginds], dXdt[:, ind], rcond=None)[0]
+            
+    L = Xi
+    return L
+
+def ols(X, Y, pinv=True):
+    if pinv:
+        return np.linalg.pinv(X.T @ X) @ X.T @ Y
+    return np.linalg.inv(X.T @ X) @ X.T @ Y
+
+def rrr(X, Y, rank=8):
+    B_ols = ols(X, Y) # if infeasible use GD (numpy CG)
+    U, S, V = np.linalg.svd(Y.T @ X @ B_ols)
+    W = V[0:rank].T
+
+    B_rr = B_ols @ W @ W.T
+    L = B_rr#.T
+    return L
+
+@nb.njit(fastmath=True)
+def ridgeRegression(X, y, lamb=0.05):
+    return np.linalg.inv(X.T @ X + (lamb * np.identity(X.shape[1]))) @ X.T @ y
+
 class KoopmanTensor:
     def __init__(
         self,
         X,
         Y,
         U,
-        phi=observables.monomials(2),
-        psi=observables.monomials(2),
+        phi,
+        psi,
         regressor='ols',
         is_generator=False,
         p_inv=True
@@ -70,14 +113,14 @@ class KoopmanTensor:
 
         # Solve for M and B
         if regressor == 'rrr':
-            self.M = estimate_L.rrr(self.kronMatrix.T, self.Phi_Y.T).T
-            self.B = estimate_L.rrr(self.Phi_X.T, self.X.T)
+            self.M = rrr(self.kronMatrix.T, self.Phi_Y.T).T
+            self.B = rrr(self.Phi_X.T, self.X.T)
         if regressor == 'sindy':
-            self.M = estimate_L.SINDy(self.kronMatrix.T, self.Phi_Y.T).T
-            self.B = estimate_L.SINDy(self.Phi_X.T, self.X.T)
+            self.M = SINDy(self.kronMatrix.T, self.Phi_Y.T).T
+            self.B = SINDy(self.Phi_X.T, self.X.T)
         else:
-            self.M = estimate_L.ols(self.kronMatrix.T, self.Phi_Y.T, p_inv).T
-            self.B = estimate_L.ols(self.Phi_X.T, self.X.T, p_inv)
+            self.M = ols(self.kronMatrix.T, self.Phi_Y.T, p_inv).T
+            self.B = ols(self.Phi_X.T, self.X.T, p_inv)
 
         # reshape M into tensor K
         self.K = np.empty([

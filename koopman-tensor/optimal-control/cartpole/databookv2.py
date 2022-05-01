@@ -9,9 +9,9 @@ from control.matlab import lqr
 from scipy import integrate
 
 import sys
-sys.path.append('../')
-from tensor import KoopmanTensor
 sys.path.append('../../')
+from tensor import KoopmanTensor
+sys.path.append('../../../')
 import algorithmsv2_parallel as algorithmsv2
 import observables
 # import utilities
