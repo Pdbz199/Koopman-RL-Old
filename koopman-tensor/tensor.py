@@ -45,6 +45,9 @@ def ols(X, Y, pinv=True):
         return np.linalg.pinv(X.T @ X) @ X.T @ Y
     return np.linalg.inv(X.T @ X) @ X.T @ Y
 
+def OLS(X, Y, pinv=True):
+    return ols(X, Y, pinv)
+
 def rrr(X, Y, rank=8):
     B_ols = ols(X, Y) # if infeasible use GD (numpy CG)
     U, S, V = np.linalg.svd(Y.T @ X @ B_ols)

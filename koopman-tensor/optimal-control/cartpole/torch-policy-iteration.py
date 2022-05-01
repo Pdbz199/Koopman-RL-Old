@@ -61,7 +61,7 @@ while i < N:
 X = X[:,:-1]
 
 #%% Estimate Koopman tensor
-order = 3
+order = 2
 tensor = KoopmanTensor(
     X,
     Y,
