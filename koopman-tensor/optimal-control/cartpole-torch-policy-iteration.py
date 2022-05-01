@@ -61,7 +61,7 @@ while i < N:
 X = X[:,:-1]
 
 #%% Estimate Koopman tensor
-order = 2 # 3
+order = 3
 tensor = KoopmanTensor(
     X,
     Y,
@@ -159,9 +159,12 @@ for trajectory in range(MAX_TRAJECTORIES):
             discount = gamma**power
             new_Gval = new_Gval + ( discount * -cost( np.vstack(transitions[j][0]), np.array([[transitions[j][1]]]) ) ) # reward_batch[j] # .numpy()
             power += 1
-        batch_Gvals.append( new_Gval )
+
         Q_val = Q( np.vstack(state_batch[:,i]), np.array([[action_batch[i]]]) )[0,0]
-        # batch_Gvals.append( Q_val )
+
+        # batch_Gvals.append( new_Gval )
+        batch_Gvals.append( Q_val )
+
         errors.append( np.abs(Q_val - new_Gval) )
     expected_returns_batch = torch.FloatTensor(batch_Gvals) # (batch_size,)
     expected_returns_batch /= expected_returns_batch.max()
