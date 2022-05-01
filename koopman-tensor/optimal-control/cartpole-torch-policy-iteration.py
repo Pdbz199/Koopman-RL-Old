@@ -15,17 +15,19 @@ import sys
 sys.path.append('../')
 from tensor import KoopmanTensor
 sys.path.append('../../')
-# import cartpole_reward
+import cartpole_reward
 import estimate_L
 import observables
 
 #%% Initialize environment
-# env = gym.make('CartPole-v0')
-env = gym.make('env:CartPoleControlEnv-v0')
+env = gym.make('CartPole-v0')
+# env = gym.make('env:CartPoleControlEnv-v0')
+
 # def reward(xs, us):
 #     return cartpole_reward.defaultCartpoleRewardMatrix(xs, us)
 # def cost(xs, us):
 #     return -reward(xs, us)
+
 w_r = np.zeros([4,1])
 
 Q_ = np.array([
@@ -52,7 +54,7 @@ while i < N:
     done = False
     while i < N and not done:
         U[0,i] = env.action_space.sample()
-        Y[:,i], _, done, __ = env.step( np.array([int(U[0,i])]) )
+        Y[:,i], _, done, __ = env.step( int(U[0,i]) ) # np.array([int(U[0,i])])
         if not done:
             X[:,i+1] = Y[:,i]
         i += 1
@@ -74,9 +76,10 @@ state_dim = env.observation_space.shape[0]
 M_plus_N_minus_ones = np.arange( (state_dim-1), order + (state_dim-1) + 1 )
 phi_dim = int( np.sum( comb( M_plus_N_minus_ones, np.ones_like(M_plus_N_minus_ones) * (state_dim-1) ) ) )
 # action_dim = env.action_space.n
-action_bound = 5
-u_range = np.array([-action_bound, action_bound])
-all_us = np.arange(u_range[0], u_range[1], 0.1)
+# action_bound = 5
+# u_range = np.array([-action_bound, action_bound])
+u_range = np.array([0, 2])
+all_us = np.arange(u_range[0], u_range[1]) # 0.1
 
 # HIDDEN_SIZE = 256
 
@@ -97,7 +100,7 @@ learning_rate = 0.003
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
 Horizon = 500
-MAX_TRAJECTORIES = 6000 # 4000 with trad REINFORCE | 500, 750 with other NN spec
+MAX_TRAJECTORIES = 10000 # 4000 with trad REINFORCE | 500, 750 with other NN spec
 gamma = 0.99
 score = []
 
@@ -130,7 +133,7 @@ for trajectory in range(MAX_TRAJECTORIES):
         act_prob = model(torch.from_numpy(phi_curr_state[:,0]).float())
         action = np.random.choice(all_us, p=act_prob.data.numpy())
         prev_state = curr_state[:,0]
-        curr_state, _, done, info = env.step( np.array([action]) )
+        curr_state, _, done, info = env.step( action ) # np.array([action])
         curr_state = np.vstack(curr_state)
         done = bool(
             curr_state[0,0] < -env.x_threshold
@@ -153,18 +156,19 @@ for trajectory in range(MAX_TRAJECTORIES):
         new_Gval = 0
         power = 0
         for j in range(i, len(transitions)):
-            new_Gval = new_Gval + ((gamma**power) * reward_batch[j]).numpy()
+            discount = gamma**power
+            new_Gval = new_Gval + ( discount * -cost( np.vstack(transitions[j][0]), np.array([[transitions[j][1]]]) ) ) # reward_batch[j] # .numpy()
             power += 1
         batch_Gvals.append( new_Gval )
         Q_val = Q( np.vstack(state_batch[:,i]), np.array([[action_batch[i]]]) )[0,0]
         # batch_Gvals.append( Q_val )
         errors.append( np.abs(Q_val - new_Gval) )
-    expected_returns_batch = torch.FloatTensor(batch_Gvals)
-    expected_returns_batch /= expected_returns_batch.max() # expected_returns_batch.min()
+    expected_returns_batch = torch.FloatTensor(batch_Gvals) # (batch_size,)
+    expected_returns_batch /= expected_returns_batch.max()
 
-    pred_batch = model(torch.from_numpy(tensor.phi(state_batch.data.numpy())).float().T)
-    # prob_batch = pred_batch.gather(dim=1, index=action_batch.long().view(-1,1)).squeeze()
-    prob_batch = pred_batch.T
+    pred_batch = model(torch.from_numpy(tensor.phi(state_batch.data.numpy())).float().T) # (batch_size, num_actions)
+    # print(action_batch.long().view(-1,1).shape) # (batch_size, 1)
+    prob_batch = pred_batch.gather(dim=1, index=(action_batch.long().view(-1,1)-u_range[0])).squeeze() # (batch_size,)
 
     loss = -torch.sum(torch.log(prob_batch) * expected_returns_batch)
 
@@ -222,7 +226,7 @@ def watch_agent():
             phi_state = tensor.phi(state)
             pred = model(torch.from_numpy(phi_state[:,0]).float())
             action = np.random.choice(all_us, p=pred.data.numpy())
-            state, reward, done, _ = env.step( np.array([action]) )
+            state, reward, done, _ = env.step( action ) # np.array([action])
             state = np.vstack(state)
             episode_rewards.append(reward)
             if done:
