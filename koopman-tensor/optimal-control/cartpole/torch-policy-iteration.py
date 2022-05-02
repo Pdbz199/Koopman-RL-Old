@@ -103,7 +103,7 @@ MAX_TRAJECTORIES = 10000 # 4000 with trad REINFORCE | 500, 750 with other NN spe
 gamma = 0.99
 score = []
 
-w_hat_batch_size = 2**7
+w_hat_batch_size = 2**9
 
 def Q(x, u):
     x_batch_indices = np.random.choice(X.shape[1], w_hat_batch_size, replace=False)
