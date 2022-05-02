@@ -13,10 +13,9 @@ from scipy.special import comb
 
 import sys
 sys.path.append('../../')
-from tensor import KoopmanTensor
+from tensor import KoopmanTensor, OLS
 sys.path.append('../../../')
-import cartpole_reward
-import estimate_L
+# import cartpole_reward
 import observables
 
 #%% Initialize environment
@@ -31,10 +30,10 @@ env = gym.make('CartPole-v0')
 w_r = np.zeros([4,1])
 
 Q_ = np.array([
-    [10, 0,  0, 0],
-    [ 0, 1,  0, 0],
-    [ 0, 0, 10, 0],
-    [ 0, 0,  0, 1]
+    [10.0, 0.0,  0.0, 0.0],
+    [ 0.0, 1.0,  0.0, 0.0],
+    [ 0.0, 0.0, 10.0, 0.0],
+    [ 0.0, 0.0,  0.0, 1.0]
 ])
 R = 0.1
 def cost(x, u):
@@ -104,24 +103,31 @@ MAX_TRAJECTORIES = 10000 # 4000 with trad REINFORCE | 500, 750 with other NN spe
 gamma = 0.99
 score = []
 
-def w_hat_t(x):
-    phi_x = tensor.phi(x)
-    pi_response = model(torch.from_numpy(phi_x[:,0]).float())
-    phi_x_primes = np.zeros([all_us.shape[0], phi_x.shape[0]])
-    costs = np.zeros([all_us.shape[0]])
-    for i in range(all_us.shape[0]):
-        phi_x_primes[i] = ( tensor.phi_f(x, all_us[i]) * pi_response[i].data.numpy() )[:, 0]
-        costs[i] = -cost(x, np.array([[all_us[i]]]))[0,0] * pi_response[i].data.numpy()
-    expectation_term_1 = torch.sum(torch.from_numpy(phi_x_primes))
-    expectation_term_2 = torch.sum(torch.from_numpy(costs))
-
-    return estimate_L.ols(
-        (phi_x - gamma*expectation_term_1.data.numpy().T).T,
-        np.array([[expectation_term_2.T.data.numpy()]])
-    )
+w_hat_batch_size = 2**7
 
 def Q(x, u):
-    return -cost(x, u) + gamma*w_hat_t(x).T @ tensor.phi_f(x, u)
+    x_batch_indices = np.random.choice(X.shape[1], w_hat_batch_size, replace=False)
+    x_batch = X[:, x_batch_indices]
+    phi_x_batch = tensor.phi(x_batch)
+
+    pi_response = model(torch.from_numpy(phi_x_batch.T).float()) # (w_hat_batch_size, all_us.shape[0])
+
+    phi_x_primes = np.zeros([phi_x_batch.shape[1], all_us.shape[0], phi_x_batch.shape[0]])
+    costs = -cost(x_batch, all_us) * pi_response.data.numpy() # (w_hat_batch_size, all_us.shape[0])
+    for i in range(phi_x_batch.shape[1]):
+        x = np.vstack(x_batch[:,i])
+        for j in range(all_us.shape[0]):
+            phi_x_primes[i,j] = ( tensor.phi_f(x, all_us[j]) * pi_response[i,j].data.numpy() )[:, 0]
+
+    expectation_term_1 = torch.sum(torch.from_numpy(phi_x_primes), dim=1) # (w_hat_batch_size, phi_dim)
+    expectation_term_2 = torch.sum(torch.from_numpy(costs), dim=1) # (w_hat_batch_size,)
+
+    w_hat_t = OLS(
+        (phi_x_batch - gamma*expectation_term_1.data.numpy().T).T,
+        np.array([expectation_term_2.data.numpy()]).T
+    )
+
+    return -cost(x, u) + gamma*w_hat_t.T @ tensor.phi_f(x, u)
 
 for trajectory in range(MAX_TRAJECTORIES):
     curr_state = np.vstack(env.reset())
