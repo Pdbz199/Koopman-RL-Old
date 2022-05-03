@@ -19,8 +19,9 @@ sys.path.append('../../../')
 import observables
 
 #%% Initialize environment
-env = gym.make('CartPole-v0')
-# env = gym.make('env:CartPoleControlEnv-v0')
+env_string = 'CartPole-v0'
+# env_string = 'env:CartPoleControlEnv-v0'
+env = gym.make(env_string)
 
 # def reward(xs, us):
 #     return cartpole_reward.defaultCartpoleRewardMatrix(xs, us)
@@ -53,7 +54,7 @@ while i < N:
     done = False
     while i < N and not done:
         U[0,i] = env.action_space.sample()
-        Y[:,i], _, done, __ = env.step( int(U[0,i]) ) # np.array([int(U[0,i])])
+        Y[:,i], _, done, __ = env.step( int(U[0,i]) if env_string == 'CartPole-v0' else np.array([int(U[0,i])]) )
         if not done:
             X[:,i+1] = Y[:,i]
         i += 1
@@ -74,10 +75,7 @@ tensor = KoopmanTensor(
 state_dim = env.observation_space.shape[0]
 M_plus_N_minus_ones = np.arange( (state_dim-1), order + (state_dim-1) + 1 )
 phi_dim = int( np.sum( comb( M_plus_N_minus_ones, np.ones_like(M_plus_N_minus_ones) * (state_dim-1) ) ) )
-# action_dim = env.action_space.n
-# action_bound = 5
-# u_range = np.array([-action_bound, action_bound])
-u_range = np.array([0, 2])
+u_range = np.array([0, 2]) if env_string == 'CartPole-v0' else np.array([-5, 6])
 all_us = np.arange(u_range[0], u_range[1]) # 0.1
 
 # HIDDEN_SIZE = 256
@@ -103,7 +101,7 @@ MAX_TRAJECTORIES = 10000 # 4000 with trad REINFORCE | 500, 750 with other NN spe
 gamma = 0.99
 score = []
 
-w_hat_batch_size = 2**9
+w_hat_batch_size = 2**10
 
 def Q(x, u):
     x_batch_indices = np.random.choice(X.shape[1], w_hat_batch_size, replace=False)
@@ -112,18 +110,14 @@ def Q(x, u):
 
     pi_response = model(torch.from_numpy(phi_x_batch.T).float()) # (w_hat_batch_size, all_us.shape[0])
 
-    phi_x_primes = np.zeros([phi_x_batch.shape[1], all_us.shape[0], phi_x_batch.shape[0]])
-    costs = -cost(x_batch, all_us) * pi_response.data.numpy() # (w_hat_batch_size, all_us.shape[0])
-    for i in range(phi_x_batch.shape[1]):
-        x = np.vstack(x_batch[:,i])
-        for j in range(all_us.shape[0]):
-            phi_x_primes[i,j] = ( tensor.phi_f(x, all_us[j]) * pi_response[i,j].data.numpy() )[:, 0]
+    phi_x_primes = tensor.K_(np.array([all_us])) @ phi_x_batch # (all_us.shape[0], phi_dim, w_hat_batch_size)
+    expectation_term_1 = torch.sum(torch.from_numpy(phi_x_primes), dim=0) # (w_hat_batch_size, phi_dim)
 
-    expectation_term_1 = torch.sum(torch.from_numpy(phi_x_primes), dim=1) # (w_hat_batch_size, phi_dim)
+    costs = -cost(x_batch, all_us) * pi_response.data.numpy() # (w_hat_batch_size, all_us.shape[0])
     expectation_term_2 = torch.sum(torch.from_numpy(costs), dim=1) # (w_hat_batch_size,)
 
     w_hat_t = OLS(
-        (phi_x_batch - gamma*expectation_term_1.data.numpy().T).T,
+        (phi_x_batch - gamma*expectation_term_1.data.numpy()).T,
         np.array([expectation_term_2.data.numpy()]).T
     )
 
@@ -139,7 +133,7 @@ for trajectory in range(MAX_TRAJECTORIES):
         act_prob = model(torch.from_numpy(phi_curr_state[:,0]).float())
         action = np.random.choice(all_us, p=act_prob.data.numpy())
         prev_state = curr_state[:,0]
-        curr_state, _, done, info = env.step( action ) # np.array([action])
+        curr_state, _, done, info = env.step( action if env_string == 'CartPole-v0' else np.array([action]) )
         curr_state = np.vstack(curr_state)
         done = bool(
             curr_state[0,0] < -env.x_threshold
@@ -176,7 +170,6 @@ for trajectory in range(MAX_TRAJECTORIES):
     expected_returns_batch /= expected_returns_batch.max()
 
     pred_batch = model(torch.from_numpy(tensor.phi(state_batch.data.numpy())).float().T) # (batch_size, num_actions)
-    # print(action_batch.long().view(-1,1).shape) # (batch_size, 1)
     prob_batch = pred_batch.gather(dim=1, index=(action_batch.long().view(-1,1)-u_range[0])).squeeze() # (batch_size,)
 
     loss = -torch.sum(torch.log(prob_batch) * expected_returns_batch)
@@ -202,7 +195,7 @@ for trajectory in range(MAX_TRAJECTORIES):
     # Average score for trajectory
     if trajectory % 50 == 0 and trajectory>0:
         print(f'Trajectory {trajectory}\tAverage Score: {np.mean(score[-50:-1])}')
-        print("Mean error between Q and G:", np.mean(errors))
+        print("Average error between Q and G along trajectory:", np.mean(errors))
 
 def running_mean(x):
     N = 50
@@ -235,7 +228,7 @@ def watch_agent():
             phi_state = tensor.phi(state)
             pred = model(torch.from_numpy(phi_state[:,0]).float())
             action = np.random.choice(all_us, p=pred.data.numpy())
-            state, reward, done, _ = env.step( action ) # np.array([action])
+            state, reward, done, _ = env.step( action if env_string == 'CartPole-v0' else np.array([action]) )
             state = np.vstack(state)
             episode_rewards.append(reward)
             if done:

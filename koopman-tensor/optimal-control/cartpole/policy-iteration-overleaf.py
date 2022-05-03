@@ -74,33 +74,53 @@ step_size = 1 # 0.1
 all_us = np.arange(u_range[0], u_range[1], step_size)
 
 #%% Handy functions
-def w_hat_t(xs, pi_t):
-    phi_xs = tensor.phi(xs) # (dim_phi, batch_size)
-    
-    phi_xs_primes = np.zeros([phi_xs.shape[1], all_us.shape[0], phi_xs.shape[0]]) # (batch_size, num_actions, dim_phi)
-    costs = np.zeros([phi_xs.shape[1], all_us.shape[0]])
-    for j in range(xs.shape[1]):
-        x = np.vstack(xs[:,j])
-        for i in range(all_us.shape[0]):
-            pi_t_response = pi_t( x, np.array([[all_us[i]]]) )
-            phi_xs_primes[j,i] = ( tensor.phi_f(x, all_us[i]) * pi_t_response )[:, 0]
-            costs[j,i] = -cost(x, np.array([[all_us[i]]]))[0,0] * pi_t_response
-        
-    expectation_term_1 = np.sum(phi_xs_primes, axis=0) # TODO: Check 'axis=' spec
-    expectation_term_2 = np.sum(costs, axis=0) # TODO: Check 'axis=' spec
+w_hat_batch_size = 2**10
+
+def w_hat_t(pi_t):
+    x_batch_indices = np.random.choice(X.shape[1], w_hat_batch_size, replace=False)
+    x_batch = X[:, x_batch_indices]
+    phi_x_batch = tensor.phi(x_batch)
+
+    pi_response  = pi_t( x, np.array([[all_us[i]]]) )
+
+    phi_x_primes = tensor.K_(np.array([all_us])) @ phi_x_batch # (all_us.shape[0], phi_dim, w_hat_batch_size)
+    expectation_term_1 = np.sum(phi_x_primes, axis=0) # (w_hat_batch_size, phi_dim)
+
+    costs = -cost(x_batch, all_us) * pi_response.data.numpy() # (w_hat_batch_size, all_us.shape[0])
+    expectation_term_2 = np.sum(costs, axis=1) # (w_hat_batch_size,)
 
     return OLS(
-        (phi_xs - gamma*expectation_term_1.data.numpy().T).T,
-        np.array([[expectation_term_2.T.data.numpy()]])
+        (phi_x_batch - gamma*expectation_term_1.data.numpy()).T,
+        np.array([expectation_term_2.data.numpy()]).T
     )
+
+# def w_hat_t(xs, pi_t):
+#     phi_xs = tensor.phi(xs) # (dim_phi, batch_size)
+    
+#     phi_xs_primes = np.zeros([phi_xs.shape[1], all_us.shape[0], phi_xs.shape[0]]) # (batch_size, num_actions, dim_phi)
+#     costs = np.zeros([phi_xs.shape[1], all_us.shape[0]])
+#     for j in range(xs.shape[1]):
+#         x = np.vstack(xs[:,j])
+#         for i in range(all_us.shape[0]):
+#             pi_t_response = pi_t( x, np.array([[all_us[i]]]) )
+#             phi_xs_primes[j,i] = ( tensor.phi_f(x, all_us[i]) * pi_t_response )[:, 0]
+#             costs[j,i] = -cost(x, np.array([[all_us[i]]]))[0,0] * pi_t_response
+        
+#     expectation_term_1 = np.sum(phi_xs_primes, axis=0) # TODO: Check 'axis=' spec
+#     expectation_term_2 = np.sum(costs, axis=0) # TODO: Check 'axis=' spec
+
+#     return OLS(
+#         (phi_xs - gamma*expectation_term_1.data.numpy().T).T,
+#         np.array([[expectation_term_2.T.data.numpy()]])
+#     )
 
 # def Q(x, u):
 #     return -cost(x, u) + gamma*w_hat_t(x).T @ tensor.phi_f(x, u)
 
-def inner_pi_us(us, xs, w_hat):
+def inner_pi_us(us, xs):
     phi_x_primes = tensor.K_(us) @ tensor.phi(xs)
-    inner_pi_us = -(cost(xs, us).T + gamma*(w_hat.T @ phi_x_primes)[:,0]) # TODO: negative cost?
-    return inner_pi_us
+    inner_pi_us_response = -(cost(xs, us).T + gamma*(w_hat.T @ phi_x_primes)[:,0]) # TODO: negative cost?
+    return inner_pi_us_response
 
 def pi_ts(xs, w_hat, pi_tminus1s):
     # delta = 1e-25
@@ -111,7 +131,7 @@ def pi_ts(xs, w_hat, pi_tminus1s):
     print("max_inner_pi_u shape:", max_inner_pi_u.shape)
     diff = inner_pi_us_response - max_inner_pi_u
     print("diff shape:", diff.shape)
-    pi_us = np.exp(diff) * pi_tminus1s(xs) #+ delta
+    pi_us = np.exp(diff) * pi_tminus1s(xs) # + delta
     print("pi_us shape:", pi_us.shape)
     Z_x = np.sum(pi_us, axis=0)
     print("Z_x shape:", Z_x)
@@ -136,6 +156,6 @@ iter = 10000
 pi = pi_0
 for i in range(iter):
     x_batch_indices = np.random.choice(X.shape[1], batch_size, replace=False)
-    x_batch = X[:, x_batch_indices] # X.shape[0] x batch_size
-    w_hat = w_hat_t(x_batch, pi)
+    x_batch = X[:, x_batch_indices]
+    w_hat = w_hat_t(pi)
     pi = pi_ts(x_batch, w_hat, pi) # TODO: This isn't quite right I think

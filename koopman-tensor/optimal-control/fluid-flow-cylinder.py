@@ -3,7 +3,10 @@ import numpy as np
 import scipy as sp
 import torch
 
-from scipy.integrate import odeint
+seed = 123
+np.random.seed(seed)
+
+from scipy.integrate import solve_ivp
 
 import sys
 sys.path.append('../')
@@ -19,22 +22,45 @@ omega = 1.0
 mu = 0.1
 A = 0.1
 lamb = 1
-t_span = np.arange(0, 0.02, 0.001)
+# t_span = np.arange(0, 0.02, 0.001)
+t_span = np.arange(0, 0.001, 0.0001)
 
-def continuous_f(input, t, u):
+# def continuous_f(input, t, u):
+#     """
+#         INPUTS:
+#         input - state vector
+#         t - timestep
+#         u - action vector
+#     """
+#     x, y, z = input
+
+#     x_dot = mu*x - omega*y + A*x*z
+#     y_dot = omega*x + mu*y + A*y*z
+#     z_dot = -lamb * (z - np.power(x, 2) - np.power(y, 2))
+
+#     return [x_dot, y_dot + u, z_dot]
+
+def continuous_f(u):
     """
         INPUTS:
-        input - state vector
-        t - timestep
         u - action vector
     """
-    x, y, z = input
 
-    x_dot = mu*x - omega*y + A*x*z
-    y_dot = omega*x + mu*y + A*y*z
-    z_dot = -lamb * (z - np.power(x, 2) - np.power(y, 2))
+    def f_u(t, input):
+        """
+            INPUTS:
+            input - state vector
+            t - timestep
+        """
+        x, y, z = input
 
-    return [x_dot, y_dot + u, z_dot]
+        x_dot = mu*x - omega*y + A*x*z
+        y_dot = omega*x + mu*y + A*y*z
+        z_dot = -lamb * (z - np.power(x, 2) - np.power(y, 2))
+
+        return [x_dot, y_dot + u, z_dot]
+
+    return f_u
 
 def f(state, action):
     """
@@ -47,9 +73,9 @@ def f(state, action):
     """
     u = action[:,0]
 
-    soln = odeint(continuous_f, state[:,0], t_span, args=(u,))
+    soln = solve_ivp(fun=continuous_f(u), t_span=[t_span[0], t_span[-1]], y0=state[:,0], method='RK45')
     
-    return np.vstack(soln[-1])
+    return np.vstack(soln.y[:,-1])
 
 #%%
 x_dim = 3
@@ -59,28 +85,27 @@ u_column_shape = [u_dim, 1]
 order = 2
 M_plus_N_minus_ones = np.arange( (x_dim-1), order + (x_dim-1) + 1 )
 phi_dim = int( np.sum( sp.special.comb( M_plus_N_minus_ones, np.ones_like(M_plus_N_minus_ones) * (x_dim-1) ) ) )
-N = 20000 # Number of datapoints
+
+num_episodes = 500
+num_steps_per_episode = 4000
+N = num_episodes*num_steps_per_episode # Number of datapoints
 X = np.zeros([x_dim,N])
 Y = np.zeros([x_dim,N])
 U = np.zeros([u_dim,N])
 
-num_episodes = 200
-num_steps_per_episode = 100
-
 initial_xs = np.zeros([num_episodes, x_dim])
 
 for episode in range(num_episodes):
-    x = np.random.random(x_column_shape) * 2 * np.random.choice([-1,1], size=x_column_shape)
-    for step in range(num_steps_per_episode):
-        u = np.random.choice(all_us, size=u_column_shape)
-        x = f(x, u)
-    initial_xs[episode] = x[:,0]
+    x = np.random.random(x_column_shape) * 0.5 * np.random.choice([-1,1], size=x_column_shape)
+    soln = solve_ivp(fun=continuous_f(np.array([[0]])), t_span=[0, t_span[-1]*num_steps_per_episode], y0=x[:,0], method='RK45')
+    initial_xs[episode] = soln.y[:,-1]
 
 for episode in range(num_episodes):
     x = np.vstack(initial_xs[episode])
+    # x = np.random.rand(x_dim,1)
     for step in range(num_steps_per_episode):
         X[:,(episode*num_steps_per_episode)+step] = x[:,0]
-        u = np.array([[np.random.choice(all_us)]])
+        u = np.random.choice(all_us, size=[u_dim,1])
         U[:,(episode*num_steps_per_episode)+step] = u[:,0]
         x = f(x, u)
         Y[:,(episode*num_steps_per_episode)+step] = x[:,0]
@@ -98,22 +123,24 @@ tensor = KoopmanTensor(
 #%% Training error
 training_norms = np.zeros([num_episodes, num_steps_per_episode])
 for episode in range(num_episodes):
-    x = np.vstack(X[:,episode])
     for step in range(num_steps_per_episode):
+        x = np.vstack(X[:,(episode*num_steps_per_episode)+step])
         u = np.vstack(U[:,(episode*num_steps_per_episode)+step])
 
         true_x_prime = np.vstack(Y[:,(episode*num_steps_per_episode)+step])
         predicted_x_prime = tensor.f(x, u)
 
         training_norms[episode,step] = utilities.l2_norm(true_x_prime, predicted_x_prime)
-
-        x = true_x_prime
 print(f"Mean training norm per episode over {num_episodes} episodes:", np.mean( np.sum(training_norms, axis=1) ))
 
 #%% Testing error
 testing_norms = np.zeros([num_episodes, num_steps_per_episode])
 for episode in range(num_episodes):
-    x = np.vstack(initial_xs[episode])
+    # x = np.vstack(initial_xs[episode])
+    # x = np.random.random(x_column_shape) * np.random.choice([-1,1], size=x_column_shape)
+    init_x = np.random.random(x_column_shape) * 0.5 * np.random.choice([-1,1], size=x_column_shape)
+    soln = solve_ivp(fun=continuous_f(np.array([[0]])), t_span=[0, t_span[-1]*num_steps_per_episode], y0=init_x[:,0], method='RK45')
+    x = np.vstack(soln.y[:,-1])
     for step in range(num_steps_per_episode):
         u = np.random.choice(all_us, size=u_column_shape)
 
