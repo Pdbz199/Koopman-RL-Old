@@ -19,17 +19,16 @@ sys.path.append('../../../')
 import observables
 
 #%% Initialize environment
-env_string = 'CartPole-v0'
-# env_string = 'env:CartPoleControlEnv-v0'
+# env_string = 'CartPole-v0'
+env_string = 'env:CartPoleControlEnv-v0'
 env = gym.make(env_string)
 
 # def reward(xs, us):
-#     return cartpole_reward.defaultCartpoleRewardMatrix(xs, us)
+#     return cartpole_reward.defaultCartpoleRewardMatrix(xs, us).T
 # def cost(xs, us):
 #     return -reward(xs, us)
 
 w_r = np.zeros([4,1])
-
 Q_ = np.array([
     [10.0, 0.0,  0.0, 0.0],
     [ 0.0, 1.0,  0.0, 0.0],
@@ -41,7 +40,7 @@ def cost(x, u):
     # Assuming that data matrices are passed in for X and U. Columns vectors are snapshots
     _x = x - w_r
     mat = np.vstack(np.diag(_x.T @ Q_ @ _x)) + np.power(u, 2)*R
-    return mat
+    return mat.T
 
 #%% Construct snapshots of u from random agent and initial states x0
 N = 20000 # Number of datapoints
@@ -101,9 +100,8 @@ MAX_TRAJECTORIES = 10000 # 4000 with trad REINFORCE | 500, 750 with other NN spe
 gamma = 0.99
 score = []
 
-w_hat_batch_size = 2**10
-
-def Q(x, u):
+w_hat_batch_size = 2**12 # 4096
+def w_hat_t():
     x_batch_indices = np.random.choice(X.shape[1], w_hat_batch_size, replace=False)
     x_batch = X[:, x_batch_indices]
     phi_x_batch = tensor.phi(x_batch)
@@ -111,16 +109,21 @@ def Q(x, u):
     pi_response = model(torch.from_numpy(phi_x_batch.T).float()) # (w_hat_batch_size, all_us.shape[0])
 
     phi_x_primes = tensor.K_(np.array([all_us])) @ phi_x_batch # (all_us.shape[0], phi_dim, w_hat_batch_size)
-    expectation_term_1 = torch.sum(torch.from_numpy(phi_x_primes), dim=0) # (w_hat_batch_size, phi_dim)
 
-    costs = -cost(x_batch, all_us) * pi_response.data.numpy() # (w_hat_batch_size, all_us.shape[0])
-    expectation_term_2 = torch.sum(torch.from_numpy(costs), dim=1) # (w_hat_batch_size,)
+    expectation_term_1 = torch.sum(
+        torch.from_numpy(phi_x_primes) * pi_response.reshape( pi_response.shape[1],1,pi_response.shape[0] ),
+        dim=0
+    ) # (phi_dim, w_hat_batch_size)
 
-    w_hat_t = OLS(
+    costs = -cost(x_batch, all_us) * pi_response.T.data.numpy() # (all_us.shape[0], w_hat_batch_size)
+    expectation_term_2 = torch.sum(torch.from_numpy(costs), dim=0) # (w_hat_batch_size,)
+
+    return OLS(
         (phi_x_batch - gamma*expectation_term_1.data.numpy()).T,
         np.array([expectation_term_2.data.numpy()]).T
     )
 
+def Q(x, u, w_hat_t):
     return -cost(x, u) + gamma*w_hat_t.T @ tensor.phi_f(x, u)
 
 for trajectory in range(MAX_TRAJECTORIES):
@@ -152,6 +155,7 @@ for trajectory in range(MAX_TRAJECTORIES):
 
     batch_Gvals = []
     errors = []
+    w_hat = w_hat_t()
     for i in range(len(transitions)):
         new_Gval = 0
         power = 0
@@ -160,7 +164,7 @@ for trajectory in range(MAX_TRAJECTORIES):
             new_Gval = new_Gval + ( discount * -cost( np.vstack(transitions[j][0]), np.array([[transitions[j][1]]]) ) ) # reward_batch[j] # .numpy()
             power += 1
 
-        Q_val = Q( np.vstack(state_batch[:,i]), np.array([[action_batch[i]]]) )[0,0]
+        Q_val = Q( np.vstack(state_batch[:,i]), np.array([[action_batch[i]]]), w_hat )[0,0]
 
         # batch_Gvals.append( new_Gval )
         batch_Gvals.append( Q_val )
