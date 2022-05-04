@@ -17,29 +17,45 @@ from tensor import KoopmanTensor
 sys.path.append('../../../')
 import cartpole_reward
 import observables
+import utilities
 
 #%% Initialize environment
-env = gym.make('CartPole-v0')
+# env_string = 'CartPole-v0'
+env_string = 'env:CartPoleControlEnv-v0'
+env = gym.make(env_string)
+
+#%% Initialize important vars
+order = 2
+x_dim = env.observation_space.shape[0]
+u_dim = 1
+x_column_shape = [x_dim, 1]
+u_column_shape = [u_dim, 1]
+Ns = np.arange( x_dim - 1, x_dim - 1 + (order+1) )
+phi_dim = int( torch.sum( torch.from_numpy( comb( Ns, np.ones_like(Ns) * (order+1) ) ) ) )
+
+step_size = 1
+u_bounds = np.array([[0, 1+step_size]]) if env_string == 'CartPole-v0' else np.array([[-5, 5+step_size]])
+All_U = np.arange(start=u_bounds[0,0], stop=u_bounds[0,1], step=step_size).reshape(1,-1)
+All_U = np.round(All_U, decimals=1) # (1, num_actions)
 
 #%% Construct snapshots of u from random agent and initial states x0
 N = 20000 # Number of datapoints
-U = np.zeros([1,N])
-X = np.zeros([4,N+1])
-Y = np.zeros([4,N])
+U = np.zeros([u_dim,N])
+X = np.zeros([x_dim,N])
+Y = np.zeros([x_dim,N])
 i = 0
 while i < N:
-    X[:,i] = env.reset()
+    x = env.reset()
     done = False
     while i < N and not done:
-        U[0,i] = env.action_space.sample()
-        Y[:,i], _, done, __ = env.step( int(U[0,i]) )
-        if not done:
-            X[:,i+1] = Y[:,i]
+        X[:,i] = x
+        U[0,i] = np.random.choice(All_U[0])
+        action = int(U[0,i]) if env_string == 'CartPole-v0' else U[:,i]
+        Y[:,i], _, done, __ = env.step( action )
+        x = Y[:,i]
         i += 1
-X = X[:,:-1]
 
 #%% Estimate Koopman tensor
-order = 2
 tensor = KoopmanTensor(
     X,
     Y,
@@ -49,10 +65,40 @@ tensor = KoopmanTensor(
     regressor='ols'
 )
 
-x_dim = env.observation_space.shape[0]
-Ns = np.arange( x_dim - 1, x_dim - 1 + (order+1) )
-phi_dim = int( torch.sum( torch.from_numpy( comb( Ns, np.ones_like(Ns) * (order+1) ) ) ) )
+#%% Training error
+training_norms = np.zeros([N])
+for step in range(N):
+    x = np.vstack(X[:,step])
+    u = np.vstack(U[:,step])
 
+    true_x_prime = np.vstack(Y[:,step])
+    predicted_x_prime = tensor.f(x, u)
+
+    training_norms[step] = utilities.l2_norm(true_x_prime, predicted_x_prime)
+print(f"Mean training norm per episode over {N} steps:", np.mean( training_norms ))
+
+#%% Testing error
+num_episodes = 200
+testing_norms = np.zeros([num_episodes])
+for episode in range(num_episodes):
+    x = env.reset()
+    done = False
+    while not done:
+        u = np.random.choice(All_U[0])
+        action = int(u) if env_string == 'CartPole-v0' else np.array([u])
+
+        true_x_prime, _, done, ___ = env.step(action)
+        predicted_x_prime = tensor.f(
+            np.vstack(x),
+            action
+        )[:,0]
+
+        testing_norms[episode] += utilities.l2_norm(true_x_prime, predicted_x_prime)
+
+        x = true_x_prime
+print(f"Mean testing norm per episode over {num_episodes} episodes:", np.mean( testing_norms ))
+
+#%% Pytorch setup
 model = torch.nn.Sequential(
     torch.nn.Linear(phi_dim, 1)
 )
@@ -67,25 +113,24 @@ lamb = 0.0001
 learning_rate = 0.003
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
-step_size = 1
-u_bounds = np.array([[0, 1+step_size]])
-All_U = np.arange(start=u_bounds[0,0], stop=u_bounds[0,1], step=step_size).reshape(1,-1)
-All_U = np.round(All_U, decimals=1)
-
-def cost(x, u):
-    return -cartpole_reward.defaultCartpoleRewardMatrix(x, u)
-# Q_ = np.array([
-#     [10.0, 0.0,  0.0, 0.0],
-#     [ 0.0, 1.0,  0.0, 0.0],
-#     [ 0.0, 0.0, 10.0, 0.0],
-#     [ 0.0, 0.0,  0.0, 1.0]
-# ])
-# R = 0.1
+#%% Define cost
 # def cost(x, u):
-#     # Assuming that data matrices are passed in for X and U. Columns vectors are snapshots
-#     mat = np.vstack(np.diag(x.T @ Q_ @ x)) + np.power(u, 2)*R
-#     return mat.T
+#     return -cartpole_reward.defaultCartpoleRewardMatrix(x, u)
 
+Q_ = np.array([
+    [10.0, 0.0,  0.0, 0.0],
+    [ 0.0, 1.0,  0.0, 0.0],
+    [ 0.0, 0.0, 10.0, 0.0],
+    [ 0.0, 0.0,  0.0, 1.0]
+])
+R = 0.1
+def cost(x, u):
+    # Assuming that data matrices are passed in for X and U. Columns vectors are snapshots
+    # x.T Q x + u.T R u
+    mat = np.vstack(np.diag(x.T @ Q_ @ x)) + np.power(u, 2)*R
+    return mat.T
+
+#%% Control
 def inner_pi_us(us, xs):
     phi_x_primes = tensor.K_(us) @ tensor.phi(xs) # us.shape[1] x dim_phi x xs.shape[1]
 
