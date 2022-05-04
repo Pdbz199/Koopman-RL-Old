@@ -264,13 +264,14 @@ rewards = np.zeros([num_episodes])
 for episode in range(num_episodes):
     state = np.vstack(env.reset())
     done = False
-    episode_rewards = []
     while not done:
         # env.render()
-        action = policy(state)
-        state, reward, done, _ = env.step( action if env_string == 'CartPole-v0' else np.array([action]) )
+        u = policy(state)
+        action = u if env_string == 'CartPole-v0' else np.array([u])
+        state, _, done, __ = env.step(action)
         state = np.vstack(state)
-        episode_rewards.append(reward)
-    rewards[episode] = np.sum(episode_rewards)
+        rewards[episode] += 1
 # env.close()
 print(f"Mean reward per episode over {num_episodes} episodes:", np.mean(rewards))
+
+#%%
