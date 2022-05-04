@@ -268,7 +268,7 @@ for episode in range(num_episodes):
     while not done:
         # env.render()
         action = policy(state)
-        state, reward, done, _ = env.step( action )
+        state, reward, done, _ = env.step( action if env_string == 'CartPole-v0' else np.array([action]) )
         state = np.vstack(state)
         episode_rewards.append(reward)
     rewards[episode] = np.sum(episode_rewards)
