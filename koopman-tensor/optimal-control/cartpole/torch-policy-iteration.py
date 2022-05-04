@@ -74,8 +74,10 @@ tensor = KoopmanTensor(
 state_dim = env.observation_space.shape[0]
 M_plus_N_minus_ones = np.arange( (state_dim-1), order + (state_dim-1) + 1 )
 phi_dim = int( np.sum( comb( M_plus_N_minus_ones, np.ones_like(M_plus_N_minus_ones) * (state_dim-1) ) ) )
-u_range = np.array([0, 2]) if env_string == 'CartPole-v0' else np.array([-5, 6])
-all_us = np.arange(u_range[0], u_range[1]) # 0.1
+step_size = 1 if env_string == 'CartPole-v0' else 0.1
+u_range = np.array([0, 1+step_size]) if env_string == 'CartPole-v0' else np.array([-5, 5+step_size])
+all_us = np.arange(u_range[0], u_range[1], step_size)
+all_us = np.round(all_us, decimals=2)
 
 # HIDDEN_SIZE = 256
 
@@ -96,7 +98,7 @@ learning_rate = 0.003
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
 Horizon = 500
-MAX_TRAJECTORIES = 10000 # 4000 with trad REINFORCE | 500, 750 with other NN spec
+MAX_TRAJECTORIES = 10000 # 4000 with traditional REINFORCE | 500, 750 with other NN spec
 gamma = 0.99
 score = []
 
@@ -174,7 +176,13 @@ for trajectory in range(MAX_TRAJECTORIES):
     expected_returns_batch /= expected_returns_batch.max()
 
     pred_batch = model(torch.from_numpy(tensor.phi(state_batch.data.numpy())).float().T) # (batch_size, num_actions)
-    prob_batch = pred_batch.gather(dim=1, index=(action_batch.long().view(-1,1)-u_range[0])).squeeze() # (batch_size,)
+    # prob_batch = pred_batch.gather(dim=1, index=(action_batch.long().view(-1,1))).squeeze() # (batch_size,)
+    action_batch_indices = []
+    for action in action_batch.data.numpy():
+        rounded_action = np.round(action)
+        action_batch_indices.append(np.where(all_us == rounded_action)[0][0])
+    action_batch_indices = torch.from_numpy(np.array([action_batch_indices]))
+    prob_batch = pred_batch.gather(dim=1, index=action_batch_indices).squeeze() # (batch_size,)
 
     loss = -torch.sum(torch.log(prob_batch) * expected_returns_batch)
 
