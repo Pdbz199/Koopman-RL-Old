@@ -17,6 +17,7 @@ from tensor import KoopmanTensor, OLS
 sys.path.append('../../../')
 import cartpole_reward
 import observables
+import utilities
 
 #%% Initialize environment
 env_string = 'CartPole-v0'
@@ -25,8 +26,8 @@ env = gym.make(env_string)
 
 def reward(xs, us):
     return cartpole_reward.defaultCartpoleRewardMatrix(xs, us)
-def cost(xs, us):
-    return -reward(xs, us)
+# def cost(xs, us):
+#     return -reward(xs, us)
 
 # w_r = np.zeros([4,1])
 # Q_ = np.array([
@@ -100,29 +101,51 @@ MAX_TRAJECTORIES = 10000 # 4000 with traditional REINFORCE | 500, 750 with other
 gamma = 0.99
 score = []
 
-w_hat_batch_size = 2**12 # 4096
+w_hat_batch_size = 2**14 # 2**9 (4096)
 def w_hat_t():
     x_batch_indices = np.random.choice(X.shape[1], w_hat_batch_size, replace=False)
-    x_batch = X[:, x_batch_indices]
-    phi_x_batch = tensor.phi(x_batch)
+    x_batch = X[:, x_batch_indices] # (x_dim, w_hat_batch_size)
+    phi_x_batch = tensor.phi(x_batch) # (phi_dim, w_hat_batch_size)
 
     with torch.no_grad():
-        pi_response = model(torch.from_numpy(phi_x_batch.T).float()) # (w_hat_batch_size, all_us.shape[0])
+        pi_response = model(torch.from_numpy(phi_x_batch.T).float()).T # (all_us.shape[0], w_hat_batch_size)
 
-    phi_x_primes = tensor.K_(np.array([all_us])) @ phi_x_batch # (all_us.shape[0], phi_dim, w_hat_batch_size)
+    # print(pi_response) # really small (order of 1-e3)
 
-    expectation_term_1 = torch.sum(
-        torch.from_numpy(phi_x_primes) * pi_response.reshape( pi_response.shape[1], 1, pi_response.shape[0] ),
-        dim=0
-    ) # (phi_dim, w_hat_batch_size)
+    phi_x_prime_batch = tensor.K_(np.array([all_us])) @ phi_x_batch # (all_us.shape[0], phi_dim, w_hat_batch_size)
 
-    rewards = reward(x_batch, np.array([all_us]).T) * pi_response.T.data.numpy() # (all_us.shape[0], w_hat_batch_size)
-    expectation_term_2 = torch.sum(torch.from_numpy(rewards), dim=0) # (w_hat_batch_size,)
+    # print(phi_x_batch) # also small (order of 1e-2)
+    # print(phi_x_prime_batch) # also small (order of 1e-3)
 
-    return OLS(
-        (phi_x_batch - gamma*expectation_term_1.data.numpy()).T,
-        np.array([expectation_term_2.data.numpy()]).T
+    phi_x_prime_batch_prob = phi_x_prime_batch * \
+                                pi_response.reshape(
+                                    pi_response.shape[0],
+                                    1,
+                                    pi_response.shape[1]
+                                ).data.numpy() # (all_us.shape[0], phi_dim, w_hat_batch_size)
+
+    expectation_term_1 = np.sum(phi_x_prime_batch_prob, axis=0) # (phi_dim, w_hat_batch_size)
+
+    # print(expectation_term_1) # this is really small
+
+    reward_batch_prob = reward(x_batch, np.vstack(all_us)) * pi_response.data.numpy() # (all_us.shape[0], w_hat_batch_size)
+
+    # print(reward_batch_prob) # reward(x,u) is mostly 1 then we multiply by pi_response which is small
+
+    expectation_term_2 = np.array([
+        np.sum(reward_batch_prob, axis=0)
+    ]) # (1, w_hat_batch_size)
+
+    # print(expectation_term_2) # also pretty small
+
+    w_hat = OLS(
+        (phi_x_batch - gamma*expectation_term_1).T,
+        expectation_term_2.T
     )
+
+    # print(w_hat)
+
+    return w_hat
 
 def Q(x, u, w_hat_t):
     return reward(x, u) + gamma*w_hat_t.T @ tensor.phi_f(x, u)
@@ -181,6 +204,9 @@ for trajectory in range(MAX_TRAJECTORIES):
         batch_Gvals.append( Q_val )
 
         errors.append( np.abs(Q_val - new_Gval) )
+        print("Q:", Q_val)
+        # print("G:", new_Gval)
+        # print("Error:", errors[-1])
     expected_returns_batch = torch.FloatTensor(batch_Gvals) # (batch_size,)
     expected_returns_batch /= expected_returns_batch.max()
 
@@ -219,7 +245,7 @@ for trajectory in range(MAX_TRAJECTORIES):
     # Average score for trajectory
     if trajectory % 50 == 0 and trajectory>0:
         print(f'Trajectory {trajectory}\tAverage Score: {np.mean(score[-50:-1])}')
-        print("Average error between Q and G along trajectory:", np.mean(errors))
+        # print("Average error between Q and G along trajectory:", np.mean(errors))
 
 def running_mean(x):
     N = 50
