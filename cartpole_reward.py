@@ -143,7 +143,12 @@ def defaultCartpoleRewardMatrix(states, actions):
             theta = state[2] + tau * state[3]
             # theta_dot = state[3] + tau * thetaacc
 
-            if x < -x_threshold or x > x_threshold or theta < -theta_threshold_radians or theta > theta_threshold_radians:
+            if (
+                x < -x_threshold or
+                x > x_threshold or
+                theta < -theta_threshold_radians or
+                theta > theta_threshold_radians
+            ):
                 rewards[action_ind,state_ind] = 0.0
 
     return rewards

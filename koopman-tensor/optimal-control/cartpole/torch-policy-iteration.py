@@ -84,7 +84,7 @@ all_us = np.round(all_us, decimals=2)
 # Model spec
 model = torch.nn.Sequential(
     torch.nn.Linear(phi_dim, all_us.shape[0]),
-    torch.nn.Softmax(dim=0)
+    torch.nn.Softmax(dim=-1) # was dim=0
 )
 # print("Model:", model)
 # Initialize weights with 0s
@@ -101,7 +101,7 @@ MAX_TRAJECTORIES = 10000 # 4000 with traditional REINFORCE | 500, 750 with other
 gamma = 0.99
 score = []
 
-w_hat_batch_size = 2**14 # 2**9 (4096)
+w_hat_batch_size = X.shape[1] # 2**14 # 2**9 (4096)
 def w_hat_t():
     x_batch_indices = np.random.choice(X.shape[1], w_hat_batch_size, replace=False)
     x_batch = X[:, x_batch_indices] # (x_dim, w_hat_batch_size)
@@ -110,40 +110,24 @@ def w_hat_t():
     with torch.no_grad():
         pi_response = model(torch.from_numpy(phi_x_batch.T).float()).T # (all_us.shape[0], w_hat_batch_size)
 
-    # print(pi_response) # really small (order of 1-e3)
-
     phi_x_prime_batch = tensor.K_(np.array([all_us])) @ phi_x_batch # (all_us.shape[0], phi_dim, w_hat_batch_size)
-
-    # print(phi_x_batch) # also small (order of 1e-2)
-    # print(phi_x_prime_batch) # also small (order of 1e-3)
-
     phi_x_prime_batch_prob = phi_x_prime_batch * \
                                 pi_response.reshape(
                                     pi_response.shape[0],
                                     1,
                                     pi_response.shape[1]
                                 ).data.numpy() # (all_us.shape[0], phi_dim, w_hat_batch_size)
-
     expectation_term_1 = np.sum(phi_x_prime_batch_prob, axis=0) # (phi_dim, w_hat_batch_size)
 
-    # print(expectation_term_1) # this is really small
-
-    reward_batch_prob = reward(x_batch, np.vstack(all_us)) * pi_response.data.numpy() # (all_us.shape[0], w_hat_batch_size)
-
-    # print(reward_batch_prob) # reward(x,u) is mostly 1 then we multiply by pi_response which is small
-
+    reward_batch_prob = reward(x_batch, np.array([all_us])) * pi_response.data.numpy() # (all_us.shape[0], w_hat_batch_size)
     expectation_term_2 = np.array([
-        np.sum(reward_batch_prob, axis=0)
+        np.sum(reward_batch_prob, axis=0) # (w_hat_batch_size,)
     ]) # (1, w_hat_batch_size)
-
-    # print(expectation_term_2) # also pretty small
 
     w_hat = OLS(
         (phi_x_batch - gamma*expectation_term_1).T,
         expectation_term_2.T
     )
-
-    # print(w_hat)
 
     return w_hat
 
@@ -190,7 +174,7 @@ for trajectory in range(MAX_TRAJECTORIES):
             reward_value = reward(
                 np.vstack( transitions[j][0] ),
                 np.array([[ transitions[j][1] ]])
-            ) * (len(transitions) - j)
+            )
             new_Gval = new_Gval + ( discount * reward_value[0,0] )
             power += 1
 
@@ -203,8 +187,8 @@ for trajectory in range(MAX_TRAJECTORIES):
         # batch_Gvals.append( new_Gval )
         batch_Gvals.append( Q_val )
 
-        errors.append( np.abs(Q_val - new_Gval) )
-        print("Q:", Q_val)
+        errors.append( np.abs( Q_val - new_Gval ) )
+        # print("Q:", Q_val)
         # print("G:", new_Gval)
         # print("Error:", errors[-1])
     expected_returns_batch = torch.FloatTensor(batch_Gvals) # (batch_size,)
