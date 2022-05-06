@@ -20,28 +20,30 @@ import observables
 import utilities
 
 #%% Initialize environment
-env_string = 'CartPole-v0'
-# env_string = 'env:CartPoleControlEnv-v0'
+# env_string = 'CartPole-v0'
+env_string = 'env:CartPoleControlEnv-v0'
 env = gym.make(env_string)
 
-def reward(xs, us):
-    return cartpole_reward.defaultCartpoleRewardMatrix(xs, us)
+# def reward(xs, us):
+#     return cartpole_reward.defaultCartpoleRewardMatrix(xs, us)
 # def cost(xs, us):
 #     return -reward(xs, us)
 
-# w_r = np.zeros([4,1])
-# Q_ = np.array([
-#     [10.0, 0.0,  0.0, 0.0],
-#     [ 0.0, 1.0,  0.0, 0.0],
-#     [ 0.0, 0.0, 10.0, 0.0],
-#     [ 0.0, 0.0,  0.0, 1.0]
-# ])
-# R = 0.1
-# def cost(x, u):
-#     # Assuming that data matrices are passed in for X and U. Columns vectors are snapshots
-#     _x = x - w_r
-#     mat = np.vstack(np.diag(_x.T @ Q_ @ _x)) + np.power(u, 2)*R
-#     return mat.T
+w_r = np.zeros([4,1])
+Q_ = np.array([
+    [10.0, 0.0,  0.0, 0.0],
+    [ 0.0, 1.0,  0.0, 0.0],
+    [ 0.0, 0.0, 10.0, 0.0],
+    [ 0.0, 0.0,  0.0, 1.0]
+])
+R = 0.1
+def cost(x, u):
+    # Assuming that data matrices are passed in for X and U. Columns vectors are snapshots
+    _x = x - w_r
+    mat = np.vstack(np.diag(_x.T @ Q_ @ _x)) + np.power(u, 2)*R
+    return mat.T
+def reward(x, u):
+    return -cost(x, u)
 
 #%% Construct snapshots of u from random agent and initial states x0
 N = 20000 # Number of datapoints
@@ -76,8 +78,8 @@ tensor = KoopmanTensor(
 state_dim = env.observation_space.shape[0]
 M_plus_N_minus_ones = np.arange( (state_dim-1), order + (state_dim-1) + 1 )
 phi_dim = int( np.sum( comb( M_plus_N_minus_ones, np.ones_like(M_plus_N_minus_ones) * (state_dim-1) ) ) )
-step_size = 1 if env_string == 'CartPole-v0' else 0.1
-u_range = np.array([0, 1+step_size]) if env_string == 'CartPole-v0' else np.array([-5, 5+step_size])
+step_size = 1 if env_string == 'CartPole-v0' else 3.0 #0.1
+u_range = np.array([0, 1+step_size]) if env_string == 'CartPole-v0' else np.array([-15, 15+step_size])
 all_us = np.arange(u_range[0], u_range[1], step_size)
 all_us = np.round(all_us, decimals=2)
 
@@ -97,7 +99,8 @@ learning_rate = 0.003
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
 Horizon = 500
-MAX_TRAJECTORIES = 10000 # 4000 with traditional REINFORCE | 500, 750 with other NN spec
+# xxxx with REINFORCE on continuous action system | 4000 with traditional REINFORCE | 500, 750 with other NN spec
+MAX_TRAJECTORIES = 10000
 gamma = 0.99
 score = []
 
@@ -154,7 +157,7 @@ for trajectory in range(MAX_TRAJECTORIES):
             or curr_state[2,0] < -env.theta_threshold_radians
             or curr_state[2,0] > env.theta_threshold_radians
         )
-        transitions.append((prev_state, action, t+1))
+        transitions.append((prev_state, u, t+1))
         if done:
             break
     score.append(len(transitions))
@@ -178,18 +181,18 @@ for trajectory in range(MAX_TRAJECTORIES):
             new_Gval = new_Gval + ( discount * reward_value[0,0] )
             power += 1
 
-        Q_val = Q(
-            np.vstack(state_batch[:,i]),
-            np.array([[action_batch[i]]]),
-            w_hat
-        )[0,0]
+        # Q_val = Q(
+        #     np.vstack(state_batch[:,i]),
+        #     np.array([[action_batch[i]]]),
+        #     w_hat
+        # )[0,0]
 
-        # batch_Gvals.append( new_Gval )
-        batch_Gvals.append( Q_val )
-
-        errors.append( np.abs( Q_val - new_Gval ) )
+        batch_Gvals.append( new_Gval )
+        # batch_Gvals.append( Q_val )
         # print("Q:", Q_val)
         # print("G:", new_Gval)
+
+        # errors.append( np.abs( Q_val - new_Gval ) )
         # print("Error:", errors[-1])
     expected_returns_batch = torch.FloatTensor(batch_Gvals) # (batch_size,)
     expected_returns_batch /= expected_returns_batch.max()
@@ -256,18 +259,19 @@ def watch_agent():
     for episode in range(num_episodes):
         state = np.vstack(env.reset())
         done = False
-        episode_rewards = []
-        while not done:
+        step = 0
+        while not done and step < 200:
             env.render()
             phi_state = tensor.phi(state)
             pred = model(torch.from_numpy(phi_state[:,0]).float())
-            action = np.random.choice(all_us, p=pred.data.numpy())
-            state, reward, done, _ = env.step( action if env_string == 'CartPole-v0' else np.array([action]) )
+            u = np.random.choice(all_us, p=pred.data.numpy())
+            action = u if env_string == 'CartPole-v0' else np.array([u])
+            state, _, done, __ = env.step(action)
+            step += 1
             state = np.vstack(state)
-            episode_rewards.append(reward)
-            if done:
-                rewards[episode] = np.sum(episode_rewards)
-                print("Reward:", rewards[episode])
+            if done or step >= 200:
+                rewards[episode] = step
+                print("Reward:", step)
     env.close()
     print(f"Mean reward per episode over {num_episodes} episodes:", np.mean(rewards))
 watch_agent()
