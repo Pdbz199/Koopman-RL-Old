@@ -84,19 +84,19 @@ all_us = np.arange(u_range[0], u_range[1], step_size)
 all_us = np.round(all_us, decimals=2)
 
 # Model spec
-model = torch.nn.Sequential(
+policy_model = torch.nn.Sequential(
     torch.nn.Linear(phi_dim, all_us.shape[0]),
     torch.nn.Softmax(dim=-1) # was dim=0
 )
-# print("Model:", model)
+# print("Policy model:", policy_model)
 # Initialize weights with 0s
 def init_weights(m):
     if type(m) == torch.nn.Linear:
         m.weight.data.fill_(0.0)
-model.apply(init_weights)
+policy_model.apply(init_weights)
 
 learning_rate = 0.003
-optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+optimizer = torch.optim.Adam(policy_model.parameters(), lr=learning_rate)
 
 Horizon = 500
 # xxxx with REINFORCE on continuous action system | 4000 with traditional REINFORCE | 500, 750 with other NN spec
@@ -111,7 +111,7 @@ def w_hat_t():
     phi_x_batch = tensor.phi(x_batch) # (phi_dim, w_hat_batch_size)
 
     with torch.no_grad():
-        pi_response = model(torch.from_numpy(phi_x_batch.T).float()).T # (all_us.shape[0], w_hat_batch_size)
+        pi_response = policy_model(torch.from_numpy(phi_x_batch.T).float()).T # (all_us.shape[0], w_hat_batch_size)
 
     phi_x_prime_batch = tensor.K_(np.array([all_us])) @ phi_x_batch # (all_us.shape[0], phi_dim, w_hat_batch_size)
     phi_x_prime_batch_prob = phi_x_prime_batch * \
@@ -122,15 +122,40 @@ def w_hat_t():
                                 ).data.numpy() # (all_us.shape[0], phi_dim, w_hat_batch_size)
     expectation_term_1 = np.sum(phi_x_prime_batch_prob, axis=0) # (phi_dim, w_hat_batch_size)
 
+    # print( gamma )
+    # print( expectation_term_1[:,100] )
+    # print( (gamma*expectation_term_1)[:,100] )
+    # print( phi_x_batch[:,100] )
+    # print( (phi_x_batch - (gamma*expectation_term_1))[:,100] ) # (phi_dim, w_hat_batch_size) - gamma*(phi_dim, w_hat_batch_size)
+
     reward_batch_prob = reward(x_batch, np.array([all_us])) * pi_response.data.numpy() # (all_us.shape[0], w_hat_batch_size)
+
+    # print( reward(x_batch, np.array([all_us]))[:,0] ) # (all_us.shape[0], w_hat_batch_size)
+    # print( pi_response.data.numpy()[:,0] )
+    # print( reward(x_batch, np.array([all_us]))[:,0] * pi_response.data.numpy()[:,0] )
+    # print( reward_batch_prob[:,0] )
+
     expectation_term_2 = np.array([
         np.sum(reward_batch_prob, axis=0) # (w_hat_batch_size,)
     ]) # (1, w_hat_batch_size)
 
+    # print( expectation_term_2[0] ) # I saw something like -9 for each entry
+
+    """
+    || Y - X @ B ||
+    || expectation_term_2.T - (phi_x_batch - gamma*expectation_term_1).T @ B ||
+    || B.T @ (phi_x_batch - gamma*expectation_term_1) - expectation_term_2 ||
+    || (phi_dim, 1).T @ (phi_dim, w_hat_batch_size) - (1, w_hat_batch_size) ||
+    || (1, phi_dim) @ (phi_dim, w_hat_batch_size) - (1, w_hat_batch_size) ||
+
+    which makes B.T (1, phi_dim) which makes B (phi_dim, 1) ✓
+    """
     w_hat = OLS(
-        (phi_x_batch - gamma*expectation_term_1).T,
+        (phi_x_batch - (gamma*expectation_term_1)).T,
         expectation_term_2.T
     )
+
+    # print(w_hat.shape) # (phi_dim, 1)
 
     return w_hat
 
@@ -145,7 +170,7 @@ for trajectory in range(MAX_TRAJECTORIES):
     for t in range(Horizon):
         phi_curr_state = tensor.phi(curr_state)
         with torch.no_grad():
-            act_prob = model(torch.from_numpy(phi_curr_state[:,0]).float())
+            act_prob = policy_model(torch.from_numpy(phi_curr_state[:,0]).float())
         u = np.random.choice(all_us, p=act_prob.data.numpy())
         action = u if env_string == 'CartPole-v0' else np.array([u])
         prev_state = curr_state[:,0]
@@ -172,32 +197,32 @@ for trajectory in range(MAX_TRAJECTORIES):
     for i in range(len(transitions)):
         new_Gval = 0
         power = 0
-        for j in range(i, len(transitions)):
-            discount = gamma**power
-            reward_value = reward(
-                np.vstack( transitions[j][0] ),
-                np.array([[ transitions[j][1] ]])
-            )
-            new_Gval = new_Gval + ( discount * reward_value[0,0] )
-            power += 1
+        # for j in range(i, len(transitions)):
+        #     discount = gamma**power
+        #     reward_value = reward(
+        #         np.vstack( transitions[j][0] ),
+        #         np.array([[ transitions[j][1] ]])
+        #     )
+        #     new_Gval = new_Gval + ( discount * reward_value[0,0] )
+        #     power += 1
 
-        # Q_val = Q(
-        #     np.vstack(state_batch[:,i]),
-        #     np.array([[action_batch[i]]]),
-        #     w_hat
-        # )[0,0]
+        Q_val = Q(
+            np.vstack(state_batch[:,i]),
+            np.array([[action_batch[i]]]),
+            w_hat
+        )[0,0]
 
-        batch_Gvals.append( new_Gval )
-        # batch_Gvals.append( Q_val )
+        # batch_Gvals.append( new_Gval )
+        batch_Gvals.append( Q_val )
         # print("Q:", Q_val)
         # print("G:", new_Gval)
 
         # errors.append( np.abs( Q_val - new_Gval ) )
         # print("Error:", errors[-1])
     expected_returns_batch = torch.FloatTensor(batch_Gvals) # (batch_size,)
-    expected_returns_batch /= expected_returns_batch.max()
+    # expected_returns_batch /= expected_returns_batch.max()
 
-    pred_batch = model(torch.from_numpy(tensor.phi(state_batch.data.numpy())).float().T) # (batch_size, num_actions)
+    pred_batch = policy_model(torch.from_numpy(tensor.phi(state_batch.data.numpy())).float().T) # (batch_size, num_actions)
     action_batch_indices = []
     for action in action_batch.data.numpy():
         rounded_action = np.round(action)
@@ -205,12 +230,17 @@ for trajectory in range(MAX_TRAJECTORIES):
     action_batch_indices = torch.from_numpy(np.array(action_batch_indices))
     prob_batch = pred_batch.gather(dim=1, index=action_batch_indices).squeeze() # (batch_size,)
 
-    loss = -torch.sum(torch.log(prob_batch) * expected_returns_batch)
+    # Compute loss
 
+    # Original code
+    loss = torch.sum(-torch.log(prob_batch) * expected_returns_batch)
+
+    # Found this version
     # logprob = torch.log(prob_batch)
     # selected_logprobs = logprob * expected_returns_batch
-    # loss = -torch.mean(selected_logprobs)
+    # loss = -torch.sum(selected_logprobs)
 
+    # Gradient descent
     optimizer.zero_grad()
     loss.backward()
     optimizer.step()
@@ -263,7 +293,8 @@ def watch_agent():
         while not done and step < 200:
             env.render()
             phi_state = tensor.phi(state)
-            pred = model(torch.from_numpy(phi_state[:,0]).float())
+            with torch.no_grad():
+                pred = policy_model(torch.from_numpy(phi_state[:,0]).float())
             u = np.random.choice(all_us, p=pred.data.numpy())
             action = u if env_string == 'CartPole-v0' else np.array([u])
             state, _, done, __ = env.step(action)
