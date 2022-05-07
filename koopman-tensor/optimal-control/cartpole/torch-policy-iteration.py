@@ -220,7 +220,7 @@ for trajectory in range(MAX_TRAJECTORIES):
         # errors.append( np.abs( Q_val - new_Gval ) )
         # print("Error:", errors[-1])
     expected_returns_batch = torch.FloatTensor(batch_Gvals) # (batch_size,)
-    expected_returns_batch /= expected_returns_batch.max()
+    # expected_returns_batch /= expected_returns_batch.max()
 
     pred_batch = policy_model(torch.from_numpy(tensor.phi(state_batch.data.numpy())).float().T) # (batch_size, num_actions)
     action_batch_indices = []
@@ -233,7 +233,7 @@ for trajectory in range(MAX_TRAJECTORIES):
     # Compute loss
 
     # Original code
-    loss = torch.sum(-torch.log(prob_batch) * expected_returns_batch)
+    loss = torch.sum(-prob_batch * expected_returns_batch)
 
     # Found this version
     # logprob = torch.log(prob_batch)
