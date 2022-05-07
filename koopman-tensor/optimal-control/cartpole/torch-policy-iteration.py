@@ -195,8 +195,8 @@ for trajectory in range(MAX_TRAJECTORIES):
     errors = []
     w_hat = w_hat_t()
     for i in range(len(transitions)):
-        new_Gval = 0
-        power = 0
+        # new_Gval = 0
+        # power = 0
         # for j in range(i, len(transitions)):
         #     discount = gamma**power
         #     reward_value = reward(
@@ -220,7 +220,7 @@ for trajectory in range(MAX_TRAJECTORIES):
         # errors.append( np.abs( Q_val - new_Gval ) )
         # print("Error:", errors[-1])
     expected_returns_batch = torch.FloatTensor(batch_Gvals) # (batch_size,)
-    # expected_returns_batch /= expected_returns_batch.max()
+    expected_returns_batch /= expected_returns_batch.max()
 
     pred_batch = policy_model(torch.from_numpy(tensor.phi(state_batch.data.numpy())).float().T) # (batch_size, num_actions)
     action_batch_indices = []
