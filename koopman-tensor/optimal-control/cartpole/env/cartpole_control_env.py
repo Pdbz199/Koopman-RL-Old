@@ -104,6 +104,10 @@ class CartPoleControlEnv(gym.Env):
         # assert self.action_space.contains(action), err_msg
 
         x, x_dot, theta, theta_dot = self.state
+        try:
+            force = action[0]
+        except Exception:
+            action = np.array([action])
         force = action[0]
         costheta = math.cos(theta)
         sintheta = math.sin(theta)
@@ -127,10 +131,12 @@ class CartPoleControlEnv(gym.Env):
 
         self.state = (x, x_dot, theta, theta_dot)
         
-        Q = np.array([[10, 0, 0, 0],
-                     [0, 1, 0, 0],
-                     [0, 0, 10, 0],
-                     [0, 0, 0, 1]])
+        Q = np.array([
+            [10.0, 0.0,  0.0, 0.0],
+            [ 0.0, 1.0,  0.0, 0.0],
+            [ 0.0, 0.0, 10.0, 0.0],
+            [ 0.0, 0.0,  0.0, 1.0]
+        ])
         R = np.array([[0.1]])
         state = np.array(self.state)
         cost = ( state @ Q @ state ) + ( action @ R @ action )
@@ -142,7 +148,7 @@ class CartPoleControlEnv(gym.Env):
             or theta > self.theta_threshold_radians
         )
 
-        return np.array(self.state), cost, done, {}
+        return state, cost, done, {}
 
     def reset(self, state=None):
         if state is None:

@@ -15,13 +15,13 @@ import sys
 sys.path.append('../../')
 from tensor import KoopmanTensor, OLS
 sys.path.append('../../../')
-import cartpole_reward
+# import cartpole_reward
 import observables
 import utilities
 
 #%% Initialize environment
-# env_string = 'CartPole-v0'
-env_string = 'env:CartPoleControlEnv-v0'
+env_string = 'CartPole-v0'
+# env_string = 'env:CartPoleControlEnv-v0'
 env = gym.make(env_string)
 
 # def reward(xs, us):
@@ -64,20 +64,27 @@ while i < N:
 X = X[:,:-1]
 
 #%% Estimate Koopman tensor
-order = 2
+state_order = 2
+action_order = 2
 tensor = KoopmanTensor(
     X,
     Y,
     U,
-    phi=observables.monomials(order),
-    psi=observables.monomials(2),
+    phi=observables.monomials(state_order),
+    psi=observables.monomials(action_order),
     regressor='ols'
 )
 
 # obs_size = env.observation_space.shape[0]
 state_dim = env.observation_space.shape[0]
-M_plus_N_minus_ones = np.arange( (state_dim-1), order + (state_dim-1) + 1 )
-phi_dim = int( np.sum( comb( M_plus_N_minus_ones, np.ones_like(M_plus_N_minus_ones) * (state_dim-1) ) ) )
+action_dim = 1
+
+state_M_plus_N_minus_ones = np.arange( (state_dim-1), state_order + (state_dim-1) + 1 )
+phi_dim = int( np.sum( comb( state_M_plus_N_minus_ones, np.ones_like(state_M_plus_N_minus_ones) * (state_dim-1) ) ) )
+
+action_M_plus_N_minus_ones = np.arange( (action_dim-1), action_order + (action_dim-1) + 1 )
+psi_dim = int( np.sum( comb( action_M_plus_N_minus_ones, np.ones_like(action_M_plus_N_minus_ones) * (action_dim-1) ) ) )
+
 step_size = 1 if env_string == 'CartPole-v0' else 3.0 #0.1
 u_range = np.array([0, 1+step_size]) if env_string == 'CartPole-v0' else np.array([-15, 15+step_size])
 all_us = np.arange(u_range[0], u_range[1], step_size)
@@ -85,8 +92,7 @@ all_us = np.round(all_us, decimals=2)
 
 # Model spec
 policy_model = torch.nn.Sequential(
-    torch.nn.Linear(state_dim, all_us.shape[0]),
-    torch.nn.Softmax(dim=-1) # was dim=0
+    torch.nn.Linear(phi_dim+psi_dim, action_dim)
 )
 # print("Policy model:", policy_model)
 # Initialize weights with 0s
@@ -122,182 +128,113 @@ def w_hat_t():
                                 ).data.numpy() # (all_us.shape[0], phi_dim, w_hat_batch_size)
     expectation_term_1 = np.sum(phi_x_prime_batch_prob, axis=0) # (phi_dim, w_hat_batch_size)
 
-    # print( gamma )
-    # print( expectation_term_1[:,100] )
-    # print( (gamma*expectation_term_1)[:,100] )
-    # print( phi_x_batch[:,100] )
-    # print( (phi_x_batch - (gamma*expectation_term_1))[:,100] ) # (phi_dim, w_hat_batch_size) - gamma*(phi_dim, w_hat_batch_size)
-
-    reward_batch_prob = reward(x_batch, np.array([all_us])) * pi_response.data.numpy() # (all_us.shape[0], w_hat_batch_size)
-
-    # print( reward(x_batch, np.array([all_us]))[:,0] ) # (all_us.shape[0], w_hat_batch_size)
-    # print( pi_response.data.numpy()[:,0] )
-    # print( reward(x_batch, np.array([all_us]))[:,0] * pi_response.data.numpy()[:,0] )
-    # print( reward_batch_prob[:,0] )
-
+    cost_batch_prob = cost(x_batch, np.array([all_us])) * pi_response.data.numpy() # (all_us.shape[0], w_hat_batch_size)
     expectation_term_2 = np.array([
-        np.sum(reward_batch_prob, axis=0) # (w_hat_batch_size,)
+        np.sum(cost_batch_prob, axis=0) # (w_hat_batch_size,)
     ]) # (1, w_hat_batch_size)
 
-    # print( expectation_term_2[0] )
-
-    """
-    || Y - X @ B ||
-    || expectation_term_2.T - (phi_x_batch - gamma*expectation_term_1).T @ B ||
-    || B.T @ (phi_x_batch - gamma*expectation_term_1) - expectation_term_2 ||
-    || (phi_dim, 1).T @ (phi_dim, w_hat_batch_size) - (1, w_hat_batch_size) ||
-    || (1, phi_dim) @ (phi_dim, w_hat_batch_size) - (1, w_hat_batch_size) ||
-
-    which makes B.T (1, phi_dim) which makes B (phi_dim, 1) ✓
-    """
     w_hat = OLS(
         (phi_x_batch - (gamma*expectation_term_1)).T,
         expectation_term_2.T
     )
 
-    # print(w_hat.shape) # (phi_dim, 1)
-
     return w_hat
 
 def Q(x, u, w_hat_t):
-    return reward(x, u) + gamma*w_hat_t.T @ tensor.phi_f(x, u)
-
-# start_state = np.array([
-#     [ 0.01522224],
-#     [ 0.00674007],
-#     [ 0.00120364],
-#     [-0.02732334]
-# ])
-# start_action = 0
-# Gvals = []
-# for trajectory in range(MAX_TRAJECTORIES):
-#     curr_state = start_state # Always start at some point
-#     env.reset(state=curr_state[:,0]) # Set state of environment
-#     done = False
-#     prev_states = []
-#     actions = []
-#     rewards = []
-    
-#     for t in range(Horizon):
-#         phi_curr_state = tensor.phi(curr_state)
-#         with torch.no_grad():
-#             act_prob = policy_model(torch.from_numpy(phi_curr_state[:,0]).float())
-#         u = np.random.choice(all_us, p=act_prob.data.numpy())
-#         if t == 0:
-#             u = start_action
-#         action = u if env_string == 'CartPole-v0' else np.array([u])
-#         prev_state = curr_state[:,0]
-#         curr_state, step_cost, done, _ = env.step(action)
-#         curr_state = np.vstack(curr_state)
-
-#         prev_states.append(prev_state)
-#         actions.append(u)
-#         rewards.append(-step_cost)
-
-#         if done:
-#             break
-
-#     prev_states = torch.Tensor(np.array(prev_states))
-#     actions = torch.Tensor(actions)
-#     rewards = torch.Tensor(rewards)
-
-#     Gval = 0
-#     power = 0
-#     for i in range(len(prev_states)):
-#         discount = gamma**power
-#         Gval = Gval + ( discount * rewards[i] )
-#         power += 1
-
-#     Gvals.append(Gval)
-
-# w_hat = w_hat_t()
-# Q_val = Q(
-#     np.vstack( start_state ),
-#     np.array([[ start_action ]]),
-#     w_hat
-# )[0,0]
-# mean_Gval = np.mean(Gvals)
-# Q_G_norm = np.abs( Q_val - mean_Gval )
+    return cost(x, u) + gamma*w_hat_t.T @ tensor.phi_f(x, u)
 
 for trajectory in range(MAX_TRAJECTORIES):
     curr_state = np.vstack(env.reset())
     done = False
     transitions = []
 
+    total_probability = 0
     for t in range(Horizon):
-        # phi_curr_state = tensor.phi(curr_state)
-        with torch.no_grad():
-            act_prob = policy_model(torch.from_numpy(curr_state[:,0]).float())
-        print("action probs across x's", act_prob)
-        u = np.random.choice(all_us, p=act_prob.data.numpy())
+        phi_curr_state = tensor.phi(curr_state)
+        act_probs = torch.zeros([all_us.shape[0]])
+        for i in range(all_us.shape[0]):
+            with torch.no_grad():
+                act_prob = policy_model(torch.from_numpy(
+                    np.append(
+                        phi_curr_state[:,0],
+                        tensor.psi(np.array([[ all_us[i] ]]))
+                    )
+                ).float())
+            act_probs[i] = act_prob
+        total_probability = torch.sum(torch.exp(act_probs))
+        act_probs = torch.exp(act_probs) / total_probability # Softmax
+        # print("act_probs:", act_probs)
+        u = np.random.choice(all_us, p=act_probs.data.numpy())
         action = u if env_string == 'CartPole-v0' else np.array([u])
         prev_state = curr_state[:,0]
-        curr_state, _, __, info = env.step(action)
+        curr_state, curr_reward, done, _ = env.step(action)
         curr_state = np.vstack(curr_state)
-        done = bool(
-            curr_state[0,0] < -env.x_threshold
-            or curr_state[0,0] > env.x_threshold
-            or curr_state[2,0] < -env.theta_threshold_radians
-            or curr_state[2,0] > env.theta_threshold_radians
-        )
-        transitions.append((prev_state, u, t+1))
+        # cumulative_reward = 0 if t == 0 else transitions[-1][2]
+        print(curr_reward)
+        transitions.append((prev_state, u, curr_reward))
         if done:
             break
     score.append(len(transitions))
 
-    state_batch = torch.from_numpy(np.array([s for (s,a,r) in transitions]).T)
-    action_batch = torch.Tensor([a for (s,a,r) in transitions])
-    reward_batch = torch.Tensor([r for (s,a,r) in transitions]).flip(dims=(0,))
+    state_batch = torch.from_numpy(np.array([s for (s,_,__) in transitions])).float().T # (state_dim, len(transitions))
+    action_batch = torch.Tensor([a for (_,a,__) in transitions]) # (len(transitions),)
+    reward_batch = torch.Tensor([r for (_,__,r) in transitions])#.flip(dims=(0,)) # (len(transitions),)
 
     batch_Gvals = []
     errors = []
-    w_hat = w_hat_t()
-    for i in range(len(transitions)):
-        # new_Gval = 0
-        # power = 0
-        # for j in range(i, len(transitions)):
-        #     discount = gamma**power
-        #     reward_value = reward(
-        #         np.vstack( transitions[j][0] ),
-        #         np.array([[ transitions[j][1] ]])
-        #     )
-        #     new_Gval = new_Gval + ( discount * reward_value[0,0] )
-        #     power += 1
+    # w_hat = w_hat_t()
+    for t in range(len(transitions)):
+        new_Gval = 0
+        power = 0
+        for k in range(t, len(transitions)):
+            discount = gamma**power
+            new_Gval += discount * reward_batch[k]
+            power += 1
 
-        Q_val = Q(
-            np.vstack(state_batch[:,i]),
-            np.array([[action_batch[i]]]),
-            w_hat
-        )[0,0]
+        # Q_val = Q(
+        #     np.vstack(state_batch[:,i]),
+        #     np.array([[action_batch[i]]]),
+        #     w_hat
+        # )[0,0]
 
-        # batch_Gvals.append( new_Gval )
-        batch_Gvals.append( Q_val )
+        batch_Gvals.append( new_Gval )
+        # batch_Gvals.append( Q_val )
         # print("Q:", Q_val)
         # print("G:", new_Gval)
 
         # errors.append( np.abs( Q_val - new_Gval ) )
         # print("Error:", errors[-1])
-    expected_returns_batch = torch.FloatTensor(batch_Gvals) # (batch_size,)
-    expected_returns_batch /= np.abs(expected_returns_batch.max())
+    Gval_batch = torch.FloatTensor(batch_Gvals) # (batch_size,)
+    # Gval_batch /= Gval_batch.max()
+    Gval_batch /= torch.abs(Gval_batch.max())
 
-    pred_batch = policy_model(state_batch.T.float()) # (batch_size, num_actions)
-    action_batch_indices = []
-    for action in action_batch.data.numpy():
-        rounded_action = np.round(action, decimals=2)
-        action_batch_indices.append(np.where(all_us == rounded_action)[0])
-    action_batch_indices = torch.from_numpy(np.array(action_batch_indices))
+    act_prob_batch = torch.zeros([len(transitions)])
+    for i in range(len(transitions)):
+        act_prob = policy_model(torch.from_numpy(
+            np.append(
+                tensor.phi(np.vstack(state_batch[:,i].data.numpy())),
+                tensor.psi(np.array([[action_batch[i].data.numpy()]]))
+            )
+        ).float())
+        act_prob_batch[i] = torch.exp(act_prob) / total_probability
+        
+    # action_batch_indices = []
+    # for action in action_batch.data.numpy():
+    #     rounded_action = np.round(action, decimals=2)
+    #     action_batch_indices.append(np.where(all_us == rounded_action)[0])
+    # action_batch_indices = torch.from_numpy(np.array(action_batch_indices))
     # What is gather? https://stackoverflow.com/questions/50999977/what-does-the-gather-function-do-in-pytorch-in-layman-terms
-    prob_batch = pred_batch.gather(dim=1, index=action_batch_indices).squeeze() # (batch_size,)
+    # prob_batch = pred_batch.gather(dim=1, index=action_batch_indices).squeeze() # (batch_size,)
 
     # Compute loss
 
     # Original code
-    loss = torch.sum(-prob_batch * expected_returns_batch)
+    # loss = torch.sum(-act_prob_batch * Gval_batch)
 
     # Found this version
-    # logprob = torch.log(prob_batch)
-    # selected_logprobs = logprob * expected_returns_batch
-    # loss = -torch.sum(selected_logprobs)
+    log_prob = -torch.log(act_prob_batch)
+    selected_logprobs = log_prob * Gval_batch
+    loss = torch.mean(selected_logprobs)
 
     # Gradient descent
     optimizer.zero_grad()
