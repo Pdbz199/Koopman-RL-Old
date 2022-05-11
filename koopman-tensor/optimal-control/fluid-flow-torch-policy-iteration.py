@@ -16,6 +16,8 @@ from tensor import KoopmanTensor, OLS
 sys.path.append('../../')
 import observables
 
+PATH = './fluid-flow-policy.pt'
+
 #%% System dynamics
 x_dim = 3
 x_column_shape = [x_dim, 1]
@@ -223,10 +225,7 @@ def reinforce(estimator, n_episode, gamma=1.0):
         log_probs = []
         rewards = []
 
-        x = np.random.random(x_column_shape) * 0.5 * np.random.choice([-1,1], size=x_column_shape)
-        u = np.array([[0]])
-        soln = solve_ivp(fun=continuous_f(u), t_span=[0, 10.0], y0=x[:,0], method='RK45')
-        state = np.vstack(soln.y[:,-1])
+        state = np.vstack(initial_xs[episode])
 
         # w_hat = w_hat_t()
         while len(rewards) < 10000:
@@ -259,6 +258,7 @@ def reinforce(estimator, n_episode, gamma=1.0):
                 estimator.update(returns, log_probs)
                 if episode == 0 or (episode+1) % 100 == 0:
                     print(f"Episode: {episode+1}, total reward: {total_reward_episode[episode]}")
+                    torch.save(estimator, PATH)
 
                 break
 
@@ -268,18 +268,26 @@ def reinforce(estimator, n_episode, gamma=1.0):
 # n_state = env.observation_space.shape[0]
 num_actions = all_us.shape[0]
 lr = 0.003
-policy_net = PolicyNetwork(x_dim, num_actions, lr)
-def init_weights(m):
-    if type(m) == torch.nn.Linear:
-        m.weight.data.fill_(0.0)
-policy_net.model.apply(init_weights)
+# policy_net = PolicyNetwork(x_dim, num_actions, lr)
+# def init_weights(m):
+#     if type(m) == torch.nn.Linear:
+#         m.weight.data.fill_(0.0)
+# policy_net.model.apply(init_weights)
+policy_net = torch.load(PATH)
 
-n_episode = 2000
+num_episodes = 2000
 gamma = 0.99
-total_reward_episode = [0] * n_episode
+total_reward_episode = [0] * num_episodes
 
-#%%
-reinforce(policy_net, n_episode, gamma)
+initial_xs = np.zeros([num_episodes, x_dim])
+for episode in range(num_episodes):
+    x = np.random.random(x_column_shape) * 0.5 * np.random.choice([-1,1], size=x_column_shape)
+    u = np.array([[0]])
+    soln = solve_ivp(fun=continuous_f(u), t_span=[0, 10.0], y0=x[:,0], method='RK45')
+    initial_xs[episode] = soln.y[:,-1]
+
+#%% Run REINFORCE
+reinforce(policy_net, num_episodes, gamma)
 
 # import matplotlib.pyplot as plt
 # plt.plot(total_reward_episode)
@@ -290,23 +298,32 @@ reinforce(policy_net, n_episode, gamma)
 
 #%% Test policy in environment
 num_episodes = 1000
+
+initial_xs = np.zeros([num_episodes, x_dim])
+for episode in range(num_episodes):
+    x = np.random.random(x_column_shape) * 0.5 * np.random.choice([-1,1], size=x_column_shape)
+    u = np.array([[0]])
+    soln = solve_ivp(fun=continuous_f(u), t_span=[0, 10.0], y0=x[:,0], method='RK45')
+    initial_xs[episode] = soln.y[:,-1]
+
 def watch_agent():
-    rewards = torch.zeros([num_episodes])
+    costs = torch.zeros([num_episodes])
     for episode in range(num_episodes):
-        state = env.reset()
-        done = False
+        state = np.vstack(initial_xs[episode])
+        cumulative_cost = 0
         step = 0
-        while not done and step < 200:
+        while step < 10000:
             # env.render()
             with torch.no_grad():
-                action, _ = policy_net.get_action(state)
-            state, _, done, __ = env.step(action)
+                action, _ = policy_net.get_action(state[:,0])
+            state = tensor.f(action, state)
+            cumulative_cost += cost(state, action)
             step += 1
-            if done or step >= 200:
-                rewards[episode] = step
-                # print("Reward:", step)
+            if step == 10000:
+                costs[episode] = cumulative_cost
+                # print(f"Total cost for episode {episode}:", cumulative_cost)
     # env.close()
-    print(f"Mean reward per episode over {num_episodes} episodes:", torch.mean(rewards))
-# watch_agent()
+    print(f"Mean cost per episode over {num_episodes} episodes:", torch.mean(costs))
+watch_agent()
 
 #%%
