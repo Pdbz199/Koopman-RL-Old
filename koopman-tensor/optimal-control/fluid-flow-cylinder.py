@@ -34,21 +34,6 @@ lamb = 1
 # t_span = np.arange(0, 0.02, 0.001)
 t_span = np.arange(0, 0.001, 0.0001)
 
-# def continuous_f(input, t, u):
-#     """
-#         INPUTS:
-#         input - state vector
-#         t - timestep
-#         u - action vector
-#     """
-#     x, y, z = input
-
-#     x_dot = mu*x - omega*y + A*x*z
-#     y_dot = omega*x + mu*y + A*y*z
-#     z_dot = -lamb * (z - np.power(x, 2) - np.power(y, 2))
-
-#     return [x_dot, y_dot + u, z_dot]
-
 def continuous_f(action=None):
     """
         INPUTS:

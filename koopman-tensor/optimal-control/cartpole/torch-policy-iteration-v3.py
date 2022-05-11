@@ -4,15 +4,13 @@ Chapter 8: Implementing Policy Gradients and Policy Optimization
 Author: Yuxi (Hayden) Liu
 '''
 
-import torch
 import gym
+import numpy as np
+import torch
 import torch.nn as nn
 
 seed = 123
 torch.manual_seed(seed)
-
-import numpy as np
-
 np.random.seed(seed)
 
 import sys
@@ -28,7 +26,7 @@ env_string = 'env:CartPoleControlEnv-v0'
 env = gym.make(env_string)
 
 step_size = 1.0 if env_string == 'CartPole-v0' else 0.5
-all_us = torch.arange(0, 1+step_size, step_size) if env_string == 'CartPole-v0' else torch.arange(-10, 10+step_size, step_size)
+all_us = torch.arange(0, 1+step_size, step_size) if env_string == 'CartPole-v0' else torch.Tensor([-1,-0.5,-0.25,-0.1-0.05,-0.025,-0.01,-0.005,-0.0025,-0.001,0,0.001,0.0025,0.005,0.01,0.025,0.05,0.1,0.25,0.5,1]) # torch.arange(-5, 5+step_size, step_size) # torch.Tensor([-10, 10])
 
 #%% Reward function
 # def reward(xs, us):
@@ -107,6 +105,7 @@ def reinforce(env, estimator, n_episode, gamma=1.0):
         @param n_episode: number of episodes
         @param gamma: the discount factor
     """
+    w_hat = np.zeros([15,1])
     for episode in range(n_episode):
         states = []
         actions = []
@@ -114,7 +113,6 @@ def reinforce(env, estimator, n_episode, gamma=1.0):
         rewards = []
         state = env.reset()
 
-        w_hat = w_hat_t()
         while len(rewards) < 1000:
             action, log_prob = estimator.get_action(state)
             next_state, reward, is_done, _ = env.step(action)
@@ -128,7 +126,7 @@ def reinforce(env, estimator, n_episode, gamma=1.0):
 
             if is_done:
                 returns = torch.zeros([len(rewards)])
-                # Gt = 0
+                Gt = 0
                 for i in range(len(rewards)-1, -1, -1):
                     # Gt = rewards[i] + (gamma * Gt)
                     # returns[i] = Gt
@@ -139,15 +137,20 @@ def reinforce(env, estimator, n_episode, gamma=1.0):
                     )
                     returns[i] = Q_val[0,0]
 
+                # if episode == 0 or (episode+1) % 100 == 0:
+                #     print(returns)
+
                 returns = (returns - returns.mean()) / (returns.std() + torch.finfo(torch.float64).eps)
 
                 estimator.update(returns, log_probs)
-                if episode % 100 == 0:
-                    print(f"Episode: {episode}, total {'reward' if env_string == 'CartPole-v0' else 'cost'}: {total_reward_episode[episode]}")
+                if episode == 0 or (episode+1) % 100 == 0:
+                    print(f"Episode: {episode+1}, total {'reward' if env_string == 'CartPole-v0' else 'cost'}: {total_reward_episode[episode]}")
 
                 break
 
             state = next_state
+
+        w_hat = w_hat_t()
 
 #%%
 n_state = env.observation_space.shape[0]
@@ -159,7 +162,7 @@ def init_weights(m):
         m.weight.data.fill_(0.0)
 policy_net.model.apply(init_weights)
 
-n_episode = 5000 # Completely converged at 2000 episodes for original code
+n_episode = 3000 # Completely converged at 2000 episodes for original code
 gamma = 0.99
 total_reward_episode = [0] * n_episode
 
@@ -238,7 +241,7 @@ reinforce(env, policy_net, n_episode, gamma)
 # plt.show()
 
 #%% Test policy in environment
-num_episodes = 10
+num_episodes = 1000
 def watch_agent():
     rewards = torch.zeros([num_episodes])
     for episode in range(num_episodes):
@@ -246,15 +249,15 @@ def watch_agent():
         done = False
         step = 0
         while not done and step < 200:
-            env.render()
+            # env.render()
             with torch.no_grad():
                 action, _ = policy_net.get_action(state)
             state, _, done, __ = env.step(action)
             step += 1
             if done or step >= 200:
                 rewards[episode] = step
-                print("Reward:", step)
-    env.close()
+                # print("Reward:", step)
+    # env.close()
     print(f"Mean reward per episode over {num_episodes} episodes:", torch.mean(rewards))
 watch_agent()
 
