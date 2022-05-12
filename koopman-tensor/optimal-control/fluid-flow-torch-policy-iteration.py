@@ -8,6 +8,7 @@ seed = 123
 torch.manual_seed(seed)
 np.random.seed(seed)
 
+from matplotlib import pyplot as plt
 from scipy.integrate import solve_ivp
 
 import sys
@@ -117,7 +118,7 @@ tensor = KoopmanTensor(
 w_r = np.array([
     [0],
     [0],
-    [1]
+    [0] # 1
 ])
 Q_ = np.array([
     [1.0, 0.0, 0.0],
@@ -287,7 +288,7 @@ for episode in range(num_episodes):
     initial_xs[episode] = soln.y[:,-1]
 
 #%% Run REINFORCE
-reinforce(policy_net, num_episodes, gamma)
+# reinforce(policy_net, num_episodes, gamma)
 
 # import matplotlib.pyplot as plt
 # plt.plot(total_reward_episode)
@@ -306,24 +307,40 @@ for episode in range(num_episodes):
     soln = solve_ivp(fun=continuous_f(u), t_span=[0, 10.0], y0=x[:,0], method='RK45')
     initial_xs[episode] = soln.y[:,-1]
 
+step_limit = 10000
 def watch_agent():
+    states = np.zeros([num_episodes,x_dim,step_limit])
+    actions = np.zeros([num_episodes,u_dim,step_limit])
     costs = torch.zeros([num_episodes])
     for episode in range(num_episodes):
         state = np.vstack(initial_xs[episode])
+        states[episode,:,0] = state[:,0]
         cumulative_cost = 0
         step = 0
-        while step < 10000:
-            # env.render()
+        while step < step_limit:
             with torch.no_grad():
                 action, _ = policy_net.get_action(state[:,0])
-            state = tensor.f(action, state)
-            cumulative_cost += cost(state, action)
+            state = tensor.f(state, action)
+            states[episode,:,step] = state[:,0]
+            actions[episode,:,step] = action
+            cumulative_cost += cost(state, action)[0,0]
             step += 1
-            if step == 10000:
+            if step == step_limit:
                 costs[episode] = cumulative_cost
                 # print(f"Total cost for episode {episode}:", cumulative_cost)
-    # env.close()
     print(f"Mean cost per episode over {num_episodes} episodes:", torch.mean(costs))
+    print("Final state of final episode:", states[-1,:,-1])
+    print("Difference between final state of final episode and reference state:", np.abs(states[-1,:,-1] - w_r[:,0]))
+
+    ax = plt.axes(projection='3d')
+    ax.set_xlim(-1.0, 1.0)
+    ax.set_ylim(-1.0, 1.0)
+    ax.set_zlim(0.0, 1.0)
+    ax.plot3D(states[-1,0], states[-1,1], states[-1,2], 'gray')
+    plt.show()
+
+    plt.scatter(np.arange(actions.shape[2]), actions[-1,0], s=10)
+    plt.show()
 watch_agent()
 
 #%%
