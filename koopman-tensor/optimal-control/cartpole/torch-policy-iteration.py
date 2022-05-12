@@ -20,8 +20,8 @@ import observables
 import utilities
 
 #%% Initialize environment
-# env_string = 'CartPole-v0'
-env_string = 'env:CartPoleControlEnv-v0'
+env_string = 'CartPole-v0'
+# env_string = 'env:CartPoleControlEnv-v0'
 env = gym.make(env_string)
 
 # def reward(xs, us):
@@ -104,7 +104,7 @@ MAX_TRAJECTORIES = 10000
 gamma = 0.99
 score = []
 
-w_hat_batch_size = X.shape[1] # 2**14 # 2**9 (4096)
+w_hat_batch_size = 2**14
 def w_hat_t():
     x_batch_indices = np.random.choice(X.shape[1], w_hat_batch_size, replace=False)
     x_batch = X[:, x_batch_indices] # (x_dim, w_hat_batch_size)
@@ -114,6 +114,8 @@ def w_hat_t():
         pi_response = policy_model(torch.from_numpy(x_batch).float().T).T # (all_us.shape[0], w_hat_batch_size)
 
     phi_x_prime_batch = tensor.K_(np.array([all_us])) @ phi_x_batch # (all_us.shape[0], phi_dim, w_hat_batch_size)
+    #! don't remember if checked properly
+
     phi_x_prime_batch_prob = phi_x_prime_batch * \
                                 pi_response.reshape(
                                     pi_response.shape[0],
@@ -122,102 +124,20 @@ def w_hat_t():
                                 ).data.numpy() # (all_us.shape[0], phi_dim, w_hat_batch_size)
     expectation_term_1 = np.sum(phi_x_prime_batch_prob, axis=0) # (phi_dim, w_hat_batch_size)
 
-    # print( gamma )
-    # print( expectation_term_1[:,100] )
-    # print( (gamma*expectation_term_1)[:,100] )
-    # print( phi_x_batch[:,100] )
-    # print( (phi_x_batch - (gamma*expectation_term_1))[:,100] ) # (phi_dim, w_hat_batch_size) - gamma*(phi_dim, w_hat_batch_size)
-
     reward_batch_prob = reward(x_batch, np.array([all_us])) * pi_response.data.numpy() # (all_us.shape[0], w_hat_batch_size)
-
-    # print( reward(x_batch, np.array([all_us]))[:,0] ) # (all_us.shape[0], w_hat_batch_size)
-    # print( pi_response.data.numpy()[:,0] )
-    # print( reward(x_batch, np.array([all_us]))[:,0] * pi_response.data.numpy()[:,0] )
-    # print( reward_batch_prob[:,0] )
-
     expectation_term_2 = np.array([
         np.sum(reward_batch_prob, axis=0) # (w_hat_batch_size,)
     ]) # (1, w_hat_batch_size)
 
-    # print( expectation_term_2[0] )
-
-    """
-    || Y - X @ B ||
-    || expectation_term_2.T - (phi_x_batch - gamma*expectation_term_1).T @ B ||
-    || B.T @ (phi_x_batch - gamma*expectation_term_1) - expectation_term_2 ||
-    || (phi_dim, 1).T @ (phi_dim, w_hat_batch_size) - (1, w_hat_batch_size) ||
-    || (1, phi_dim) @ (phi_dim, w_hat_batch_size) - (1, w_hat_batch_size) ||
-
-    which makes B.T (1, phi_dim) which makes B (phi_dim, 1) ✓
-    """
     w_hat = OLS(
         (phi_x_batch - (gamma*expectation_term_1)).T,
         expectation_term_2.T
-    )
-
-    # print(w_hat.shape) # (phi_dim, 1)
+    ) # (phi_dim, 1)
 
     return w_hat
 
 def Q(x, u, w_hat_t):
     return reward(x, u) + gamma*w_hat_t.T @ tensor.phi_f(x, u)
-
-# start_state = np.array([
-#     [ 0.01522224],
-#     [ 0.00674007],
-#     [ 0.00120364],
-#     [-0.02732334]
-# ])
-# start_action = 0
-# Gvals = []
-# for trajectory in range(MAX_TRAJECTORIES):
-#     curr_state = start_state # Always start at some point
-#     env.reset(state=curr_state[:,0]) # Set state of environment
-#     done = False
-#     prev_states = []
-#     actions = []
-#     rewards = []
-    
-#     for t in range(Horizon):
-#         phi_curr_state = tensor.phi(curr_state)
-#         with torch.no_grad():
-#             act_prob = policy_model(torch.from_numpy(phi_curr_state[:,0]).float())
-#         u = np.random.choice(all_us, p=act_prob.data.numpy())
-#         if t == 0:
-#             u = start_action
-#         action = u if env_string == 'CartPole-v0' else np.array([u])
-#         prev_state = curr_state[:,0]
-#         curr_state, step_cost, done, _ = env.step(action)
-#         curr_state = np.vstack(curr_state)
-
-#         prev_states.append(prev_state)
-#         actions.append(u)
-#         rewards.append(-step_cost)
-
-#         if done:
-#             break
-
-#     prev_states = torch.Tensor(np.array(prev_states))
-#     actions = torch.Tensor(actions)
-#     rewards = torch.Tensor(rewards)
-
-#     Gval = 0
-#     power = 0
-#     for i in range(len(prev_states)):
-#         discount = gamma**power
-#         Gval = Gval + ( discount * rewards[i] )
-#         power += 1
-
-#     Gvals.append(Gval)
-
-# w_hat = w_hat_t()
-# Q_val = Q(
-#     np.vstack( start_state ),
-#     np.array([[ start_action ]]),
-#     w_hat
-# )[0,0]
-# mean_Gval = np.mean(Gvals)
-# Q_G_norm = np.abs( Q_val - mean_Gval )
 
 for trajectory in range(MAX_TRAJECTORIES):
     curr_state = np.vstack(env.reset())
@@ -228,7 +148,7 @@ for trajectory in range(MAX_TRAJECTORIES):
         # phi_curr_state = tensor.phi(curr_state)
         with torch.no_grad():
             act_prob = policy_model(torch.from_numpy(curr_state[:,0]).float())
-        print("action probs across x's", act_prob)
+        # print("action probs across x's", act_prob)
         u = np.random.choice(all_us, p=act_prob.data.numpy())
         action = u if env_string == 'CartPole-v0' else np.array([u])
         prev_state = curr_state[:,0]

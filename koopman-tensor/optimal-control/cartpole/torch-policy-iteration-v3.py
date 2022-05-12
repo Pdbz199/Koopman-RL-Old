@@ -25,30 +25,30 @@ import observables
 env_string = 'env:CartPoleControlEnv-v0'
 env = gym.make(env_string)
 
-step_size = 1.0 if env_string == 'CartPole-v0' else 0.5
-all_us = torch.arange(0, 1+step_size, step_size) if env_string == 'CartPole-v0' else torch.Tensor([-1,-0.5,-0.25,-0.1-0.05,-0.025,-0.01,-0.005,-0.0025,-0.001,0,0.001,0.0025,0.005,0.01,0.025,0.05,0.1,0.25,0.5,1]) # torch.arange(-5, 5+step_size, step_size) # torch.Tensor([-10, 10])
+step_size = 1.0 if env_string == 'CartPole-v0' else 10
+all_us = torch.arange(0, 1+step_size, step_size) if env_string == 'CartPole-v0' else  torch.arange(-10, 10+step_size, step_size) # torch.Tensor([-10, 10])
 
 #%% Reward function
-# def reward(xs, us):
-#     return cartpole_reward.defaultCartpoleRewardMatrix(xs, np.array([us])).T
-# def cost(xs, us):
-#     return -reward(xs, us)
+def reward(xs, us):
+    return cartpole_reward.defaultCartpoleRewardMatrix(xs, np.array([us])).T
+def cost(xs, us):
+    return -reward(xs, us)
 
 # w_r = np.zeros([4,1])
-Q_ = np.array([
-    [10.0, 0.0,  0.0, 0.0],
-    [ 0.0, 1.0,  0.0, 0.0],
-    [ 0.0, 0.0, 10.0, 0.0],
-    [ 0.0, 0.0,  0.0, 1.0]
-])
-R = 0.1
-def cost(x, u):
-    # Assuming that data matrices are passed in for X and U. Columns vectors are snapshots
-    # _x = x - w_r
-    mat = np.vstack(np.diag(x.T @ Q_ @ x)) + np.power(u, 2)*R
-    return mat # (xs.shape[1], us.shape[1])
-def reward(x, u):
-    return -cost(x, u)
+# Q_ = np.array([
+#     [10.0, 0.0,  0.0, 0.0],
+#     [ 0.0, 1.0,  0.0, 0.0],
+#     [ 0.0, 0.0, 10.0, 0.0],
+#     [ 0.0, 0.0,  0.0, 1.0]
+# ])
+# R = 0.1
+# def cost(x, u):
+#     # Assuming that data matrices are passed in for X and U. Columns vectors are snapshots
+#     # _x = x - w_r
+#     mat = np.vstack(np.diag(x.T @ Q_ @ x)) + np.power(u, 2)*R
+#     return mat # (xs.shape[1], us.shape[1])
+# def reward(x, u):
+#     return -cost(x, u)
 
 #%% Policy function as PyTorch model
 class PolicyNetwork():
@@ -115,27 +115,31 @@ def reinforce(env, estimator, n_episode, gamma=1.0):
 
         while len(rewards) < 1000:
             action, log_prob = estimator.get_action(state)
-            next_state, reward, is_done, _ = env.step(action)
+            next_state, _, is_done, __ = env.step(action)
+            curr_reward = reward(np.vstack(state), np.array([action]))[0,0]
+            # print(curr_reward)
 
             states.append(state)
             actions.append(action)
 
-            total_reward_episode[episode] += reward
+            total_reward_episode[episode] += curr_reward
             log_probs.append(log_prob)
-            rewards.append(reward)
+            rewards.append(curr_reward)
 
             if is_done:
                 returns = torch.zeros([len(rewards)])
                 Gt = 0
                 for i in range(len(rewards)-1, -1, -1):
-                    # Gt = rewards[i] + (gamma * Gt)
-                    # returns[i] = Gt
+                    Gt = rewards[i] + (gamma * Gt)
+                    returns[i] = Gt
+                    print("Gt:", Gt)
                     Q_val = Q(
                         np.vstack(states[i]),
                         np.array([actions[i]]),
                         w_hat
-                    )
+                    ) * (len(rewards) - i - 2)
                     returns[i] = Q_val[0,0]
+                    print("Q_val:", Q_val)
 
                 # if episode == 0 or (episode+1) % 100 == 0:
                 #     print(returns)
@@ -144,13 +148,13 @@ def reinforce(env, estimator, n_episode, gamma=1.0):
 
                 estimator.update(returns, log_probs)
                 if episode == 0 or (episode+1) % 100 == 0:
-                    print(f"Episode: {episode+1}, total {'reward' if env_string == 'CartPole-v0' else 'cost'}: {total_reward_episode[episode]}")
+                    print(f"Episode: {episode+1}, total reward: {total_reward_episode[episode]}")
 
                 break
 
             state = next_state
 
-        w_hat = w_hat_t()
+        # w_hat = w_hat_t()
 
 #%%
 n_state = env.observation_space.shape[0]
@@ -162,7 +166,7 @@ def init_weights(m):
         m.weight.data.fill_(0.0)
 policy_net.model.apply(init_weights)
 
-n_episode = 3000 # Completely converged at 2000 episodes for original code
+n_episode = 2000 # Completely converged at 2000 episodes for original code
 gamma = 0.99
 total_reward_episode = [0] * n_episode
 
@@ -197,16 +201,16 @@ tensor = KoopmanTensor(
 )
 
 #%% Estimate Q function for current policy
-# w_hat_batch_size = X.shape[1] # 2**14 # 2**9 (4096)
+w_hat_batch_size = 2**14
 def w_hat_t():
-    # x_batch_indices = np.random.choice(X.shape[1], w_hat_batch_size, replace=False)
-    # x_batch = X[:, x_batch_indices] # (x_dim, w_hat_batch_size)
-    # phi_x_batch = tensor.phi(x_batch) # (phi_dim, w_hat_batch_size)
+    x_batch_indices = np.random.choice(X.shape[1], w_hat_batch_size, replace=False)
+    x_batch = X[:, x_batch_indices] # (x_dim, w_hat_batch_size)
+    phi_x_batch = tensor.phi(x_batch) # (phi_dim, w_hat_batch_size)
 
     with torch.no_grad():
         pi_response = policy_net.predict(tensor.X.T) # (all_us.shape[0], w_hat_batch_size)
 
-    phi_x_prime_batch = tensor.K_(np.array([all_us.data.numpy()])) @ tensor.Phi_X # (all_us.shape[0], phi_dim, w_hat_batch_size)
+    phi_x_prime_batch = tensor.K_(np.array([all_us.data.numpy()])) @ phi_x_batch # (all_us.shape[0], phi_dim, w_hat_batch_size)
     phi_x_prime_batch_prob = phi_x_prime_batch * \
                                 pi_response.reshape(
                                     pi_response.shape[1],
@@ -221,7 +225,7 @@ def w_hat_t():
     ]) # (1, w_hat_batch_size)
 
     w_hat = OLS(
-        (tensor.Phi_X - (gamma*expectation_term_1)).T,
+        (phi_x_batch - (gamma*expectation_term_1)).T,
         expectation_term_2.T
     )
 

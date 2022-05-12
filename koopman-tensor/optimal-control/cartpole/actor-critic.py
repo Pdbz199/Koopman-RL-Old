@@ -15,14 +15,15 @@ import cartpole_reward
 import observables
 
 #%% Dynamics variables
-env_string = 'CartPole-v0'
-# env_string = 'env:CartPoleControlEnv-v0'
+# env_string = 'CartPole-v0'
+env_string = 'env:CartPoleControlEnv-v0'
 env = gym.make(env_string).unwrapped
 
 state_order = 2
 action_order = 2
 
-state_dim = env.observation_space.shape[0]
+# state_dim = env.observation_space.shape[0]
+state_dim = 4
 action_dim = 1
 state_M_plus_N_minus_ones = np.arange( (state_dim-1), state_order + (state_dim-1) + 1 )
 phi_dim = int( np.sum( comb( state_M_plus_N_minus_ones, np.ones_like(state_M_plus_N_minus_ones) * (state_dim-1) ) ) )
@@ -35,27 +36,27 @@ all_us = np.round(all_us, decimals=2)
 gamma = 0.99
 lr = 0.0001
 
-#%% Cost/reward
-def reward(xs, us):
-    return cartpole_reward.defaultCartpoleRewardMatrix(xs, us)
-def cost(xs, us):
-    return -reward(xs, us)
+#%% Cost/reward functions
+# def reward(xs, us):
+#     return cartpole_reward.defaultCartpoleRewardMatrix(xs, us)
+# def cost(xs, us):
+#     return -reward(xs, us)
 
-# w_r = np.zeros([4,1])
-# Q_ = np.array([
-#     [10.0, 0.0,  0.0, 0.0],
-#     [ 0.0, 1.0,  0.0, 0.0],
-#     [ 0.0, 0.0, 10.0, 0.0],
-#     [ 0.0, 0.0,  0.0, 1.0]
-# ])
-# R = 0.1
-# def cost(x, u):
-#     # Assuming that data matrices are passed in for X and U. Columns vectors are snapshots
-#     _x = x - w_r
-#     mat = np.vstack(np.diag(_x.T @ Q_ @ _x)) + np.power(u, 2)*R
-#     return mat.T
-# def reward(x, u):
-#     return -cost(x, u)
+w_r = np.zeros([4,1])
+Q_ = np.array([
+    [10.0, 0.0,  0.0, 0.0],
+    [ 0.0, 1.0,  0.0, 0.0],
+    [ 0.0, 0.0, 10.0, 0.0],
+    [ 0.0, 0.0,  0.0, 1.0]
+])
+R = 0.1
+def cost(x, u):
+    # Assuming that data matrices are passed in for X and U. Columns vectors are snapshots
+    _x = x - w_r
+    mat = np.vstack(np.diag(_x.T @ Q_ @ _x)) + np.power(u, 2)*R
+    return mat.T
+def reward(x, u):
+    return -cost(x, u)
 
 #%% Construct snapshots of u from random agent and initial states x0
 N = 20000 # Number of datapoints
@@ -76,13 +77,12 @@ while i < N:
 X = X[:,:-1]
 
 #%% Estimate Koopman tensor
-order = 2
 tensor = KoopmanTensor(
     X,
     Y,
     U,
-    phi=observables.monomials(order),
-    psi=observables.monomials(2),
+    phi=observables.monomials(state_order),
+    psi=observables.monomials(action_order),
     regressor='ols'
 )
 
@@ -149,38 +149,39 @@ def critic(x, w_hat):
     _x = np.vstack(x)
     _all_us = np.array([all_us])
     v = torch.sum(
-        policy_model( torch.Tensor(x) ) * torch.Tensor( Q( _x, _all_us, w_hat ) ),
+        torch.Tensor( Q( _x, _all_us, w_hat ) ) * policy_model( torch.Tensor(x) ).detach().reshape(1,all_us.shape[0]),
         axis=1
     )
     return v
 
 def trainIters(n_iters):
     optimizerA = optim.Adam(policy_model.parameters())
+    w_hat = np.zeros([phi_dim,1])
     for iter in range(n_iters):
         state = env.reset()
         log_probs = []
         values = []
         rewards = []
         # masks = []
-        env.reset()
 
-        w_hat = w_hat_t()
         for i in count():
             # env.render()
             dist = policy_model(torch.Tensor(state))
             value = critic(state, w_hat)
+            # print("Value:", value)
 
             action_index = torch.multinomial(dist, 1).item()
             action = all_us[action_index].item()
-            next_state, reward, done, _ = env.step(action)
-
             log_prob = torch.log(dist[action_index]).reshape(1,1)
+
+            next_state, curr_reward, done, __ = env.step(action)
+            # curr_reward = reward(np.vstack(state), action)[0,0]
 
             log_probs.append(log_prob)
             values.append(value)
-            rewards.append(reward)
+            rewards.append(curr_reward)
             # rewards.append(torch.tensor([reward], dtype=torch.float, device=device))
-            # masks.append(torch.tensor([1-done], dtype=torch.float, device=device))
+            # masks.append(torch.tensor([1-done], dtype=torch.float))
 
             state = next_state
 
@@ -190,6 +191,7 @@ def trainIters(n_iters):
                 break
 
         next_value = critic(next_state, w_hat)
+        # print("Next value:", next_value)
         # returns = compute_returns(next_value, rewards, masks)
         returns = compute_returns(next_value, rewards)
 
@@ -201,9 +203,14 @@ def trainIters(n_iters):
 
         actor_loss = -(log_probs * advantage.detach()).mean()
 
+        # Update actor
         optimizerA.zero_grad()
         actor_loss.backward()
         optimizerA.step()
+
+        # Update critic
+        w_hat = w_hat_t()
+
     torch.save(policy_model, 'actor-critic-policy.pkl')
     # env.close()
 
