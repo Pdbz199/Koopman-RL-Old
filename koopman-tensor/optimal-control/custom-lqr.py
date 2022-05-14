@@ -124,7 +124,7 @@ R = 0.1
 w_r = np.zeros([4,1])
 
 def f(x, u):
-    return A @ x + B @ u
+    return (A @ x + B @ u)
 
 
 
