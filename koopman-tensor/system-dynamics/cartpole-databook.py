@@ -83,20 +83,22 @@ def continuous_f(action=None, policy=None):
             input - state vector
         """
         
-        u = np.random.choice(action_range, size=action_column_shape)
+        u = None
         if action is not None:
             u = action
-        if policy is not None:
+        elif policy is not None:
             u = policy(x)
+        else:
+            u = np.random.choice(action_range, size=action_column_shape)
 
-        x_prime = A @ np.vstack(x) + B @ u
+        x_prime = np.zeros(4)
+        output = A @ np.vstack(x) + B @ u
+        x_prime[0] = output[0,0]
+        x_prime[1] = output[1,0]
+        x_prime[2] = output[2,0]
+        x_prime[3] = output[3,0]
 
-        return np.array([
-            x_prime[0,0],
-            x_prime[1,0],
-            x_prime[2,0],
-            x_prime[3,0]
-        ])
+        return x_prime
 
     return f_u
 
