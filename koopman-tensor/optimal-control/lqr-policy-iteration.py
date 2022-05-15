@@ -31,7 +31,8 @@ import observables
 
 # A = np.zeros([2,2])
 # max_real_eigen_val = 1.0
-# while max_real_eigen_val >= 1.0 or max_real_eigen_val <= 0.7:
+# # while max_real_eigen_val >= 1.0 or max_real_eigen_val <= 0.7:
+# while max_real_eigen_val >= 2.0 or max_real_eigen_val <= 1.5:
 #     Z = np.random.rand(2,2)
 #     A = Z.T @ Z
 #     W,V = np.linalg.eig(A)
@@ -45,6 +46,9 @@ import observables
 #     [1.0],
 #     [1.0]
 # ], dtype=np.float64)
+
+# def f(x, u):
+#     return A @ x + B @ u
 
 mass_pole = 1.0
 mass_cart = 5.0
@@ -85,13 +89,14 @@ all_us = torch.arange(-20, 20+step_size, step_size)
 # def cost(xs, us):
 #     return -reward(xs, us)
 
-# w_r = np.zeros([4,1])
+# w_r = np.zeros([A.shape[0],1])
 # Q_ = np.array([
 #     [1.0, 0.0],
 #     [0.0, 1.0]
 # ], dtype=np.float64)
 # Q_diag = np.diag(Q_)
 # R = 1
+
 # Q_ = np.array([
 #     [10, 0,  0, 0],
 #     [ 0, 1,  0, 0],
@@ -99,8 +104,10 @@ all_us = torch.arange(-20, 20+step_size, step_size)
 #     [ 0, 0,  0, 1]
 # ], dtype=np.float64)
 # R = np.array([[0.1]], dtype=np.float64)
+
 Q_ = np.eye(4)
 R = 0.0001
+
 w_r = np.array([
     [1],
     [0],
@@ -180,8 +187,9 @@ def reinforce(estimator, n_episode, gamma=1.0):
             [0]
         ])
         state = x0 + perturbation
+        # state = np.random.rand(A.shape[0],1)*state_range*np.random.choice(np.array([-1,1]), size=(A.shape[0],1))
 
-        while len(rewards) < 300:
+        while len(rewards) < 30:
             u, log_prob = estimator.get_action(state[:,0])
             action = np.array([[u]])
             next_state = f(state, action)
@@ -194,7 +202,7 @@ def reinforce(estimator, n_episode, gamma=1.0):
             log_probs.append(log_prob)
             rewards.append(curr_reward)
 
-            if len(rewards) == 300:
+            if len(rewards) == 30:
                 returns = torch.zeros([len(rewards)])
                 # Gt = 0
                 for i in range(len(rewards)-1, -1, -1):
@@ -217,7 +225,7 @@ def reinforce(estimator, n_episode, gamma=1.0):
                 estimator.update(returns, log_probs)
                 if episode == 0 or (episode+1) % 100 == 0:
                     print(f"Episode: {episode+1}, total reward: {total_reward_episode[episode]}")
-                    torch.save(estimator, 'lqr-policy-model.pt')
+                    # torch.save(estimator, 'lqr-policy-model.pt')
 
                 break
 
@@ -237,7 +245,7 @@ def init_weights(m):
 policy_net.model.apply(init_weights)
 # policy_net = torch.load('lqr-policy-model.pt')
 
-n_episode = 25000
+n_episode = 2000
 gamma = 0.99
 lamb = 0.0001
 total_reward_episode = [0] * n_episode
@@ -332,7 +340,7 @@ P = soln[0]
 C = np.linalg.inv(R + gamma*B.T @ P @ B) @ (gamma*B.T @ P @ A)
 sigma_t = lamb * np.linalg.inv(R + B.T @ P @ B)
 
-test_steps = 100
+test_steps = 200
 def watch_agent():
     optimal_states = np.zeros([test_steps,n_state])
     learned_states = np.zeros([test_steps,n_state])
@@ -340,10 +348,11 @@ def watch_agent():
         perturbation = np.array([
             [0],
             [0],
-            [np.random.normal(0, 0.1)], # np.random.normal(0, 0.05)
+            [np.random.normal(0, 0.05)],
             [0]
         ])
         state = x0 + perturbation
+        # state = np.random.rand(A.shape[0],1)*state_range*np.random.choice(np.array([-1,1]), size=(A.shape[0],1))
         optimal_state = state
         learned_state = state
         step = 0
@@ -362,9 +371,13 @@ def watch_agent():
             step += 1
     plt.plot(learned_states[:,0])
     plt.plot(learned_states[:,1])
+    plt.plot(learned_states[:,2])
+    plt.plot(learned_states[:,3])
     plt.show()
     plt.plot(optimal_states[:,0])
     plt.plot(optimal_states[:,1])
+    plt.plot(optimal_states[:,2])
+    plt.plot(optimal_states[:,3])
     plt.show()
 watch_agent()
 

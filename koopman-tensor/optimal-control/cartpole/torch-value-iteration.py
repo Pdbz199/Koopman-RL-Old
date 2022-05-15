@@ -189,8 +189,8 @@ def discrete_bellman_error(batch_size):
     return total
 
 epochs = 1000000
-epsilon = 1e-5
-batch_size = 2**9 # 512
+epsilon = 0.00126 # 1e-5
+batch_size = 2**10 # 2**9 # 512
 bellman_errors = [discrete_bellman_error(batch_size*3).data.numpy()] #* 3 is randomly chosen
 BE = bellman_errors[-1]
 print("Initial Bellman error:", BE)
