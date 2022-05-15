@@ -142,23 +142,21 @@ def random_policy(x):
 def optimal_policy(x):
     return -K @ (x - w_r[:, 0])
 
-#%% Plot?
-perturbation = np.array([
-    [0],
-    [0],
-    [np.random.normal(0, 0.05)],
-    [0]
-])
-x = x0 + perturbation
-tspan = np.arange(0, 10, 0.0001)
-_x = odeint(continuous_f(policy=optimal_policy), x[:, 0], tspan, tfirst=True)
+#%% Plot
+# perturbation = np.array([
+#     [0],
+#     [0],
+#     [np.random.normal(0, 0.05)],
+#     [0]
+# ])
+# x = x0 + perturbation
+# tspan = np.arange(0, 10, 0.0001)
+# # _x = odeint(continuous_f(policy=optimal_policy), x[:, 0], tspan, tfirst=True)
 # _x = odeint(pendcart, x[:, 0], tspan, args=(m, M, L, g, d, optimal_policy))
 
-for i in range(state_dim):
-    plt.plot(_x[:, i])
-plt.show()
-
-sys.exit(0)
+# for i in range(state_dim):
+#     plt.plot(_x[:, i])
+# plt.show()
 
 #%% Construct Datasets
 num_episodes = 200
@@ -197,8 +195,45 @@ tensor = KoopmanTensor(
     U,
     phi=observables.monomials(state_order),
     psi=observables.monomials(action_order),
+    is_generator=True,
     regressor='ols'
 )
+
+#%% Extract continuous dynamics function from Koopman Tensor
+def continuous_koopman_f(state, t, policy):
+    """
+        INPUTS:
+        state - state column vector
+        t - time variable
+        policy - function like state -> action (state and action are column vectors)
+    """
+
+    action = policy(state)
+    output = tensor.B.T @ tensor.K_(action) @ tensor.phi(np.vstack(state))
+    x_prime = np.zeros([state_dim])
+    x_prime[0] = output[0,0]
+    x_prime[1] = output[1,0]
+    x_prime[2] = output[2,0]
+    x_prime[3] = output[3,0]
+
+    return x_prime
+
+
+perturbation = np.array([
+    [0],
+    [0],
+    [np.random.normal(0, 0.05)],
+    [0]
+])
+x = x0 + perturbation
+tspan = np.arange(0, 10, 0.0001)
+_x = odeint(continuous_koopman_f, x[:, 0], tspan, args=(optimal_policy,))
+
+for i in range(state_dim):
+    plt.plot(_x[:, i])
+plt.show()
+
+sys.exit(0)
 
 #%% Training error
 training_norms = np.zeros([num_episodes,num_steps_per_episode])

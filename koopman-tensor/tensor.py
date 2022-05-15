@@ -85,9 +85,9 @@ class KoopmanTensor:
         # Construct Phi and Psi matrices
         self.Phi_X = self.phi(X)
         self.Phi_Y = self.phi(Y)
+        if is_generator:
+            self.dPhi_Y = np.einsum('ijk,jk->ik', self.phi.diff(self.X), self.Y)
         self.Psi_U = self.psi(U)
-
-        # TODO: Create Koopman Generator Tensor if is_generator is True
 
         # Get dimensions
         self.dim_phi = self.Phi_X.shape[0]
@@ -115,15 +115,19 @@ class KoopmanTensor:
             )
 
         # Solve for M and B
+        regression_Y = self.dPhi_Y if is_generator else self.Phi_Y
         if regressor == 'rrr':
-            self.M = rrr(self.kronMatrix.T, self.Phi_Y.T).T
-            self.B = rrr(self.Phi_X.T, self.X.T)
+            self.M = rrr(self.kronMatrix.T, regression_Y.T).T
+            # self.B = rrr(self.Phi_X.T, self.X.T)
+            self.B = rrr(regression_Y.T, self.Y.T)
         if regressor == 'sindy':
-            self.M = SINDy(self.kronMatrix.T, self.Phi_Y.T).T
-            self.B = SINDy(self.Phi_X.T, self.X.T)
+            self.M = SINDy(self.kronMatrix.T, regression_Y.T).T
+            # self.B = SINDy(self.Phi_X.T, self.X.T)
+            self.B = SINDy(regression_Y.T, self.Y.T)
         else:
-            self.M = ols(self.kronMatrix.T, self.Phi_Y.T, p_inv).T
-            self.B = ols(self.Phi_X.T, self.X.T, p_inv)
+            self.M = ols(self.kronMatrix.T, regression_Y.T, p_inv).T
+            # self.B = ols(self.Phi_X.T, self.X.T, p_inv)
+            self.B = ols(regression_Y.T, self.Y.T, p_inv)
 
         # reshape M into tensor K
         self.K = np.empty([
