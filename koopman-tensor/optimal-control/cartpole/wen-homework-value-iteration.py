@@ -15,7 +15,6 @@ import sys
 sys.path.append('../../')
 from tensor import KoopmanTensor
 sys.path.append('../../../')
-import cartpole_reward
 import observables
 import utilities
 
@@ -182,7 +181,7 @@ def inner_pi_us(us, xs):
     return inner_pi_us_values * (1 / lamb) # us.shape[1] x xs.shape[1]
 
 def pis(xs):
-    delta = 1e-25
+    delta = np.finfo(np.float32).eps # 1e-25
 
     inner_pi_us_response = torch.real(inner_pi_us(np.array([all_us]), xs)) # all_us.shape[0] x xs.shape[1]
 
@@ -228,8 +227,8 @@ def discrete_bellman_error(batch_size):
 
 epochs = 10000
 epsilon = 0.00126 # 1e-5
-batch_size = 2**13 # 2**9 # 512
-bellman_errors = [discrete_bellman_error(batch_size).data.numpy()]
+batch_size = 2**9
+bellman_errors = [discrete_bellman_error(batch_size*3).data.numpy()]
 BE = bellman_errors[-1]
 print("Initial Bellman error:", BE)
 
@@ -275,7 +274,7 @@ for _ in range(epochs):
     optimizer.step()
 
     # Recompute Bellman error
-    BE = discrete_bellman_error(batch_size).data.numpy()
+    BE = discrete_bellman_error(batch_size*3).data.numpy()
     bellman_errors = np.append(bellman_errors, BE)
 
     # Every so often, print out and save the bellman error(s)
