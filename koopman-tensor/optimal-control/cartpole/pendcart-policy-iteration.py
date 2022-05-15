@@ -1,10 +1,3 @@
-'''
-Source codes for PyTorch 1.0 Reinforcement Learning (Packt Publishing)
-Chapter 8: Implementing Policy Gradients and Policy Optimization
-Author: Yuxi (Hayden) Liu
-'''
-
-import gym
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -14,48 +7,30 @@ seed = 123
 torch.manual_seed(seed)
 np.random.seed(seed)
 
-from control import dare
-# from scipy.integrate import quad_vec
+from control import dare, lqr
+from scipy.integrate import solve_ivp, odeint
 
 import sys
-sys.path.append('../')
-from tensor import KoopmanTensor, OLS
 sys.path.append('../../')
-import cartpole_reward
+from tensor import KoopmanTensor, OLS
+sys.path.append('../../../')
 import observables
 
 #%% Environment settings
-# env_string = 'CartPole-v0'
-# env_string = 'env:CartPoleControlEnv-v0'
-# env = gym.make(env_string)
+m = 1.0 # pendulum mass
+M = 5.0 # cart mass
+L = 2.0 # pendulum length
+g = -10.0 # gravitational acceleration
+d = 1.0 # (delta) cart damping
 
-# A = np.zeros([2,2])
-# max_real_eigen_val = 1.0
-# # while max_real_eigen_val >= 1.0 or max_real_eigen_val <= 0.7:
-# while max_real_eigen_val >= 2.0 or max_real_eigen_val <= 1.5:
-#     Z = np.random.rand(2,2)
-#     A = Z.T @ Z
-#     W,V = np.linalg.eig(A)
-#     max_real_eigen_val = np.max(np.real(W))
-# print("A:", A)
-# A = np.array([
-#     [0.5, 0.0],
-#     [0.0, 0.3]
-# ], dtype=np.float64)
-# B = np.array([
-#     [1.0],
-#     [1.0]
-# ], dtype=np.float64)
+b = 1 # pendulum up (b = 1)
 
-# def f(x, u):
-#     return A @ x + B @ u
-
-mass_pole = 1.0
-mass_cart = 5.0
+mass_pole = m
+mass_cart = M
 pole_position = 1.0
-pole_length = 2.0
-gravity = -10.0
-cart_damping = 1.0
+pole_length = L
+gravity = g
+cart_damping = d
 A = np.array([
     [0.0, 1.0, 0.0, 0.0],
     [0.0, -cart_damping / mass_cart, pole_position * mass_pole * gravity / mass_cart, 0.0],
@@ -77,37 +52,61 @@ x0 = np.array([
     [0]
 ])
 
-def f(x, u):
-    return x + (A @ x + B @ u)*delta_t
+t_span = np.arange(0, 0.002, 0.0001)
+
+def continuous_f(action=None, policy=None):
+    """
+        INPUTS:
+        action - action vector
+    """
+
+    def f_u(t, x):
+        """
+            INPUTS:
+            t - timestep
+            input - state vector
+        """
+        
+        u = None
+        if action is not None:
+            u = action
+        elif policy is not None:
+            u = policy(x)
+        else:
+            u = random_policy(x)
+
+        Sx = np.sin(x[2])
+        Cx = np.cos(x[2])
+        D = m*L*L*(M+m*(1-Cx**2))
+        dx = np.zeros(4)
+        dx[0] = x[1]
+        dx[1] = (1/D)*(-(m**2)*(L**2)*g*Cx*Sx + m*(L**2)*(m*L*(x[3]**2)*Sx - d*x[1])) + m*L*L*(1/D)*u
+        dx[2] = x[3]
+        dx[3] = (1/D)*((m+M)*m*g*L*Sx - m*L*Cx*(m*L*(x[3]**2)*Sx - d*x[1])) - m*L*Cx*(1/D)*u
+
+        return dx
+
+    return f_u
+
+def f(state, action):
+    """
+        INPUTS:
+        state - state column vector
+        action - action column vector
+
+        OUTPUTS:
+        state column vector pushed forward in time
+    """
+    soln = solve_ivp(fun=continuous_f(action=action), t_span=[t_span[0], t_span[-1]], y0=state[:,0], method='RK45')
+    
+    return np.vstack(soln.y[:,-1])
 
 step_size = 0.01
 all_us = torch.arange(-5, 5+step_size, step_size) # -20 to 20
 
 #%% Reward function
-# def reward(xs, us):
-#     return cartpole_reward.defaultCartpoleRewardMatrix(xs, np.array([us])).T
-# def cost(xs, us):
-#     return -reward(xs, us)
-
-# w_r = np.zeros([A.shape[0],1])
-# Q_ = np.array([
-#     [1.0, 0.0],
-#     [0.0, 1.0]
-# ], dtype=np.float64)
-# Q_diag = np.diag(Q_)
-# R = 1
-
-# Q_ = np.array([
-#     [10, 0,  0, 0],
-#     [ 0, 1,  0, 0],
-#     [ 0, 0, 10, 0],
-#     [ 0, 0,  0, 1]
-# ], dtype=np.float64)
-# R = np.array([[0.1]], dtype=np.float64)
-
 Q_ = np.eye(4)
 R = 0.0001
-
 w_r = np.array([
     [1],
     [0],
@@ -121,6 +120,10 @@ def cost(x, u):
     return mat # (xs.shape[1], us.shape[1])
 def reward(x, u):
     return -cost(x, u)
+
+#%% Random policy
+def random_policy(x):
+    return np.random.choice(all_us, size=[B.shape[1],1])
 
 #%% Policy function as PyTorch model
 class PolicyNetwork():
@@ -189,10 +192,11 @@ def reinforce(estimator, n_episode, gamma=1.0):
         state = x0 + perturbation
         # state = np.random.rand(A.shape[0],1)*state_range*np.random.choice(np.array([-1,1]), size=(A.shape[0],1))
 
-        while len(rewards) < 300:
+        while len(rewards) < 1000:
             u, log_prob = estimator.get_action(state[:,0])
             action = np.array([[u]])
             next_state = f(state, action)
+            # next_state = tensor.f(state, action)
             curr_reward = reward(state, action)[0,0]
 
             states.append(state)
@@ -202,7 +206,7 @@ def reinforce(estimator, n_episode, gamma=1.0):
             log_probs.append(log_prob)
             rewards.append(curr_reward)
 
-            if len(rewards) == 300:
+            if len(rewards) == 1000:
                 returns = torch.zeros([len(rewards)])
                 # Gt = 0
                 for i in range(len(rewards)-1, -1, -1):
@@ -225,7 +229,7 @@ def reinforce(estimator, n_episode, gamma=1.0):
                 estimator.update(returns, log_probs)
                 if episode == 0 or (episode+1) % 100 == 0:
                     print(f"Episode: {episode+1}, total reward: {total_reward_episode[episode]}")
-                    torch.save(estimator, 'lqr-policy-model.pt')
+                    torch.save(estimator, 'pendcart-policy-model.pt')
 
                 break
 
@@ -238,32 +242,25 @@ def reinforce(estimator, n_episode, gamma=1.0):
 n_state = A.shape[0]
 n_action = all_us.shape[0]
 lr = 0.003
-policy_net = PolicyNetwork(n_state, n_action, lr)
-def init_weights(m):
-    if type(m) == torch.nn.Linear:
-        m.weight.data.fill_(0.0)
-policy_net.model.apply(init_weights)
-# policy_net = torch.load('lqr-policy-model.pt')
+# policy_net = PolicyNetwork(n_state, n_action, lr)
+# def init_weights(m):
+#     if type(m) == torch.nn.Linear:
+#         m.weight.data.fill_(0.0)
+# policy_net.model.apply(init_weights)
+policy_net = torch.load('pendcart-policy-model.pt')
 
 n_episode = 2000
 gamma = 0.99
 lamb = 0.0001
 total_reward_episode = [0] * n_episode
 
-#%% Construct snapshots of data
-# N = 20000
-# state_range = 20
-# action_range = 20
-# X = np.random.rand(A.shape[0],N)*state_range*np.random.choice(np.array([-1,1]), size=(A.shape[0],N))
-# U = np.random.rand(1,N)*action_range*np.random.choice(np.array([-1,1]), size=(1,N))
-# Y = f(X, U)
+#%% Construct Datasets
+num_episodes = 200
+num_steps_per_episode = 1000
 
-num_episodes = 100
-num_steps_per_episode = 200
-
-X = np.zeros([A.shape[0], num_episodes*num_steps_per_episode])
-Y = np.zeros([A.shape[0], num_episodes*num_steps_per_episode])
-U = np.zeros([1, num_episodes*num_steps_per_episode])
+X = np.zeros([A.shape[1], num_episodes*num_steps_per_episode])
+Y = np.zeros([A.shape[1], num_episodes*num_steps_per_episode])
+U = np.zeros([B.shape[1], num_episodes*num_steps_per_episode])
 
 for episode in range(num_episodes):
     perturbation = np.array([
@@ -276,10 +273,10 @@ for episode in range(num_episodes):
 
     for step in range(num_steps_per_episode):
         X[:, (episode*num_steps_per_episode)+step] = x[:, 0]
-        u = np.array([[np.random.choice(all_us)]])
-        U[:, (episode*num_steps_per_episode)+step] = u[:, 0]
-        y = f(x, u)
-        Y[:, (episode*num_steps_per_episode)+step] = y[:, 0]
+        u = random_policy(x)
+        U[:, (episode*num_steps_per_episode)+step] = u
+        y = f(x, u)[:, 0]
+        Y[:, (episode*num_steps_per_episode)+step] = y
         x = np.vstack(y)
 
 #%% Estimate Koopman tensor
@@ -295,7 +292,7 @@ tensor = KoopmanTensor(
 )
 
 #%% Estimate Q function for current policy
-w_hat_batch_size = 2**11 # 2**14
+w_hat_batch_size = 2**10 # 2**14
 def w_hat_t():
     x_batch_indices = np.random.choice(X.shape[1], w_hat_batch_size, replace=False)
     x_batch = X[:, x_batch_indices] # (x_dim, w_hat_batch_size)
@@ -324,7 +321,7 @@ def Q(x, u, w_hat_t):
     return (reward(x, u) + gamma*w_hat_t.T @ tensor.phi_f(x, u))[0,0]
 
 #%% REINFORCE
-reinforce(policy_net, n_episode, gamma)
+# reinforce(policy_net, n_episode, gamma)
 
 # import matplotlib.pyplot as plt
 # plt.plot(total_reward_episode)
@@ -335,12 +332,13 @@ reinforce(policy_net, n_episode, gamma)
 
 #%% Test policy
 num_episodes = 1
+
 soln = dare(A*np.sqrt(gamma), B*np.sqrt(gamma), Q_, R)
 P = soln[0]
 C = np.linalg.inv(R + gamma*B.T @ P @ B) @ (gamma*B.T @ P @ A)
 sigma_t = lamb * np.linalg.inv(R + B.T @ P @ B)
 
-test_steps = 200
+test_steps = 10000
 def watch_agent():
     optimal_states = np.zeros([test_steps,n_state])
     learned_states = np.zeros([test_steps,n_state])
@@ -352,7 +350,7 @@ def watch_agent():
             [0]
         ])
         state = x0 + perturbation
-        # state = np.random.rand(A.shape[0],1)*state_range*np.random.choice(np.array([-1,1]), size=(A.shape[0],1))
+
         optimal_state = state
         learned_state = state
         step = 0
