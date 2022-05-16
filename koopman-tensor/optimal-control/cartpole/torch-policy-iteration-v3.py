@@ -124,7 +124,7 @@ def reinforce(env, estimator, n_episode, gamma=1.0):
             states.append(state)
             actions.append(action)
 
-            curr_reward = reward(np.vstack(state), np.array([[action]]))[0,0] if is_done else -10
+            curr_reward = -10 if is_done else reward(np.vstack(state), np.array([[action]]))[0,0]
             total_reward_episode[episode] += curr_reward
             rewards.append(curr_reward)
 
