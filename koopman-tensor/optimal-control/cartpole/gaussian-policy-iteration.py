@@ -29,10 +29,10 @@ step_size = 1.0 if env_string == 'CartPole-v0' else 2
 all_us = torch.arange(0, 1+step_size, step_size) if env_string == 'CartPole-v0' else  torch.arange(-10, 10+step_size, step_size)
 
 #%% Reward function
-def reward(xs, us):
-    return cartpole_reward.defaultCartpoleRewardMatrix(xs, np.array([us])).T
-def cost(xs, us):
-    return -reward(xs, us)
+# def reward(xs, us):
+#     return cartpole_reward.defaultCartpoleRewardMatrix(xs, np.array([us])).T
+# def cost(xs, us):
+#     return -reward(xs, us)
 
 # w_r = np.zeros([4,1])
 Q_ = np.array([
@@ -46,13 +46,13 @@ Q_ = np.array([
 R = 0.1
 # def lqr_cost(x, u):
 #     return x.T @ Q_ @ x + (u.T * R) @ u
-# def cost(x, u):
-#     # Assuming that data matrices are passed in for X and U. Columns vectors are snapshots
-#     # _x = x - w_r
-#     mat = np.vstack(np.diag(x.T @ Q_ @ x)) + np.power(u, 2)*R
-#     return mat # (xs.shape[1], us.shape[1])
-# def reward(x, u):
-#     return -cost(x, u)
+def cost(x, u):
+    # Assuming that data matrices are passed in for X and U. Columns vectors are snapshots
+    # _x = x - w_r
+    mat = np.vstack(np.diag(x.T @ Q_ @ x)) + np.power(u, 2)*R
+    return mat # (xs.shape[1], us.shape[1])
+def reward(x, u):
+    return -cost(x, u)
 
 #%% Policy function as PyTorch model
 class Policy:
@@ -151,7 +151,7 @@ def reinforce(env, agent, n_episode, gamma=1.0):
             states.append(state)
             actions.append(action.data.numpy())
 
-            curr_reward = reward(np.vstack(state), np.array([[action.data.numpy()]]))[0,0]
+            curr_reward = reward(np.vstack(state), np.array([action.data.numpy()]))[0,0]
             total_reward_episode[episode] += curr_reward
             rewards.append(curr_reward)
 
@@ -228,8 +228,8 @@ tensor = KoopmanTensor(
 )
 
 #%% Estimate Q function for current policy
-w_hat_batch_size = 2**14 # 2**9
-sample_u_batch_size = 2**10
+w_hat_batch_size = 2**11 # 2**9
+sample_u_batch_size = 2**8
 standard_normal_distribution = torch.distributions.Normal(0,1)
 sampled_actions = standard_normal_distribution.sample([sample_u_batch_size])
 sampled_action_probabilities = torch.exp(standard_normal_distribution.log_prob(sampled_actions))
@@ -244,7 +244,7 @@ def w_hat_t():
         # actions = distributions.sample()
         pi_response = torch.zeros([sample_u_batch_size, w_hat_batch_size])
         for i in range(sample_u_batch_size):
-            pi_response[i] = torch.exp(distributions.log_prob(torch.tensor([sampled_actions[i]]))) / sampled_action_probabilities[i]
+            pi_response[i] = torch.exp( distributions.log_prob( torch.tensor([sampled_actions[i]]) ) ) / sampled_action_probabilities[i]
         pi_response = pi_response.data.numpy()
 
     phi_x_prime_batch = tensor.K_(np.array([sampled_actions.data.numpy()])) @ phi_x_batch # (all_us.shape[0], phi_dim, w_hat_batch_size)
