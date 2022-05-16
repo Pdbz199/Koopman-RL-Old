@@ -118,16 +118,13 @@ class KoopmanTensor:
         regression_Y = self.dPhi_Y if is_generator else self.Phi_Y
         if regressor == 'rrr':
             self.M = rrr(self.kronMatrix.T, regression_Y.T).T
-            # self.B = rrr(self.Phi_X.T, self.X.T)
-            self.B = rrr(regression_Y.T, self.Y.T)
+            self.B = rrr(self.Phi_X.T, self.X.T)
         if regressor == 'sindy':
             self.M = SINDy(self.kronMatrix.T, regression_Y.T).T
-            # self.B = SINDy(self.Phi_X.T, self.X.T)
-            self.B = SINDy(regression_Y.T, self.Y.T)
+            self.B = SINDy(self.Phi_X.T, self.X.T)
         else:
             self.M = ols(self.kronMatrix.T, regression_Y.T, p_inv).T
-            # self.B = ols(self.Phi_X.T, self.X.T, p_inv)
-            self.B = ols(regression_Y.T, self.Y.T, p_inv)
+            self.B = ols(self.Phi_X.T, self.X.T, p_inv)
 
         # reshape M into tensor K
         self.K = np.empty([

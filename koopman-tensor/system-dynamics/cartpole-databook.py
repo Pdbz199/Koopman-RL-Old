@@ -136,6 +136,9 @@ w_r = np.array([
 ])
 # w_r = np.zeros([4,1])
 
+def zero_policy(x):
+    return np.array([[0]])
+
 def random_policy(x):
     return np.random.choice(action_range, size=action_column_shape)
 
@@ -211,10 +214,8 @@ def continuous_koopman_f(state, t, policy):
     action = policy(state)
     output = tensor.B.T @ tensor.K_(action) @ tensor.phi(np.vstack(state))
     x_prime = np.zeros([state_dim])
-    x_prime[0] = output[0,0]
-    x_prime[1] = output[1,0]
-    x_prime[2] = output[2,0]
-    x_prime[3] = output[3,0]
+    for i in range(state_dim):
+        x_prime[i] = output[i,0]
 
     return x_prime
 
@@ -227,7 +228,8 @@ perturbation = np.array([
 ])
 x = x0 + perturbation
 tspan = np.arange(0, 10, 0.0001)
-_x = odeint(continuous_koopman_f, x[:, 0], tspan, args=(optimal_policy,))
+# _x = odeint(pendcart, x[:, 0], tspan, args=(m, M, L, g, d, zero_policy))
+_x = odeint(continuous_koopman_f, x[:, 0], tspan, args=(zero_policy,))
 
 for i in range(state_dim):
     plt.plot(_x[:, i])

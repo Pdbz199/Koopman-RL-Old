@@ -21,10 +21,10 @@ import observables
 #%% Initialize environment
 A_shape = [2,2]
 A = np.zeros(A_shape)
-max_real_eigen_val = 1.0
+max_real_eigen_val = 0.9
 # while max_real_eigen_val >= 1.0 or max_real_eigen_val <= 0.7:
 # while max_real_eigen_val >= 1.1 or max_real_eigen_val <= 1.0: # SVD does not converge!
-while max_real_eigen_val >= 0.5:
+while max_real_eigen_val >= 1.0 and  max_real_eigen_val <= 0.7:
     Z = np.random.rand(*A_shape)
     A = Z.T @ Z
     W,V = np.linalg.eig(A)
@@ -37,7 +37,7 @@ print("A:", A)
 #     [0.0],
 #     [-0.03]
 # ])
-B = np.ones([A_shape[0],1])
+B = np.ones([A_shape[0],1]) * 5
 
 def f(x, u):
     return A @ x + B @ u
@@ -144,7 +144,7 @@ optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 # ])
 # R = 0.1
 Q_ = np.eye(A.shape[0])
-R = 1.0
+R = 0.01
 def cost(x, u):
     # Assuming that data matrices are passed in for X and U. Columns vectors are snapshots
     # x.T Q x + u.T R u
