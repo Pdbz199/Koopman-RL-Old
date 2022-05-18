@@ -25,30 +25,30 @@ import observables
 env_string = 'env:CartPoleControlEnv-v0'
 env = gym.make(env_string)
 
+state_dim = 4
+action_dim = 1
+
 step_size = 1.0 if env_string == 'CartPole-v0' else 2
 all_us = torch.arange(0, 1+step_size, step_size) if env_string == 'CartPole-v0' else  torch.arange(-10, 10+step_size, step_size)
 
 #%% Reward function
-# def reward(xs, us):
-#     return cartpole_reward.defaultCartpoleRewardMatrix(xs, np.array([us])).T
-# def cost(xs, us):
-#     return -reward(xs, us)
 
-# w_r = np.zeros([4,1])
+# From original gym environment
+def reward(xs, us):
+    return cartpole_reward.defaultCartpoleRewardMatrix(xs, np.array([us])).T
+def cost(xs, us):
+    return -reward(xs, us)
+
+# LQR cost function
 Q_ = np.array([
     [10.0, 0.0,  0.0, 0.0],
     [ 0.0, 1.0,  0.0, 0.0],
     [ 0.0, 0.0, 10.0, 0.0],
     [ 0.0, 0.0,  0.0, 1.0]
 ])
-# Q_diag = np.diag(Q_)
-# Q_ = np.array([10.0, 1.0, 10.0, 1.0])
 R = 0.1
-# def lqr_cost(x, u):
-#     return x.T @ Q_ @ x + (u.T * R) @ u
 def cost(x, u):
     # Assuming that data matrices are passed in for X and U. Columns vectors are snapshots
-    # _x = x - w_r
     mat = np.vstack(np.diag(x.T @ Q_ @ x)) + np.power(u, 2)*R
     return mat # (xs.shape[1], us.shape[1])
 def reward(x, u):
@@ -160,22 +160,28 @@ def reinforce(env, estimator, n_episode, gamma=1.0):
 
         w_hat = w_hat_t()
 
-#%%
+#%% Model definition
 n_state = env.observation_space.shape[0]
 n_action = all_us.shape[0]
 lr = 0.003
-policy_net = PolicyNetwork(n_state, n_action, lr)
+
 def init_weights(m):
     if type(m) == torch.nn.Linear:
         m.weight.data.fill_(0.0)
+
+policy_net = PolicyNetwork(n_state, n_action, lr)
 policy_net.model.apply(init_weights)
+
+# policy_net = torch.load('policy-iteration-v3.pt')
 
 n_episode = 10000 # Completely converged at 2000 episodes for original code
 gamma = 0.99
 total_reward_episode = [0] * n_episode
 
 #%% Construct snapshots of u from random agent and initial states x0
-N = 20000 # Number of datapoints
+
+# path-based dataset
+N = 100000 # Number of datapoints
 U = np.zeros([1,N])
 X = np.zeros([4,N+1])
 Y = np.zeros([4,N])
@@ -192,6 +198,25 @@ while i < N:
         i += 1
 X = X[:,:-1]
 
+# shotgun-based dataset
+# N = 100000 # Number of datapoints
+
+# state_range = np.array([
+#     [4.8],
+#     [100],
+#     [0.418],
+#     [100]
+# ])
+# action_range = np.array([[20]])
+
+# X = np.random.rand(state_dim,N)*state_range*np.random.choice(np.array([-1,1]), size=(state_dim,N))
+# U = np.random.rand(action_dim,N)*action_range*np.random.choice(np.array([-1,1]), size=(action_dim,N))
+# Y = np.zeros_like(X)
+# for i in range(X.shape[1]):
+#     env.reset(state=X[:,i])
+#     action = U[:,i]
+#     Y[:,i], _, __, ___ = env.step(action)
+
 #%% Learn Koopman Tensor
 state_order = 2
 action_order = 2
@@ -203,6 +228,35 @@ tensor = KoopmanTensor(
     psi=observables.monomials(action_order),
     regressor='ols'
 )
+
+#%% Compute learning errors
+# error = torch.nn.MSELoss()
+
+# Training error
+# testing_norms = np.zeros([N])
+# for i in range(N):
+#     state = np.vstack(X[:,i])
+#     action = np.vstack(U[:,i])
+#     true_next_state = np.vstack(Y[:,0])
+#     predicted_next_state = tensor.f(state, action)
+#     testing_norms[i] = error(torch.from_numpy(predicted_next_state), torch.from_numpy(true_next_state)).data.numpy()
+# print(f"Average training norm: {testing_norms.mean()}")
+
+#%% Testing error
+# num_episodes = 200
+# num_steps_per_episode = 200
+# training_norms = np.zeros([num_episodes,num_steps_per_episode])
+# for episode in range(num_episodes):
+#     state = np.vstack(env.reset())
+#     for step in range(num_steps_per_episode):
+#         # action = np.random.rand(action_dim,1)*action_range*np.random.choice(np.array([-1,1]), size=(action_dim,1))
+#         action = env.action_space.sample()
+#         true_next_state, _, __, ___ = env.step(action[0])
+#         true_next_state = np.vstack(true_next_state)
+#         predicted_next_state = tensor.f(state, action)
+#         training_norms[episode,step] = error(torch.from_numpy(predicted_next_state), torch.from_numpy(true_next_state)).data.numpy()
+#         state = true_next_state
+# print(f"Average testing norm: {training_norms.sum(axis=1).mean()}")
 
 #%% Estimate Q function for current policy
 w_hat_batch_size = 2**14 # 2**9

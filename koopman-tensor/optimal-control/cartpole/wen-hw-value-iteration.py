@@ -1,14 +1,15 @@
 #%% Imports
+import gym
+env = gym.make('env:CartPoleControlEnv-v0')
+import matplotlib.pyplot as plt
 import numpy as np
-import random
 import torch
 
 seed = 123
-np.random.seed(seed)
-random.seed(seed)
+np.random.seed(123)
 torch.manual_seed(seed)
 
-from matplotlib import pyplot as plt
+from control import dlqr
 from scipy.special import comb
 
 import sys
@@ -16,9 +17,9 @@ sys.path.append('../../')
 from tensor import KoopmanTensor
 sys.path.append('../../../')
 import observables
-import utilities
 
-#%% Initialize environment
+#%% System dynamics
+# Cartpole A, B, Q, and R matrices from Wen's homework
 A = np.array([
     [1.0, 0.02,  0.0,        0.0 ],
     [0.0, 1.0,  -0.01434146, 0.0 ],
@@ -49,47 +50,42 @@ def is_done(state):
         or state[2] > theta_threshold_radians
     )
 
-#%% Initialize important vars
-state_order = 2
-action_order = 2
-state_dim = A.shape[1]
-action_dim = B.shape[1]
-state_column_shape = [state_dim, 1]
-action_column_shape = [action_dim, 1]
-state_Ns = np.arange( state_dim - 1, state_dim - 1 + (state_order+1) )
-phi_dim = int( torch.sum( torch.from_numpy( comb( state_Ns, np.ones_like(state_Ns) * (state_order+1) ) ) ) )
-action_Ns = np.arange( action_dim - 1, action_dim - 1 + (action_order+1) )
-psi_dim = int( torch.sum( torch.from_numpy( comb( action_Ns, np.ones_like(action_Ns) * (action_order+1) ) ) ) )
+#%% Cost
+Q_ = np.array([
+    [10.0, 0.0,  0.0, 0.0],
+    [ 0.0, 1.0,  0.0, 0.0],
+    [ 0.0, 0.0, 10.0, 0.0],
+    [ 0.0, 0.0,  0.0, 1.0]
+])
+R = 0.1
+
+#%% Traditional LQR solution
+C = dlqr(A, B, Q_, R)[0]
+
+#%% Construct snapshots of data
+action_range = 25
+state_range = 50
 
 step_size = 0.1
-all_us = np.arange(-5, 5+step_size, step_size)
-all_us = np.round(all_us, decimals=2)
+# all_us = np.arange(-action_range, action_range+step_size, step_size)
+# all_us = np.arange(-10, 10+step_size, step_size)
 
-#%% Construct snapshots of u from random agent and initial states x0
-N = 20000 # Number of datapoints
-X = np.zeros([state_dim,N])
-U = np.zeros([action_dim,N])
-Y = np.zeros([state_dim,N])
-i = 0
-while i < N:
-    state = np.array([
-        [0],
-        [0],
-        [np.random.normal(0, 0.05)],
-        [0]
-    ])
-    done = False
-    step = 0
-    while i < N and not done and step < 200:
-        X[:,i] = state[:,0]
-        U[0,i] = np.random.choice(all_us)
-        Y[:,i] = f(state, np.array([[ U[0,i] ]]))[:, 0]
-        done = is_done(Y[:,i])
-        state = np.vstack(Y[:,i])
-        i += 1
-        step += 1
+num_episodes = 300
+num_steps_per_episode = 500
+N = num_episodes * num_steps_per_episode
+
+# Shotgun approach
+X = np.random.rand(A.shape[0],N)*state_range*np.random.choice(np.array([-1,1]), size=(A.shape[0],N))
+U = np.random.rand(B.shape[1],N)*action_range*np.random.choice(np.array([-1,1]), size=(B.shape[1],N))
+Y = f(X, U)
 
 #%% Estimate Koopman tensor
+state_order = 2
+action_order = 2
+
+phi_dim = int(comb( state_order+A.shape[1], state_order ))
+psi_dim = int(comb( action_order+B.shape[1], action_order ))
+
 tensor = KoopmanTensor(
     X,
     Y,
@@ -99,54 +95,76 @@ tensor = KoopmanTensor(
     regressor='ols'
 )
 
-#%% Training error
-training_norms = np.zeros([N])
-for step in range(N):
-    x = np.vstack(X[:,step])
-    u = np.vstack(U[:,step])
+#%% Shotgun-based training error
+# training_norms = np.zeros([X.shape[1]])
+# state_norms = np.zeros([X.shape[1]])
+# for i in range(X.shape[1]):
+#     state = np.vstack(X[:,i])
+#     state_norms[i] = utilities.l2_norm(state, np.zeros_like(state))
+#     action = np.vstack(U[:,i])
+#     true_x_prime = np.vstack(Y[:,i])
+#     predicted_x_prime = tensor.f(state, action)
+#     training_norms[i] = utilities.l2_norm(true_x_prime, predicted_x_prime)
+# average_training_norm = np.mean(training_norms)
+# average_state_norm = np.mean(state_norms)
+# print(f"Average training norm: {average_training_norm}")
+# print(f"Average training norm normalized by average state norm: {average_training_norm / average_state_norm}")
 
-    true_x_prime = np.vstack(Y[:,step])
-    predicted_x_prime = tensor.f(x, u)
+#%% Plot state path
+# num_steps = 200
+# true_states = np.zeros([num_steps, A.shape[1]])
+# true_actions = np.zeros([num_steps, B.shape[1]])
+# koopman_states = np.zeros([num_steps, A.shape[1]])
+# koopman_actions = np.zeros([num_steps, B.shape[1]])
+# state = np.vstack(env.reset())
+# true_state = state
+# koopman_state = state
+# for i in range(num_steps):
+#     true_states[i] = true_state[:,0]
+#     koopman_states[i] = koopman_state[:,0]
+#     true_action = np.random.rand(1,1)*action_range*np.random.choice(np.array([-1,1]), size=(1,1))
+#     # true_action = np.random.choice(all_us, size=[B.shape[1],1])
+#     # true_action = -(C @ true_state)
+#     # koopman_action = np.random.rand(1,1)*action_range*np.random.choice(np.array([-1,1]), size=(1,1))
+#     # koopman_action = np.random.choice(all_us, size=[B.shape[1],1])
+#     # koopman_action = -(C @ koopman_state)
+#     true_state = f(true_state, true_action)
+#     koopman_state = tensor.f(koopman_state, true_action)
+# print("Norm between entire paths:", utilities.l2_norm(true_states, koopman_states))
 
-    training_norms[step] = utilities.l2_norm(true_x_prime, predicted_x_prime)
-print(f"Mean training norm per episode over {N} steps:", np.mean( training_norms ))
+# fig, axs = plt.subplots(2)
+# fig.suptitle('Dynamics Over Time')
 
-#%% Testing error
-num_episodes = 200
-testing_norms = np.zeros([num_episodes])
-for episode in range(num_episodes):
-    state = np.array([
-        [0],
-        [0],
-        [np.random.normal(0, 0.05)],
-        [0]
-    ])
-    done = False
-    step = 0
-    while not done and step < 200:
-        action = np.random.choice(all_us, size=action_column_shape)
-        true_x_prime = f(state, action)
-        done = is_done(true_x_prime[:, 0])
-        predicted_x_prime = tensor.f(state, action)
+# axs[0].set_title('True dynamics')
+# axs[0].set(xlabel='Timestep', ylabel='State value')
 
-        testing_norms[episode] += utilities.l2_norm(true_x_prime, predicted_x_prime)
+# axs[1].set_title('Learned dynamics')
+# axs[1].set(xlabel='Timestep', ylabel='State value')
 
-        x = true_x_prime
-        step += 1
-print(f"Mean testing norm per episode over {num_episodes} episodes:", np.mean( testing_norms ))
+# labels = np.array(['cart position', 'cart velocity', 'pole angle', 'pole angular velocity'])
+# for i in range(A.shape[1]):
+#     axs[0].plot(true_states[:,i], label=labels[i])
+#     axs[1].plot(koopman_states[:,i], label=labels[i])
+# lines_labels = [axs[0].get_legend_handles_labels()]
+# lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
+# fig.legend(lines, labels)
+
+# plt.tight_layout()
+# plt.show()
 
 #%% PyTorch setup
 def init_weights(m):
     if type(m) == torch.nn.Linear:
         m.weight.data.fill_(0.0)
 
-# model = torch.nn.Sequential(
-#     torch.nn.Linear(phi_dim, 1)
-# )
-# model.apply(init_weights)
+model = torch.nn.Sequential(
+    torch.nn.Linear(phi_dim, 1)
+)
+model.apply(init_weights)
 
-model = torch.load('wen-homework-value-iteration.pt')
+# model = torch.load('wen-homework-value-iteration.pt')
 
+#%% Hyperparams
 gamma = 0.99
 lamb = 0.0001
 learning_rate = 0.003
@@ -156,13 +174,6 @@ optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 # def cost(x, u):
 #     return -cartpole_reward.defaultCartpoleRewardMatrix(x, u)
 
-Q_ = np.array([
-    [10.0, 0.0,  0.0, 0.0],
-    [ 0.0, 1.0,  0.0, 0.0],
-    [ 0.0, 0.0, 10.0, 0.0],
-    [ 0.0, 0.0,  0.0, 1.0]
-])
-R = 0.1
 def cost(x, u):
     # Assuming that data matrices are passed in for X and U. Columns vectors are snapshots
     # x.T Q x + u.T R u
@@ -171,7 +182,11 @@ def cost(x, u):
 
 #%% Control
 def inner_pi_us(us, xs):
-    phi_x_primes = tensor.K_(us) @ tensor.phi(xs) # us.shape[1] x dim_phi x xs.shape[1]
+    K_us = tensor.K_(us) # (us.shape[1], dim_phi, dim_phi)
+    phi_xs = tensor.phi(xs) # (dim_phi, xs.shape[1])
+
+    # phi_x_primes = K_us @ phi_xs # us.shape[1] x dim_phi x xs.shape[1]
+    phi_x_primes = np.einsum('upq,px->upx', K_us, phi_xs) # (us.shape[1] x dim_phi x xs.shape[1])
 
     V_x_primes_arr = torch.zeros([all_us.shape[0], xs.shape[1]])
     for u in range(phi_x_primes.shape[0]):
@@ -192,7 +207,7 @@ def pis(xs):
 
     pi_us = torch.exp(diff) + delta # all_us.shape[0] x xs.shape[1]
     Z_x = torch.sum(pi_us, axis=0) # xs.shape[1]
-    
+
     return pi_us / Z_x # all_us.shape[0] x xs.shape[1]
 
 def discrete_bellman_error(batch_size):
@@ -226,16 +241,17 @@ def discrete_bellman_error(batch_size):
 
     return total
 
-epochs = 0 # 10000
-epsilon = 0.00126 # 1e-5
-batch_size = 2**12
-bellman_errors = [discrete_bellman_error(batch_size).data.numpy()]
+epochs = 50000
+epsilon = 0.01
+batch_size = 2**14
+scale_factor = 1
+bellman_errors = [discrete_bellman_error(batch_size*scale_factor).data.numpy()]
 BE = bellman_errors[-1]
 print("Initial Bellman error:", BE)
 
-count = 0
+# count = 0
 # while BE > epsilon:
-for _ in range(epochs):
+for epoch in range(epochs):
     # Get random batch of X and Phi_X
     x_batch_indices = np.random.choice(X.shape[1], batch_size, replace=False)
     x_batch = X[:,x_batch_indices] # X.shape[0] x batch_size
@@ -249,7 +265,8 @@ for _ in range(epochs):
     log_pis = torch.log(pis_response) # (all_us.shape[0], batch_size)
 
     # Compute V(x)'
-    phi_x_primes = tensor.K_(np.array([all_us])) @ phi_x_batch # all_us.shape[0] x dim_phi x batch_size
+    # phi_x_primes = tensor.K_(np.array([all_us])) @ phi_x_batch # all_us.shape[0] x dim_phi x batch_size
+    phi_x_primes = np.einsum('upq,px->upx', tensor.K_(np.array([all_us])), phi_x_batch) # (all_us.shape[0], dim_phi, batch_size)
     V_x_primes_arr = torch.zeros([all_us.shape[0], batch_size])
     for u in range(phi_x_primes.shape[0]):
         V_x_primes_arr[u] = model(torch.from_numpy(phi_x_primes[u].T).float()).T
@@ -275,18 +292,20 @@ for _ in range(epochs):
     optimizer.step()
 
     # Recompute Bellman error
-    BE = discrete_bellman_error(batch_size).data.numpy()
+    BE = discrete_bellman_error(batch_size*scale_factor).data.numpy()
     bellman_errors = np.append(bellman_errors, BE)
 
     # Every so often, print out and save the bellman error(s)
-    if count % 500 == 0:
+    if (epoch+1) % 100 == 0:
         np.save('bellman_errors.npy', bellman_errors)
-        # torch.save(model, 'wen-homework-value-iteration.pt')
-        print("Current Bellman error:", BE)
+        torch.save(model, 'wen-homework-value-iteration.pt')
+        print(f"Current Bellman error (epoch {epoch+1}): {BE}")
 
-    count += 1
+    # count += 1
 
     if BE <= epsilon:
+        np.save('bellman_errors.npy', bellman_errors)
+        torch.save(model, 'wen-homework-value-iteration.pt')
         break
 
 #%% Extract latest policy
@@ -298,12 +317,7 @@ def policy(x):
 num_episodes = 100
 rewards = np.zeros([num_episodes])
 for episode in range(num_episodes):
-    state = np.array([
-        [0],
-        [0],
-        [np.random.normal(0, 0.05)],
-        [0]
-    ])
+    state = np.vstack(env.reset())
     done = False
     step = 0
     while not done and step < 200:
