@@ -1,10 +1,3 @@
-'''
-Source codes for PyTorch 1.0 Reinforcement Learning (Packt Publishing)
-Chapter 8: Implementing Policy Gradients and Policy Optimization
-Author: Yuxi (Hayden) Liu
-'''
-
-import gym
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -15,6 +8,7 @@ torch.manual_seed(seed)
 np.random.seed(seed)
 
 from control import dare
+from scipy.special import comb
 # from scipy.integrate import quad_vec
 
 import sys
@@ -23,65 +17,37 @@ from tensor import KoopmanTensor, OLS
 sys.path.append('../../')
 import cartpole_reward
 import observables
+import utilities
 
-#%% Environment settings
-# env_string = 'CartPole-v0'
-# env_string = 'env:CartPoleControlEnv-v0'
-# env = gym.make(env_string)
+#%% Initialize environment
+state_dim = 3
+action_dim = 1
 
-# A = np.zeros([2,2])
-# max_real_eigen_val = 1.0
-# # while max_real_eigen_val >= 1.0 or max_real_eigen_val <= 0.7:
-# while max_real_eigen_val >= 2.0 or max_real_eigen_val <= 1.5:
-#     Z = np.random.rand(2,2)
-#     A = Z.T @ Z
-#     W,V = np.linalg.eig(A)
-#     max_real_eigen_val = np.max(np.real(W))
-# print("A:", A)
-# A = np.array([
-#     [0.5, 0.0],
-#     [0.0, 0.3]
-# ], dtype=np.float64)
-# B = np.array([
-#     [1.0],
-#     [1.0]
-# ], dtype=np.float64)
-
-# def f(x, u):
-#     return A @ x + B @ u
-
-mass_pole = 1.0
-mass_cart = 5.0
-pole_position = 1.0
-pole_length = 2.0
-gravity = -10.0
-cart_damping = 1.0
-A = np.array([
-    [0.0, 1.0, 0.0, 0.0],
-    [0.0, -cart_damping / mass_cart, pole_position * mass_pole * gravity / mass_cart, 0.0],
-    [0.0, 0.0, 0.0, 1.0],
-    [0.0, -pole_position * cart_damping / mass_cart * pole_length, -pole_position * (mass_pole + mass_cart) * gravity / mass_cart * pole_length, 0.0]
-])
-delta_t = 0.002
-B = np.array([
-    [0.0],
-    [1.0 / mass_cart],
-    [0.0],
-    [pole_position / mass_cart * pole_length]
-])
-
-x0 = np.array([
-    [-1],
-    [0],
-    [np.pi],
-    [0]
-])
+A_shape = [state_dim,state_dim]
+A = np.zeros(A_shape)
+max_real_eigen_val = 1.0
+while max_real_eigen_val >= 1.0 or max_real_eigen_val <= 0.7:
+    Z = np.random.rand(*A_shape)
+    A = Z.T @ Z
+    W,V = np.linalg.eig(A)
+    max_real_eigen_val = np.max(np.real(W))
+print("A:", A)
+print("A's max real eigenvalue:", max_real_eigen_val)
+B = np.ones([A_shape[0],action_dim])
 
 def f(x, u):
-    return x + (A @ x + B @ u)*delta_t
+    return A @ x + B @ u
 
-step_size = 0.01
-all_us = torch.arange(-5, 5+step_size, step_size) # -20 to 20
+#%% Define cost
+Q_ = np.eye(A.shape[1])
+R = 1
+def cost(x, u):
+    # Assuming that data matrices are passed in for X and U. Columns vectors are snapshots
+    # x.T Q x + u.T R u
+    mat = np.vstack(np.diag(x.T @ Q_ @ x)) + np.power(u, 2)*R
+    return mat.T
+def reward(x, u):
+    return -cost(x, u)
 
 #%% Reward function
 # def reward(xs, us):
@@ -89,38 +55,100 @@ all_us = torch.arange(-5, 5+step_size, step_size) # -20 to 20
 # def cost(xs, us):
 #     return -reward(xs, us)
 
-# w_r = np.zeros([A.shape[0],1])
-# Q_ = np.array([
-#     [1.0, 0.0],
-#     [0.0, 1.0]
-# ], dtype=np.float64)
-# Q_diag = np.diag(Q_)
-# R = 1
+#%% Initialize important vars
+state_range = 25
+action_range = 25
+state_order = 2
+action_order = 2
 
-# Q_ = np.array([
-#     [10, 0,  0, 0],
-#     [ 0, 1,  0, 0],
-#     [ 0, 0, 10, 0],
-#     [ 0, 0,  0, 1]
-# ], dtype=np.float64)
-# R = np.array([[0.1]], dtype=np.float64)
+state_column_shape = [state_dim, 1]
+action_column_shape = [action_dim, 1]
+phi_dim = int( comb( state_order+state_dim, state_order ) )
+psi_dim = int( comb( action_order+action_dim, action_order ) )
 
-Q_ = np.eye(4)
-R = 0.0001
+step_size = 0.01
+all_us = torch.arange(-5, 5+step_size, step_size) # -20 to 20
+all_us = np.round(all_us, decimals=2)
 
-w_r = np.array([
-    [1],
-    [0],
-    [np.pi],
-    [0]
-])
-def cost(x, u):
-    # Assuming that data matrices are passed in for X and U. Columns vectors are snapshots
-    _x = x - w_r
-    mat = np.vstack(np.diag(_x.T @ Q_ @ _x)) + np.power(u, 2)*R
-    return mat # (xs.shape[1], us.shape[1])
-def reward(x, u):
-    return -cost(x, u)
+gamma = 0.99
+lamb = 0.0001
+
+#%% Optimal policy
+soln = dare(A*np.sqrt(gamma), B*np.sqrt(gamma), Q_, R)
+P = soln[0]
+C = np.linalg.inv(R + gamma*B.T @ P @ B) @ (gamma*B.T @ P @ A)
+sigma_t = lamb * np.linalg.inv(R + B.T @ P @ B)
+def optimal_policy(x):
+    return np.random.normal(-(C @ x), sigma_t)
+
+#%% Construct datasets
+num_episodes = 100
+num_steps_per_episode = 200
+N = num_episodes * num_steps_per_episode # Number of datapoints
+
+# Path-based approach
+# X = np.zeros([state_dim,N])
+# U = np.zeros([action_dim,N])
+# Y = np.zeros([state_dim,N])
+# for episode in range(num_episodes):
+#     state = np.random.rand(A.shape[0],1)*state_range*np.random.choice(np.array([-1,1]), size=(A.shape[0],1))
+#     done = False
+#     step = 0
+#     for step in range(num_steps_per_episode):
+#         X[:,(episode*num_steps_per_episode)+step] = state[:,0]
+#         # u = np.random.choice(all_us)
+#         u = optimal_policy(state)[0,0]
+#         U[0,(episode*num_steps_per_episode)+step] = u
+#         Y[:,(episode*num_steps_per_episode)+step] = f(state, np.array([[ u ]]))[:, 0]
+#         state = np.vstack(Y[:,(episode*num_steps_per_episode)+step])
+
+# Shotgun-based approach
+X = np.random.rand(A.shape[0],N)*state_range*np.random.choice(np.array([-1,1]), size=(A.shape[0],N))
+U = np.random.rand(B.shape[1],N)*action_range*np.random.choice(np.array([-1,1]), size=(B.shape[1],N))
+# U = optimal_policy(X)
+Y = f(X, U)
+
+#%% Estimate Koopman tensor
+tensor = KoopmanTensor(
+    X,
+    Y,
+    U,
+    phi=observables.monomials(state_order),
+    psi=observables.monomials(action_order),
+    regressor='ols'
+)
+
+#%% Shotgun-based training error
+training_norms = np.zeros([X.shape[1]])
+state_norms = np.zeros([X.shape[1]])
+for i in range(X.shape[1]):
+    state = np.vstack(X[:,i])
+    state_norms[i] = utilities.l2_norm(state, np.zeros_like(state))
+    action = np.vstack(U[:,i])
+    true_x_prime = np.vstack(Y[:,i])
+    predicted_x_prime = tensor.f(state, action)
+    training_norms[i] = utilities.l2_norm(true_x_prime, predicted_x_prime)
+average_training_norm = np.mean(training_norms)
+average_state_norm = np.mean(state_norms)
+print(f"Average training norm: {average_training_norm}")
+print(f"Average training norm normalized by average state norm: {average_training_norm / average_state_norm}")
+
+#%% Path-based training error
+# training_norms = np.zeros([num_episodes,num_steps_per_episode])
+# state_norms = np.zeros([X.shape[1]])
+# for episode in range(num_episodes):
+#     for step in range(num_steps_per_episode):
+#         state = np.vstack(X[:,(episode*num_steps_per_episode)+step])
+#         state_norms[(episode*num_steps_per_episode)+step] = utilities.l2_norm(state, np.zeros_like(state))
+#         action = np.vstack(U[:,(episode*num_steps_per_episode)+step])
+#         true_x_prime = np.vstack(Y[:,(episode*num_steps_per_episode)+step])
+#         predicted_x_prime = tensor.f(state, action)
+#         training_norms[episode,step] = utilities.l2_norm(true_x_prime, predicted_x_prime)
+#         state = true_x_prime
+# average_training_norm_per_episode = np.mean(np.sum(training_norms, axis=1))
+# average_state_norm = np.mean(state_norms)
+# print(f"Average training norm per episode over {num_episodes} episodes: {average_training_norm_per_episode}")
+# print(f"Average training norm per episode over {num_episodes} episodes normalized by average state norm: {average_training_norm_per_episode / average_state_norm}")
 
 #%% Policy function as PyTorch model
 class PolicyNetwork():
@@ -174,20 +202,13 @@ def reinforce(estimator, n_episode, gamma=1.0):
         @param n_episode: number of episodes
         @param gamma: the discount factor
     """
-    w_hat = np.zeros([15,1])
+    w_hat = np.zeros([phi_dim,1])
     for episode in range(n_episode):
         states = []
         actions = []
         log_probs = []
         rewards = []
-        perturbation = np.array([
-            [0],
-            [0],
-            [np.random.normal(0, 0.05)],
-            [0]
-        ])
-        state = x0 + perturbation
-        # state = np.random.rand(A.shape[0],1)*state_range*np.random.choice(np.array([-1,1]), size=(A.shape[0],1))
+        state = np.random.rand(A.shape[0],1)*state_range*np.random.choice(np.array([-1,1]), size=(A.shape[0],1))
 
         while len(rewards) < 300:
             u, log_prob = estimator.get_action(state[:,0])
@@ -234,65 +255,23 @@ def reinforce(estimator, n_episode, gamma=1.0):
         w_hat = w_hat_t()
 
 #%%
-# n_state = env.observation_space.shape[0]
 n_state = A.shape[0]
 n_action = all_us.shape[0]
 lr = 0.003
-policy_net = PolicyNetwork(n_state, n_action, lr)
+
 def init_weights(m):
     if type(m) == torch.nn.Linear:
         m.weight.data.fill_(0.0)
+
+policy_net = PolicyNetwork(n_state, n_action, lr)
 policy_net.model.apply(init_weights)
+
 # policy_net = torch.load('lqr-policy-model.pt')
 
 n_episode = 2000
 gamma = 0.99
 lamb = 0.0001
 total_reward_episode = [0] * n_episode
-
-#%% Construct snapshots of data
-# N = 20000
-# state_range = 20
-# action_range = 20
-# X = np.random.rand(A.shape[0],N)*state_range*np.random.choice(np.array([-1,1]), size=(A.shape[0],N))
-# U = np.random.rand(1,N)*action_range*np.random.choice(np.array([-1,1]), size=(1,N))
-# Y = f(X, U)
-
-num_episodes = 100
-num_steps_per_episode = 200
-
-X = np.zeros([A.shape[0], num_episodes*num_steps_per_episode])
-Y = np.zeros([A.shape[0], num_episodes*num_steps_per_episode])
-U = np.zeros([1, num_episodes*num_steps_per_episode])
-
-for episode in range(num_episodes):
-    perturbation = np.array([
-            [0],
-            [0],
-            [np.random.normal(0, 0.05)],
-            [0]
-    ])
-    x = x0 + perturbation
-
-    for step in range(num_steps_per_episode):
-        X[:, (episode*num_steps_per_episode)+step] = x[:, 0]
-        u = np.array([[np.random.choice(all_us)]])
-        U[:, (episode*num_steps_per_episode)+step] = u[:, 0]
-        y = f(x, u)
-        Y[:, (episode*num_steps_per_episode)+step] = y[:, 0]
-        x = np.vstack(y)
-
-#%% Estimate Koopman tensor
-state_order = 2
-action_order = 2
-tensor = KoopmanTensor(
-    X,
-    Y,
-    U,
-    phi=observables.monomials(state_order),
-    psi=observables.monomials(action_order),
-    regressor='ols'
-)
 
 #%% Estimate Q function for current policy
 w_hat_batch_size = 2**11 # 2**14
@@ -308,7 +287,7 @@ def w_hat_t():
     phi_x_prime_batch_prob = np.einsum('upw,uw->upw', phi_x_prime_batch, pi_response.data.numpy()) # (all_us.shape[0], phi_dim, w_hat_batch_size)
     expectation_term_1 = np.sum(phi_x_prime_batch_prob, axis=0) # (phi_dim, w_hat_batch_size)
 
-    reward_batch_prob = np.einsum('wu,uw->wu', reward(x_batch, np.array([all_us.data.numpy()])), pi_response.data.numpy()) # (w_hat_batch_size, all_us.shape[0])
+    reward_batch_prob = np.einsum('uw,uw->wu', reward(x_batch, np.array([all_us.data.numpy()])), pi_response.data.numpy()) # (w_hat_batch_size, all_us.shape[0])
     expectation_term_2 = np.array([
         np.sum(reward_batch_prob, axis=1) # (w_hat_batch_size,)
     ]) # (1, w_hat_batch_size)
@@ -333,26 +312,13 @@ reinforce(policy_net, n_episode, gamma)
 # plt.ylabel('Total reward')
 # plt.show()
 
-#%% Test policy
-num_episodes = 1
-soln = dare(A*np.sqrt(gamma), B*np.sqrt(gamma), Q_, R)
-P = soln[0]
-C = np.linalg.inv(R + gamma*B.T @ P @ B) @ (gamma*B.T @ P @ A)
-sigma_t = lamb * np.linalg.inv(R + B.T @ P @ B)
-
 test_steps = 200
 def watch_agent():
     optimal_states = np.zeros([test_steps,n_state])
     learned_states = np.zeros([test_steps,n_state])
+
     for episode in range(num_episodes):
-        perturbation = np.array([
-            [0],
-            [0],
-            [np.random.normal(0, 0.05)],
-            [0]
-        ])
-        state = x0 + perturbation
-        # state = np.random.rand(A.shape[0],1)*state_range*np.random.choice(np.array([-1,1]), size=(A.shape[0],1))
+        state = np.random.rand(A.shape[0],1)*state_range*np.random.choice(np.array([-1,1]), size=(A.shape[0],1))
         optimal_state = state
         learned_state = state
         step = 0
@@ -360,7 +326,7 @@ def watch_agent():
             optimal_states[step] = optimal_state[:,0]
             learned_states[step] = learned_state[:,0]
 
-            optimal_action = np.random.normal(-(C @ (optimal_state - w_r)), sigma_t)
+            optimal_action = np.random.normal(-(C @ optimal_state), sigma_t)
             optimal_state = f(optimal_state, optimal_action)
 
             with torch.no_grad():
@@ -369,12 +335,29 @@ def watch_agent():
             learned_state = f(learned_state, learned_action)
 
             step += 1
-    for i in range(n_state):
-        plt.plot(learned_states[:,i])
+
+    print("Norm between entire paths:", utilities.l2_norm(optimal_states, learned_states))
+
+    fig, axs = plt.subplots(2)
+    fig.suptitle('Dynamics Over Time')
+
+    axs[0].set_title('True dynamics')
+    axs[0].set(xlabel='Timestep', ylabel='State value')
+
+    axs[1].set_title('Learned dynamics')
+    axs[1].set(xlabel='Timestep', ylabel='State value')
+
+    labels = np.array(['x_0', 'x_1', 'x_2', 'x_3'])
+    for i in range(A.shape[1]):
+        axs[0].plot(optimal_states[:,i], label=labels[i])
+        axs[1].plot(learned_states[:,i], label=labels[i])
+    lines_labels = [axs[0].get_legend_handles_labels()]
+    lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
+    fig.legend(lines, labels)
+
+    plt.tight_layout()
     plt.show()
-    for i in range(n_state):
-        plt.plot(optimal_states[:,i])
-    plt.show()
+
 watch_agent()
 
 #%%

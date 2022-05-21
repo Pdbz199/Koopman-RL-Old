@@ -17,63 +17,88 @@ sys.path.append('../')
 from tensor import KoopmanTensor
 sys.path.append('../../')
 import observables
+import utilities
 
 #%% Initialize environment
-A_shape = [2,2]
+state_dim = 4
+action_dim = 1
+
+A_shape = [state_dim,state_dim]
 A = np.zeros(A_shape)
-max_real_eigen_val = 0.9
-# while max_real_eigen_val >= 1.0 or max_real_eigen_val <= 0.7:
-# while max_real_eigen_val >= 1.1 or max_real_eigen_val <= 1.0: # SVD does not converge!
-while max_real_eigen_val >= 1.0 and  max_real_eigen_val <= 0.7:
+max_real_eigen_val = 1.0
+while max_real_eigen_val >= 1.0 or max_real_eigen_val <= 0.7:
+# while max_real_eigen_val >= 1.5 or max_real_eigen_val <= 1.0:
     Z = np.random.rand(*A_shape)
     A = Z.T @ Z
     W,V = np.linalg.eig(A)
     max_real_eigen_val = np.max(np.real(W))
-print("Max real eigenvalue:", max_real_eigen_val)
 print("A:", A)
-# B = np.array([
-#     [0.0],
-#     [0.02],
-#     [0.0],
-#     [-0.03]
-# ])
-B = np.ones([A_shape[0],1]) * 5
+print("A's max real eigenvalue:", max_real_eigen_val)
+B = np.ones([A_shape[0],action_dim])
 
 def f(x, u):
     return A @ x + B @ u
 
+#%% Define cost
+Q_ = np.eye(A.shape[1])
+R = 1
+def cost(x, u):
+    # Assuming that data matrices are passed in for X and U. Columns vectors are snapshots
+    # x.T Q x + u.T R u
+    mat = np.vstack(np.diag(x.T @ Q_ @ x)) + np.power(u, 2)*R
+    return mat.T
+
 #%% Initialize important vars
-state_range = 20
-action_range = 20
+state_range = 25
+action_range = 25
 state_order = 2
 action_order = 2
-state_dim = A_shape[1]
-action_dim = B.shape[1]
 state_column_shape = [state_dim, 1]
 action_column_shape = [action_dim, 1]
-phi_dim = int(comb( state_order+state_dim, state_order ))
-psi_dim = int(comb( action_order+action_dim, action_order ))
+phi_dim = int( comb( state_order+state_dim, state_order ) )
+psi_dim = int( comb( action_order+action_dim, action_order ) )
 
 step_size = 0.1
 all_us = np.arange(-action_range, action_range+step_size, step_size)
 all_us = np.round(all_us, decimals=2)
 
-#%% Construct snapshots of u from random agent and initial states x0
-N = 200000 # Number of datapoints
-X = np.zeros([state_dim,N])
-U = np.zeros([action_dim,N])
-Y = np.zeros([state_dim,N])
-i = 0
-while i < N:
-    state = np.random.rand(A.shape[0],1)*state_range*np.random.choice(np.array([-1,1]), size=(A.shape[0],1))
-    done = False
-    step = 0
-    for step in range(1000):
-        X[:,i] = state[:,0]
-        U[0,i] = np.random.choice(all_us)
-        Y[:,i] = f(state, np.array([[ U[0,i] ]]))[:, 0]
-        state = np.vstack(Y[:,i])
-        i += 1
+gamma = 0.99
+lamb = 0.0001
+
+#%% Optimal policy
+soln = dare(A*np.sqrt(gamma), B*np.sqrt(gamma), Q_, R)
+P = soln[0]
+C = np.linalg.inv(R + gamma*B.T @ P @ B) @ (gamma*B.T @ P @ A)
+sigma_t = lamb * np.linalg.inv(R + B.T @ P @ B)
+def optimal_policy(x):
+    return np.random.normal(-(C @ x), sigma_t)
+
+#%% Construct datasets
+num_episodes = 100
+num_steps_per_episode = 200
+N = num_episodes * num_steps_per_episode # Number of datapoints
+
+# Path-based approach
+# X = np.zeros([state_dim,N])
+# U = np.zeros([action_dim,N])
+# Y = np.zeros([state_dim,N])
+# for episode in range(num_episodes):
+#     state = np.random.rand(A.shape[0],1)*state_range*np.random.choice(np.array([-1,1]), size=(A.shape[0],1))
+#     done = False
+#     step = 0
+#     for step in range(num_steps_per_episode):
+#         X[:,(episode*num_steps_per_episode)+step] = state[:,0]
+#         # u = np.random.choice(all_us)
+#         u = optimal_policy(state)[0,0]
+#         U[0,(episode*num_steps_per_episode)+step] = u
+#         Y[:,(episode*num_steps_per_episode)+step] = f(state, np.array([[ u ]]))[:, 0]
+#         state = np.vstack(Y[:,(episode*num_steps_per_episode)+step])
+
+# Shotgun-based approach
+X = np.random.rand(A.shape[0],N)*state_range*np.random.choice(np.array([-1,1]), size=(A.shape[0],N))
+U = np.random.rand(B.shape[1],N)*action_range*np.random.choice(np.array([-1,1]), size=(B.shape[1],N))
+# U = optimal_policy(X)
+Y = f(X, U)
 
 #%% Estimate Koopman tensor
 tensor = KoopmanTensor(
@@ -85,71 +110,52 @@ tensor = KoopmanTensor(
     regressor='ols'
 )
 
-#%% Training error
-# training_norms = np.zeros([N])
-# for step in range(N):
-#     x = np.vstack(X[:,step])
-#     u = np.vstack(U[:,step])
+#%% Shotgun-based training error
+training_norms = np.zeros([X.shape[1]])
+state_norms = np.zeros([X.shape[1]])
+for i in range(X.shape[1]):
+    state = np.vstack(X[:,i])
+    state_norms[i] = utilities.l2_norm(state, np.zeros_like(state))
+    action = np.vstack(U[:,i])
+    true_x_prime = np.vstack(Y[:,i])
+    predicted_x_prime = tensor.f(state, action)
+    training_norms[i] = utilities.l2_norm(true_x_prime, predicted_x_prime)
+average_training_norm = np.mean(training_norms)
+average_state_norm = np.mean(state_norms)
+print(f"Average training norm: {average_training_norm}")
+print(f"Average training norm normalized by average state norm: {average_training_norm / average_state_norm}")
 
-#     true_x_prime = np.vstack(Y[:,step])
-#     predicted_x_prime = tensor.f(x, u)
-
-#     training_norms[step] = utilities.l2_norm(true_x_prime, predicted_x_prime)
-# print(f"Mean training norm per episode over {N} steps:", np.mean( training_norms ))
-
-#%% Testing error
-# num_episodes = 200
-# testing_norms = np.zeros([num_episodes])
+#%% Path-based training error
+# training_norms = np.zeros([num_episodes,num_steps_per_episode])
+# state_norms = np.zeros([X.shape[1]])
 # for episode in range(num_episodes):
-#     state = np.random.rand(A.shape[0],1)*state_range*np.random.choice(np.array([-1,1]), size=(A.shape[0],1))
-#     done = False
-#     step = 0
-#     while step < 200:
-#         action = np.random.choice(all_us, size=action_column_shape)
-#         true_x_prime = f(state, action)
+#     for step in range(num_steps_per_episode):
+#         state = np.vstack(X[:,(episode*num_steps_per_episode)+step])
+#         state_norms[(episode*num_steps_per_episode)+step] = utilities.l2_norm(state, np.zeros_like(state))
+#         action = np.vstack(U[:,(episode*num_steps_per_episode)+step])
+#         true_x_prime = np.vstack(Y[:,(episode*num_steps_per_episode)+step])
 #         predicted_x_prime = tensor.f(state, action)
-
-#         testing_norms[episode] += utilities.l2_norm(true_x_prime, predicted_x_prime)
-
-#         x = true_x_prime
-#         step += 1
-# print(f"Mean testing norm per episode over {num_episodes} episodes:", np.mean( testing_norms ))
+#         training_norms[episode,step] = utilities.l2_norm(true_x_prime, predicted_x_prime)
+#         state = true_x_prime
+# average_training_norm_per_episode = np.mean(np.sum(training_norms, axis=1))
+# average_state_norm = np.mean(state_norms)
+# print(f"Average training norm per episode over {num_episodes} episodes: {average_training_norm_per_episode}")
+# print(f"Average training norm per episode over {num_episodes} episodes normalized by average state norm: {average_training_norm_per_episode / average_state_norm}")
 
 #%% Pytorch setup
 def init_weights(m):
     if type(m) == torch.nn.Linear:
         m.weight.data.fill_(0.0)
 
-# model = torch.nn.Sequential(
-#     torch.nn.Linear(phi_dim, 1)
-# )
-# model.apply(init_weights)
+model = torch.nn.Sequential(
+    torch.nn.Linear(phi_dim, 1)
+)
+model.apply(init_weights)
 
-model = torch.load('lqr-value-iteration.pt')
+# model = torch.load('lqr-value-iteration.pt')
 
-gamma = 0.99
-lamb = 0.0001
 learning_rate = 0.003
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-
-#%% Define cost
-# def cost(x, u):
-#     return -cartpole_reward.defaultCartpoleRewardMatrix(x, u)
-
-# Q_ = np.array([
-#     [10.0, 0.0,  0.0, 0.0],
-#     [ 0.0, 1.0,  0.0, 0.0],
-#     [ 0.0, 0.0, 10.0, 0.0],
-#     [ 0.0, 0.0,  0.0, 1.0]
-# ])
-# R = 0.1
-Q_ = np.eye(A.shape[0])
-R = 0.01
-def cost(x, u):
-    # Assuming that data matrices are passed in for X and U. Columns vectors are snapshots
-    # x.T Q x + u.T R u
-    mat = np.vstack(np.diag(x.T @ Q_ @ x)) + np.power(u, 2)*R
-    return mat.T
 
 #%% Control
 def inner_pi_us(us, xs):
@@ -208,17 +214,15 @@ def discrete_bellman_error(batch_size):
 
     return total
 
-epochs = 0 # 1000
-epsilon = 0.00126 # 1e-5
+epochs = 10000
+epsilon = 0.01
 batch_size = 2**9
 batch_scale = 3
 bellman_errors = [discrete_bellman_error(batch_size*batch_scale).data.numpy()]
 BE = bellman_errors[-1]
 print("Initial Bellman error:", BE)
 
-count = 0
-# while BE > epsilon:
-for _ in range(epochs):
+for epoch in range(epochs):
     # Get random batch of X and Phi_X
     x_batch_indices = np.random.choice(X.shape[1], batch_size, replace=False)
     x_batch = X[:,x_batch_indices] # X.shape[0] x batch_size
@@ -262,23 +266,14 @@ for _ in range(epochs):
     bellman_errors = np.append(bellman_errors, BE)
 
     # Every so often, print out and save the bellman error(s)
-    if count % 500 == 0:
+    if (epoch+1) % 500 == 0:
         # np.save('bellman_errors.npy', bellman_errors)
         torch.save(model, 'lqr-value-iteration.pt')
-        print("Current Bellman error:", BE)
-
-    count += 1
+        print(f"Bellman error at epoch {epoch+1}: {BE}")
 
     if BE <= epsilon:
+        torch.save(model, 'lqr-value-iteration.pt')
         break
-
-#%% Optimal policy
-soln = dare(A*np.sqrt(gamma), B*np.sqrt(gamma), Q_, R)
-P = soln[0]
-C = np.linalg.inv(R + gamma*B.T @ P @ B) @ (gamma*B.T @ P @ A)
-sigma_t = lamb * np.linalg.inv(R + B.T @ P @ B)
-def optimal_policy(x):
-    return np.random.normal(-(C @ x), sigma_t)
 
 #%% Extract latest policy
 def learned_policy(x):
@@ -286,39 +281,49 @@ def learned_policy(x):
         pis_response = pis(x)[:,0]
     return np.random.choice(all_us, p=pis_response.data.numpy())
 
-#%% Test learned vs optimal policies
-num_episodes = 1#00
-num_steps_per_episode = 1000
-optimal_states = np.zeros([num_episodes,num_steps_per_episode,state_dim])
-learned_states = np.zeros([num_episodes,num_steps_per_episode,state_dim])
-optimal_costs = np.zeros([num_episodes])
-learned_costs = np.zeros([num_episodes])
-for episode in range(num_episodes):
-    state = np.random.rand(A.shape[0],1)*state_range*np.random.choice(np.array([-1,1]), size=(A.shape[0],1))
-    optimal_state = state
-    learned_state = state
-    done = False
-    step = 0
-    for step in range(num_steps_per_episode):
-        optimal_states[episode,step] = optimal_state[:, 0]
-        optimal_action = optimal_policy(optimal_state)
-        optimal_state = f(optimal_state, optimal_action)
-        optimal_costs[episode] += cost(optimal_state, optimal_action)
+#%% Plot state path
+num_steps = 500
+true_states = np.zeros([num_steps, A.shape[1]])
+true_actions = np.zeros([num_steps, B.shape[1]])
+koopman_states = np.zeros([num_steps, A.shape[1]])
+koopman_actions = np.zeros([num_steps, B.shape[1]])
+state = np.random.rand(A.shape[0],1)*state_range*np.random.choice(np.array([-1,1]), size=(A.shape[0],1))
+true_state = state
+koopman_state = state
+for i in range(num_steps):
+    true_states[i] = true_state[:,0]
+    koopman_states[i] = koopman_state[:,0]
+    # true_action = np.random.rand(1,1)*action_range*np.random.choice(np.array([-1,1]), size=(1,1))
+    # true_action = np.random.choice(all_us, size=[B.shape[1],1])
+    # true_action = -(C @ true_state)
+    true_action = optimal_policy(true_state)
+    # koopman_action = np.random.rand(1,1)*action_range*np.random.choice(np.array([-1,1]), size=(1,1))
+    # koopman_action = np.random.choice(all_us, size=[B.shape[1],1])
+    # koopman_action = -(C @ koopman_state)
+    # koopman_action = optimal_policy(koopman_state)
+    koopman_action = learned_policy(koopman_state)
+    true_state = f(true_state, true_action)
+    koopman_state = tensor.f(koopman_state, koopman_action)
+print("Norm between entire paths:", utilities.l2_norm(true_states, koopman_states))
 
-        learned_states[episode,step] = learned_state[:, 0]
-        learned_action = learned_policy(learned_state)
-        learned_state = f(learned_state, np.array([[learned_action]]))
-        learned_costs[episode] += cost(learned_state, np.array([[learned_action]]))
-print(f"Mean optimal cost per episode over {num_episodes} episode(s):", np.mean(optimal_costs))
-print(f"Mean learned cost per episode over {num_episodes} episode(s):", np.mean(learned_costs))
+fig, axs = plt.subplots(2)
+fig.suptitle('Dynamics Over Time')
 
-#%% Plot
-for i in range(state_dim):
-    plt.plot(optimal_states[-1,:,i])
-plt.show()
+axs[0].set_title('True dynamics')
+axs[0].set(xlabel='Timestep', ylabel='State value')
 
-for i in range(state_dim):
-    plt.plot(learned_states[-1,:,i])
+axs[1].set_title('Learned dynamics')
+axs[1].set(xlabel='Timestep', ylabel='State value')
+
+labels = np.array(['x_0', 'x_1', 'x_2', 'x_3'])
+for i in range(A.shape[1]):
+    axs[0].plot(true_states[:,i], label=labels[i])
+    axs[1].plot(koopman_states[:,i], label=labels[i])
+lines_labels = [axs[0].get_legend_handles_labels()]
+lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
+fig.legend(lines, labels)
+
+plt.tight_layout()
 plt.show()
 
 #%%

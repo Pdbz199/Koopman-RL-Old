@@ -67,7 +67,7 @@ action_range = 25
 state_range = 50
 
 step_size = 0.1
-# all_us = np.arange(-action_range, action_range+step_size, step_size)
+all_us = np.arange(-action_range, action_range+step_size, step_size)
 # all_us = np.arange(-10, 10+step_size, step_size)
 
 num_episodes = 300
@@ -241,7 +241,7 @@ def discrete_bellman_error(batch_size):
 
     return total
 
-epochs = 50000
+epochs = 0 # 50000
 epsilon = 0.01
 batch_size = 2**14
 scale_factor = 1
