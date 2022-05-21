@@ -20,7 +20,7 @@ import observables
 import utilities
 
 #%% Initialize environment
-state_dim = 3
+state_dim = 4
 action_dim = 1
 
 A_shape = [state_dim,state_dim]
@@ -268,7 +268,7 @@ policy_net.model.apply(init_weights)
 
 # policy_net = torch.load('lqr-policy-model.pt')
 
-n_episode = 2000
+n_episode = 5000
 gamma = 0.99
 lamb = 0.0001
 total_reward_episode = [0] * n_episode
