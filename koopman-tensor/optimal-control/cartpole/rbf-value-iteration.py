@@ -4,6 +4,7 @@ import numpy as np
 import random
 import torch
 import torch.nn as nn
+import torch_rbf as rbf
 
 seed = 123
 np.random.seed(seed)
@@ -12,12 +13,13 @@ torch.manual_seed(seed)
 
 from control import dare
 from scipy.special import comb
+from sklearn.kernel_approximation import RBFSampler
 # from scipy.integrate import quad_vec
 
 import sys
-sys.path.append('../')
-from tensor import KoopmanTensor, OLS
 sys.path.append('../../')
+from tensor import KoopmanTensor, OLS
+sys.path.append('../../../')
 import cartpole_reward
 import observables
 import utilities
@@ -29,8 +31,7 @@ action_dim = 1
 A_shape = [state_dim,state_dim]
 A = np.zeros(A_shape)
 max_real_eigen_val = 1.0
-# while max_real_eigen_val >= 1.0 or max_real_eigen_val <= 0.7:
-while max_real_eigen_val >= 1.2 or max_real_eigen_val <= 1.0:
+while max_real_eigen_val >= 1.0 or max_real_eigen_val <= 0.7:
     Z = np.random.rand(*A_shape)
     A = Z.T @ Z
     W,V = np.linalg.eig(A)
@@ -67,8 +68,10 @@ action_order = 2
 
 state_column_shape = [state_dim, 1]
 action_column_shape = [action_dim, 1]
-phi_dim = int( comb( state_order+state_dim, state_order ) )
-psi_dim = int( comb( action_order+action_dim, action_order ) )
+# phi_dim = int( comb( state_order+state_dim, state_order ) )
+# psi_dim = int( comb( action_order+action_dim, action_order ) )
+phi_dim = 100
+psi_dim = 50
 
 step_size = 0.1
 # all_us = torch.arange(-action_range, action_range+step_size, step_size)
@@ -113,13 +116,37 @@ Y = f(X, U)
 #         Y[:,(episode*num_steps_per_episode)+step] = f(state, np.array([[ u ]]))[:, 0]
 #         state = np.vstack(Y[:,(episode*num_steps_per_episode)+step])
 
+#%% Define dictionary functions
+state_basis = RBFSampler(gamma=1, n_components=phi_dim, random_state=seed)
+action_basis = RBFSampler(gamma=1, n_components=psi_dim, random_state=seed)
+
+def phi(x):
+    """
+        INPUTS:
+        x - state column vector(s)
+
+        OUTPUTS:
+        state observable column vector(s)
+    """
+    return state_basis.fit_transform(x.T).T
+
+def psi(u):
+    """
+        INPUTS:
+        u - action column vector(s)
+
+        OUTPUTS:
+        action observable column vector(s)
+    """
+    return action_basis.fit_transform(u.T).T
+
 #%% Estimate Koopman tensor
 tensor = KoopmanTensor(
     X,
     Y,
     U,
-    phi=observables.monomials(state_order),
-    psi=observables.monomials(action_order),
+    phi=phi,
+    psi=psi,
     regressor='ols'
 )
 
@@ -157,9 +184,10 @@ print(f"Average training norm normalized by average state norm: {average_trainin
 
 #%% Policy function as PyTorch model
 class PolicyNetwork():
-    def __init__(self, n_state, n_action, lr=0.001):
+    def __init__(self, n_state, n_action, lr=0.003):
         self.model = nn.Sequential(
-            nn.Linear(n_state, n_action),
+            rbf.RBF(n_state, 50, rbf.gaussian),
+            nn.Linear(50, n_action),
             nn.Softmax(dim=-1)
         )
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr)
@@ -194,9 +222,9 @@ class PolicyNetwork():
             @param s: input state
             @return: the selected action and log probability
         """
-        probs = self.predict(s)
-        action_index = torch.multinomial(probs, 1).item()
-        log_prob = torch.log(probs[action_index])
+        probs = self.predict(np.array([s]))
+        action_index = torch.multinomial(probs[0], 1).item()
+        log_prob = torch.log(probs[0,action_index])
         action = all_us[action_index].item()
         return action, log_prob
 
@@ -207,7 +235,8 @@ def reinforce(estimator, n_episode, gamma=1.0):
         @param n_episode: number of episodes
         @param gamma: the discount factor
     """
-    num_steps_per_trajectory = 100
+    global tensor
+
     w_hat = np.zeros([phi_dim,1])
     for episode in range(n_episode):
         states = []
@@ -216,7 +245,7 @@ def reinforce(estimator, n_episode, gamma=1.0):
         rewards = []
         state = np.random.rand(state_dim,1)*state_range*np.random.choice(np.array([-1,1]), size=(state_dim,1))
 
-        while len(rewards) < num_steps_per_trajectory:
+        while len(rewards) < 300:
             u, log_prob = estimator.get_action(state[:,0])
             action = np.array([[u]])
             next_state = f(state, action)
@@ -229,7 +258,7 @@ def reinforce(estimator, n_episode, gamma=1.0):
             log_probs.append(log_prob)
             rewards.append(curr_reward)
 
-            if len(rewards) == num_steps_per_trajectory:
+            if len(rewards) == 300:
                 returns = torch.zeros([len(rewards)])
                 # Gt = 0
                 for i in range(len(rewards)-1, -1, -1):
@@ -244,12 +273,17 @@ def reinforce(estimator, n_episode, gamma=1.0):
                     returns[i] = Q_val
                     # print("Q_val:", Q_val)
 
+                # if episode == 0 or (episode+1) % 100 == 0:
+                #     print(returns)
+
                 returns = (returns - returns.mean()) / (returns.std() + torch.finfo(torch.float64).eps)
 
+                # Update model
                 estimator.update(returns, log_probs)
+
                 if episode == 0 or (episode+1) % 100 == 0:
                     print(f"Episode: {episode+1}, total reward: {total_reward_episode[episode]}")
-                    # torch.save(estimator, 'lqr-policy-model.pt')
+                    # torch.save(estimator, 'lqr-gaussian-policy-model.pt')
 
                 break
 
@@ -267,15 +301,15 @@ def init_weights(m):
 policy_net = PolicyNetwork(state_dim, num_actions)
 policy_net.model.apply(init_weights)
 
-# policy_net = torch.load('lqr-policy-model.pt')
+# policy_net = torch.load('lqr-gaussian-policy-model.pt')
 
-n_episode = 5000
+n_episode = 2000
 gamma = 0.99
 lamb = 0.0001
 total_reward_episode = [0] * n_episode
 
 #%% Estimate Q function for current policy
-w_hat_batch_size = 2**12
+w_hat_batch_size = 2**11 # 2**14
 def w_hat_t():
     x_batch_indices = np.random.choice(X.shape[1], w_hat_batch_size, replace=False)
     x_batch = X[:, x_batch_indices] # (x_dim, w_hat_batch_size)
@@ -306,7 +340,14 @@ def Q(x, u, w_hat_t):
 #%% REINFORCE
 reinforce(policy_net, n_episode, gamma)
 
-#%% Test
+# import matplotlib.pyplot as plt
+# plt.plot(total_reward_episode)
+# plt.title('Episode reward over time')
+# plt.xlabel('Episode')
+# plt.ylabel('Total reward')
+# plt.show()
+
+#%%
 test_steps = 200
 def watch_agent():
     optimal_states = np.zeros([test_steps,state_dim])

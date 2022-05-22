@@ -26,8 +26,8 @@ action_dim = 1
 A_shape = [state_dim,state_dim]
 A = np.zeros(A_shape)
 max_real_eigen_val = 1.0
-while max_real_eigen_val >= 1.0 or max_real_eigen_val <= 0.7:
-# while max_real_eigen_val >= 1.5 or max_real_eigen_val <= 1.0:
+# while max_real_eigen_val >= 1.0 or max_real_eigen_val <= 0.7:
+while max_real_eigen_val >= 1.2 or max_real_eigen_val <= 1.0:
     Z = np.random.rand(*A_shape)
     A = Z.T @ Z
     W,V = np.linalg.eig(A)
@@ -40,8 +40,10 @@ def f(x, u):
     return A @ x + B @ u
 
 #%% Define cost
+# Q_ = np.eye(A.shape[1])
+# R = 1
 Q_ = np.eye(A.shape[1])
-R = 1
+R = 0.01
 def cost(x, u):
     # Assuming that data matrices are passed in for X and U. Columns vectors are snapshots
     # x.T Q x + u.T R u
@@ -59,7 +61,8 @@ phi_dim = int( comb( state_order+state_dim, state_order ) )
 psi_dim = int( comb( action_order+action_dim, action_order ) )
 
 step_size = 0.1
-all_us = np.arange(-action_range, action_range+step_size, step_size)
+# all_us = np.arange(-action_range, action_range+step_size, step_size)
+all_us = np.arange(-5, 5+step_size, step_size)
 all_us = np.round(all_us, decimals=2)
 
 gamma = 0.99
@@ -74,7 +77,7 @@ def optimal_policy(x):
     return np.random.normal(-(C @ x), sigma_t)
 
 #%% Construct datasets
-num_episodes = 100
+num_episodes = 200
 num_steps_per_episode = 200
 N = num_episodes * num_steps_per_episode # Number of datapoints
 
@@ -214,7 +217,7 @@ def discrete_bellman_error(batch_size):
 
     return total
 
-epochs = 10000
+epochs = 5000
 epsilon = 0.01
 batch_size = 2**9
 batch_scale = 3
