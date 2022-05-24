@@ -20,14 +20,15 @@ import observables
 import utilities
 
 #%% Initialize environment
-state_dim = 4
+state_dim = 5
 action_dim = 1
 
 A_shape = [state_dim,state_dim]
 A = np.zeros(A_shape)
-max_real_eigen_val = 1.0
+max_real_eigen_val = 2.0
 # while max_real_eigen_val >= 1.0 or max_real_eigen_val <= 0.7:
-while max_real_eigen_val >= 1.2 or max_real_eigen_val <= 1.0:
+# while max_real_eigen_val >= 1.2 or max_real_eigen_val <= 1.0:
+while max_real_eigen_val >= 2.0 or max_real_eigen_val <= 0.5:
     Z = np.random.rand(*A_shape)
     A = Z.T @ Z
     W,V = np.linalg.eig(A)
@@ -61,8 +62,8 @@ phi_dim = int( comb( state_order+state_dim, state_order ) )
 psi_dim = int( comb( action_order+action_dim, action_order ) )
 
 step_size = 0.1
-# all_us = np.arange(-action_range, action_range+step_size, step_size)
-all_us = np.arange(-5, 5+step_size, step_size)
+all_us = np.arange(-action_range, action_range+step_size, step_size)
+# all_us = np.arange(-5, 5+step_size, step_size)
 all_us = np.round(all_us, decimals=2)
 
 gamma = 0.99
@@ -318,7 +319,7 @@ axs[0].set(xlabel='Timestep', ylabel='State value')
 axs[1].set_title('Learned dynamics')
 axs[1].set(xlabel='Timestep', ylabel='State value')
 
-labels = np.array(['x_0', 'x_1', 'x_2', 'x_3'])
+labels = np.array(['x_0', 'x_1', 'x_2', 'x_3', 'x_4', 'x_5'])
 for i in range(A.shape[1]):
     axs[0].plot(true_states[:,i], label=labels[i])
     axs[1].plot(koopman_states[:,i], label=labels[i])
