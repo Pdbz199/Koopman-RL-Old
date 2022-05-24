@@ -151,12 +151,12 @@ def init_weights(m):
     if type(m) == torch.nn.Linear:
         m.weight.data.fill_(0.0)
 
-model = torch.nn.Sequential(
-    torch.nn.Linear(phi_dim, 1)
-)
-model.apply(init_weights)
+# model = torch.nn.Sequential(
+#     torch.nn.Linear(phi_dim, 1)
+# )
+# model.apply(init_weights)
 
-# model = torch.load('lqr-value-iteration.pt')
+model = torch.load('lqr-value-iteration.pt')
 
 learning_rate = 0.003
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
@@ -218,7 +218,7 @@ def discrete_bellman_error(batch_size):
 
     return total
 
-epochs = 5000
+epochs = 0 # 5000
 epsilon = 0.01
 batch_size = 2**9
 batch_scale = 3
@@ -286,7 +286,7 @@ def learned_policy(x):
     return np.random.choice(all_us, p=pis_response.data.numpy())
 
 #%% Plot state path
-num_steps = 500
+num_steps = 10
 true_states = np.zeros([num_steps, A.shape[1]])
 true_actions = np.zeros([num_steps, B.shape[1]])
 koopman_states = np.zeros([num_steps, A.shape[1]])

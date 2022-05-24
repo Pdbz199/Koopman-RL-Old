@@ -135,12 +135,12 @@ def init_weights(m):
     if type(m) == torch.nn.Linear:
         m.weight.data.fill_(0.0)
 
-model = torch.nn.Sequential(
-    torch.nn.Linear(distinct_xs, 1)
-)
-model.apply(init_weights)
+# model = torch.nn.Sequential(
+#     torch.nn.Linear(distinct_xs, 1)
+# )
+# model.apply(init_weights)
 
-# model = torch.load('lqr-value-iteration.pt')
+model = torch.load('simple-mdp-value-iteration.pt')
 
 learning_rate = 0.003
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
@@ -153,7 +153,7 @@ def inner_pi_us(us, xs):
     for u in range(phi_x_primes.shape[0]):
         V_x_primes_arr[u] = model(torch.from_numpy(phi_x_primes[u].T).float()).T # (1, xs.shape[1])
 
-    inner_pi_us_values = -(torch.from_numpy(cost(xs, us)).float() + gamma * V_x_primes_arr) # us.shape[1] x xs.shape[1]
+    inner_pi_us_values = -(torch.from_numpy(costs(xs, us).T).float() + gamma * V_x_primes_arr) # us.shape[1] x xs.shape[1]
 
     return inner_pi_us_values * (1 / lamb) # us.shape[1] x xs.shape[1]
 
@@ -187,10 +187,10 @@ def discrete_bellman_error(batch_size):
         V_x_primes_arr[u] = model(torch.from_numpy(phi_x_primes[u].T).float()).T
     
     # Get costs
-    costs = torch.from_numpy(cost(x_batch, np.array([enumerated_actions]))).float() # all_us.shape[0] x batch_size
+    cost_vals = torch.from_numpy(costs(x_batch, np.array([enumerated_actions])).T).float() # all_us.shape[0] x batch_size
 
     # Compute expectations
-    expectation_us = (costs + lamb*log_pis + gamma*V_x_primes_arr) * pis_response # all_us.shape[0] x batch_size
+    expectation_us = (cost_vals + lamb*log_pis + gamma*V_x_primes_arr) * pis_response # all_us.shape[0] x batch_size
     expectation_u = torch.sum(expectation_us, axis=0).reshape(-1,1) # (batch_size, 1)
 
     # Use model to get V(x) for all phi(x)s
@@ -202,7 +202,7 @@ def discrete_bellman_error(batch_size):
 
     return total
     
-epochs = 5000
+epochs = 0 # 5000
 epsilon = 0.01
 batch_size = N
 batch_scale = 1
@@ -230,12 +230,12 @@ for epoch in range(epochs):
         V_x_primes_arr[u] = model(torch.from_numpy(phi_x_primes[u].T).float()).T
 
     # Get costs
-    costs = torch.from_numpy(cost(x_batch, np.array([enumerated_actions]))).float() # (all_us.shape[0], batch_size)
+    cost_vals = torch.from_numpy(costs(x_batch, np.array([enumerated_actions])).T).float() # (all_us.shape[0], batch_size)
 
     # Compute expectations
     expectation_term_1 = torch.sum(
         torch.mul(
-            (costs + lamb*log_pis + gamma*V_x_primes_arr),
+            (cost_vals + lamb*log_pis + gamma*V_x_primes_arr),
             pis_response
         ),
         dim=0
@@ -267,13 +267,14 @@ for epoch in range(epochs):
 def learned_policy(x):
     with torch.no_grad():
         pis_response = pis(x)[:,0]
+    print(pis_response)
     return np.random.choice(enumerated_actions, p=pis_response.data.numpy())
 
 #%% Test policy by simulating system
 num_episodes = 100
 num_steps_per_episode = 100
 
-costs = np.empty((num_episodes))
+cost_vals = np.empty((num_episodes))
 for episode in range(num_episodes):
     x = np.array([[np.random.choice(list(State))]])
 
@@ -285,9 +286,7 @@ for episode in range(num_episodes):
 
         x = np.array([[f(x, u)]])
 
-        # if step%250 == 0:
-        #     print("Current x:", x)
-    costs[episode] = cost_sum
-print("Mean cost per episode:", np.mean(costs)) # Cost should be minimized
+    cost_vals[episode] = cost_sum
+print("Mean cost per episode:", np.mean(cost_vals)) # Cost should be minimized
 
 #%%
