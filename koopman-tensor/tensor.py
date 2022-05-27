@@ -5,13 +5,17 @@ import numba as nb
 
 def checkMatrixRank(X, name):
     rank = np.linalg.matrix_rank(X)
+    print(f"{name} matrix rank: {rank}")
     if rank != X.shape[0]:
-        raise ValueError(f"{name} matrix is not full rank ({rank} / {X.shape[0]})")
+        # raise ValueError(f"{name} matrix is not full rank ({rank} / {X.shape[0]})")
+        pass
 
 def checkConditionNumber(X, name, threshold=200):
     cond_num = np.linalg.cond(X)
+    print(f"Condition number of {name}: {cond_num}")
     if cond_num > threshold:
-        raise ValueError(f"Condition number of {name} is too large ({cond_num} > {threshold})")
+        # raise ValueError(f"Condition number of {name} is too large ({cond_num} > {threshold})")
+        pass
 
 
 def gedmd(X, Y, rank=8):
@@ -70,6 +74,7 @@ class KoopmanTensor:
         phi,
         psi,
         regressor='ols',
+        rank=8,
         is_generator=False,
         p_inv=True
     ):
@@ -84,24 +89,27 @@ class KoopmanTensor:
 
         # Construct Phi and Psi matrices
         self.Phi_X = self.phi(X)
-        self.Phi_Y = self.phi(Y)
         if is_generator:
             self.dPhi_Y = np.einsum('ijk,jk->ik', self.phi.diff(self.X), self.Y)
+        else:
+            self.Phi_Y = self.phi(Y)
         self.Psi_U = self.psi(U)
+
+        self.regression_Y = self.dPhi_Y if is_generator else self.Phi_Y
 
         # Get dimensions
         self.dim_phi = self.Phi_X.shape[0]
         self.dim_psi = self.Psi_U.shape[0]
 
         # Make sure data is full rank
-        # checkMatrixRank(self.Phi_X, "Phi_X")
-        # checkMatrixRank(self.Phi_Y, "Phi_Y")
-        # checkMatrixRank(self.Psi_U, "Psi_U")
+        checkMatrixRank(self.Phi_X, "Phi_X")
+        checkMatrixRank(self.regression_Y, "dPhi_Y" if is_generator else "Phi_Y")
+        checkMatrixRank(self.Psi_U, "Psi_U")
 
         # Make sure condition numbers are small
-        # checkConditionNumber(self.Phi_X, "Phi_X")
-        # checkConditionNumber(self.Phi_Y, "Phi_Y")
-        # checkConditionNumber(self.Psi_U, "Psi_U")
+        checkConditionNumber(self.Phi_X, "Phi_X")
+        checkConditionNumber(self.regression_Y, "dPhi_Y" if is_generator else "Phi_Y")
+        checkConditionNumber(self.Psi_U, "Psi_U")
 
         # Build matrix of kronecker products between u_i and x_i for all 0 <= i <= N
         self.kronMatrix = np.empty([
@@ -115,15 +123,14 @@ class KoopmanTensor:
             )
 
         # Solve for M and B
-        regression_Y = self.dPhi_Y if is_generator else self.Phi_Y
         if regressor == 'rrr':
-            self.M = rrr(self.kronMatrix.T, regression_Y.T).T
-            self.B = rrr(self.Phi_X.T, self.X.T)
+            self.M = rrr(self.kronMatrix.T, self.regression_Y.T, rank).T
+            self.B = rrr(self.Phi_X.T, self.X.T, rank)
         if regressor == 'sindy':
-            self.M = SINDy(self.kronMatrix.T, regression_Y.T).T
+            self.M = SINDy(self.kronMatrix.T, self.regression_Y.T).T
             self.B = SINDy(self.Phi_X.T, self.X.T)
         else:
-            self.M = ols(self.kronMatrix.T, regression_Y.T, p_inv).T
+            self.M = ols(self.kronMatrix.T, self.regression_Y.T, p_inv).T
             self.B = ols(self.Phi_X.T, self.X.T, p_inv)
 
         # reshape M into tensor K

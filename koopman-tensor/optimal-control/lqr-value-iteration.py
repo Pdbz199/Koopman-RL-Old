@@ -20,15 +20,14 @@ import observables
 import utilities
 
 #%% Initialize environment
-state_dim = 5
+state_dim = 2
 action_dim = 1
 
 A_shape = [state_dim,state_dim]
 A = np.zeros(A_shape)
-max_real_eigen_val = 2.0
+max_real_eigen_val = 1.0
 # while max_real_eigen_val >= 1.0 or max_real_eigen_val <= 0.7:
-# while max_real_eigen_val >= 1.2 or max_real_eigen_val <= 1.0:
-while max_real_eigen_val >= 2.0 or max_real_eigen_val <= 0.5:
+while max_real_eigen_val >= 1.2 or max_real_eigen_val <= 1.0:
     Z = np.random.rand(*A_shape)
     A = Z.T @ Z
     W,V = np.linalg.eig(A)
@@ -61,9 +60,9 @@ action_column_shape = [action_dim, 1]
 phi_dim = int( comb( state_order+state_dim, state_order ) )
 psi_dim = int( comb( action_order+action_dim, action_order ) )
 
-step_size = 0.1
-all_us = np.arange(-action_range, action_range+step_size, step_size)
-# all_us = np.arange(-5, 5+step_size, step_size)
+step_size = 0.01
+# all_us = np.arange(-action_range, action_range+step_size, step_size)
+all_us = np.arange(-5, 5+step_size, step_size)
 all_us = np.round(all_us, decimals=2)
 
 gamma = 0.99
@@ -156,7 +155,7 @@ def init_weights(m):
 # )
 # model.apply(init_weights)
 
-model = torch.load('lqr-value-iteration.pt')
+model = torch.load('lqr-value-model.pt')
 
 learning_rate = 0.003
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
@@ -272,11 +271,11 @@ for epoch in range(epochs):
     # Every so often, print out and save the bellman error(s)
     if (epoch+1) % 500 == 0:
         # np.save('bellman_errors.npy', bellman_errors)
-        torch.save(model, 'lqr-value-iteration.pt')
+        torch.save(model, 'lqr-value-model.pt')
         print(f"Bellman error at epoch {epoch+1}: {BE}")
 
     if BE <= epsilon:
-        torch.save(model, 'lqr-value-iteration.pt')
+        torch.save(model, 'lqr-value-model.pt')
         break
 
 #%% Extract latest policy

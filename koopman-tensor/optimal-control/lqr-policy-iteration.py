@@ -75,7 +75,7 @@ step_size = 0.1
 all_us = torch.arange(-5, 5+step_size, step_size)
 all_us = np.round(all_us, decimals=2)
 
-gamma = 0.99
+gamma = 0.7
 lamb = 0.0001
 
 #%% Optimal policy
@@ -114,6 +114,8 @@ Y = f(X, U)
 #         state = np.vstack(Y[:,(episode*num_steps_per_episode)+step])
 
 #%% Estimate Koopman tensor
+identity = lambda x: x
+
 tensor = KoopmanTensor(
     X,
     Y,
@@ -154,6 +156,22 @@ print(f"Average training norm normalized by average state norm: {average_trainin
 # average_state_norm = np.mean(state_norms)
 # print(f"Average training norm per episode over {num_episodes} episodes: {average_training_norm_per_episode}")
 # print(f"Average training norm per episode over {num_episodes} episodes normalized by average state norm: {average_training_norm_per_episode / average_state_norm}")
+
+#%% Testing error
+testing_norms = np.zeros([num_episodes,num_steps_per_episode])
+state_norms = np.zeros([num_episodes,num_steps_per_episode])
+for episode in range(num_episodes):
+    state = np.random.rand(state_dim,1)*state_range*np.random.choice(np.array([-1,1]), size=(state_dim,1))
+    for step in range(num_steps_per_episode):
+        action = np.random.rand(action_dim,1)*action_range*np.random.choice(np.array([-1,1]), size=(action_dim,1))
+        true_state_prime = f(state, action)
+        predicted_state_prime = tensor.f(state, action)
+        testing_norms[episode,step] = utilities.l2_norm(true_state_prime, predicted_state_prime)
+        state_norms[episode,step] = utilities.l2_norm(state, np.zeros_like(state))
+average_testing_norm_per_episode = np.mean(np.sum(testing_norms, axis=1))
+average_state_norm_per_episode = np.mean(np.sum(state_norms, axis=1))
+print(f"Average testing norm per episode over {num_episodes} episodes: {average_testing_norm_per_episode}")
+print(f"Average training norm per episode normalized by average state norm: {average_testing_norm_per_episode / average_state_norm_per_episode}")
 
 #%% Policy function as PyTorch model
 class PolicyNetwork():
@@ -270,8 +288,6 @@ policy_net.model.apply(init_weights)
 # policy_net = torch.load('lqr-policy-model.pt')
 
 n_episode = 5000
-gamma = 0.99
-lamb = 0.0001
 total_reward_episode = [0] * n_episode
 
 #%% Estimate Q function for current policy
