@@ -1,4 +1,5 @@
 #%%
+from binascii import Error
 import numpy as np
 import scipy as sp
 import numba as nb
@@ -123,15 +124,17 @@ class KoopmanTensor:
             )
 
         # Solve for M and B
-        if regressor == 'rrr':
+        if regressor.lower() == 'rrr':
             self.M = rrr(self.kronMatrix.T, self.regression_Y.T, rank).T
             self.B = rrr(self.Phi_X.T, self.X.T, rank)
-        if regressor == 'sindy':
+        elif regressor.lower() == 'sindy':
             self.M = SINDy(self.kronMatrix.T, self.regression_Y.T).T
             self.B = SINDy(self.Phi_X.T, self.X.T)
-        else:
+        elif regressor.lower() == 'ols':
             self.M = ols(self.kronMatrix.T, self.regression_Y.T, p_inv).T
             self.B = ols(self.Phi_X.T, self.X.T, p_inv)
+        else:
+            raise Error("Did not pick a supported regression algorithm.")
 
         # reshape M into tensor K
         self.K = np.empty([
@@ -170,7 +173,7 @@ class KoopmanTensor:
             OUTPUTS:
             state column vector (could also be a matrix)
         """
-        return self.B.T @ self.K_(u) @ self.phi(x)
+        return self.B.T @ self.phi_f(x, u)
 
     def phi_f(self, x, u):
         """
