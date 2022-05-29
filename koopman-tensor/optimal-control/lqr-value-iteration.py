@@ -20,14 +20,14 @@ import observables
 import utilities
 
 #%% Initialize environment
-state_dim = 2
+state_dim = 4
 action_dim = 1
 
 A_shape = [state_dim,state_dim]
 A = np.zeros(A_shape)
 max_real_eigen_val = 1.0
-# while max_real_eigen_val >= 1.0 or max_real_eigen_val <= 0.7:
-while max_real_eigen_val >= 1.2 or max_real_eigen_val <= 1.0:
+while max_real_eigen_val >= 1.0 or max_real_eigen_val <= 0.7:
+# while max_real_eigen_val >= 1.2 or max_real_eigen_val <= 1.0:
     Z = np.random.rand(*A_shape)
     A = Z.T @ Z
     W,V = np.linalg.eig(A)
@@ -65,7 +65,7 @@ step_size = 0.01
 all_us = np.arange(-5, 5+step_size, step_size)
 all_us = np.round(all_us, decimals=2)
 
-gamma = 0.99
+gamma = 0.5
 lamb = 0.0001
 
 #%% Optimal policy
@@ -150,12 +150,12 @@ def init_weights(m):
     if type(m) == torch.nn.Linear:
         m.weight.data.fill_(0.0)
 
-# model = torch.nn.Sequential(
-#     torch.nn.Linear(phi_dim, 1)
-# )
-# model.apply(init_weights)
+model = torch.nn.Sequential(
+    torch.nn.Linear(phi_dim, 1)
+)
+model.apply(init_weights)
 
-model = torch.load('lqr-value-model.pt')
+# model = torch.load('lqr-value-model.pt')
 
 learning_rate = 0.003
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
@@ -217,7 +217,7 @@ def discrete_bellman_error(batch_size):
 
     return total
 
-epochs = 0 # 5000
+epochs = 5000
 epsilon = 0.01
 batch_size = 2**9
 batch_scale = 3
