@@ -25,8 +25,8 @@ import utilities
 #%% Initialize environment
 state_dim = 4
 action_dim = 1
-
 A_shape = [state_dim,state_dim]
+
 A = np.zeros(A_shape)
 max_real_eigen_val = 1.0
 # while max_real_eigen_val >= 1.0 or max_real_eigen_val <= 0.7:
@@ -35,6 +35,14 @@ while max_real_eigen_val >= 1.2 or max_real_eigen_val <= 1.0:
     A = Z.T @ Z
     W,V = np.linalg.eig(A)
     max_real_eigen_val = np.max(np.real(W))
+# A = np.array([
+#     [1.0, 0.02,  0.0,        0.0 ],
+#     [0.0, 1.0,  -0.01434146, 0.0 ],
+#     [0.0, 0.0,   1.0,        0.02],
+#     [0.0, 0.0,   0.3155122,  1.0 ]
+# ])
+W,V = np.linalg.eig(A)
+max_real_eigen_val = np.max(np.real(W))
 print("A:", A)
 print("A's max real eigenvalue:", max_real_eigen_val)
 B = np.ones([state_dim,action_dim])
@@ -75,7 +83,7 @@ step_size = 0.1
 all_us = torch.arange(-5, 5+step_size, step_size)
 all_us = np.round(all_us, decimals=2)
 
-gamma = 0.7
+gamma = 0.99
 lamb = 0.0001
 
 #%% Optimal policy
@@ -197,8 +205,8 @@ class PolicyNetwork():
             @param log_probs: log probability for each step
         """
         policy_gradient = []
-        for log_prob, Gt in zip(log_probs, returns):
-            policy_gradient.append(-log_prob * Gt)
+        for i, (log_prob, Gt) in enumerate(zip(log_probs, returns)):
+            policy_gradient.append(-log_prob * gamma**(len(returns)-i) * Gt)
 
         loss = torch.stack(policy_gradient).sum()
 
@@ -234,6 +242,7 @@ def reinforce(estimator, n_episode, gamma=1.0):
         rewards = []
         state = np.random.rand(state_dim,1)*state_range*np.random.choice(np.array([-1,1]), size=(state_dim,1))
 
+        step = 0
         while len(rewards) < num_steps_per_trajectory:
             u, log_prob = estimator.get_action(state[:,0])
             action = np.array([[u]])
@@ -243,34 +252,34 @@ def reinforce(estimator, n_episode, gamma=1.0):
             states.append(state)
             actions.append(u)
 
-            total_reward_episode[episode] += curr_reward
+            total_reward_episode[episode] += gamma**step * curr_reward 
             log_probs.append(log_prob)
             rewards.append(curr_reward)
 
             if len(rewards) == num_steps_per_trajectory:
                 returns = torch.zeros([len(rewards)])
-                # Gt = 0
+                Gt = 0
                 for i in range(len(rewards)-1, -1, -1):
                     # Gt = rewards[i] + (gamma * Gt)
                     # returns[i] = Gt
-                    # print("Gt:", Gt)
+                    
                     Q_val = Q(
                         np.vstack(states[i]),
                         np.array([[actions[i]]]),
                         w_hat
                     )
                     returns[i] = Q_val
-                    # print("Q_val:", Q_val)
 
                 returns = (returns - returns.mean()) / (returns.std() + torch.finfo(torch.float64).eps)
 
                 estimator.update(returns, log_probs)
-                if episode == 0 or (episode+1) % 100 == 0:
-                    print(f"Episode: {episode+1}, total reward: {total_reward_episode[episode]}")
-                    # torch.save(estimator, 'lqr-policy-model.pt')
+                if episode % 100 == 0:
+                    print(f"Episode: {episode}, discounted total reward: {total_reward_episode[episode]}")
+                    torch.save(estimator, 'lqr-policy-model.pt')
 
                 break
 
+            step += 1
             state = next_state
 
         w_hat = w_hat_t()

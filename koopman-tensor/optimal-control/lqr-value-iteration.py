@@ -20,21 +20,39 @@ import observables
 import utilities
 
 #%% Initialize environment
+import gym
+env = gym.make('env:CartPoleControlEnv-v0')
+
 state_dim = 4
 action_dim = 1
-
 A_shape = [state_dim,state_dim]
-A = np.zeros(A_shape)
+
+""" A = np.zeros(A_shape)
 max_real_eigen_val = 1.0
-while max_real_eigen_val >= 1.0 or max_real_eigen_val <= 0.7:
-# while max_real_eigen_val >= 1.2 or max_real_eigen_val <= 1.0:
+# while max_real_eigen_val >= 1.0 or max_real_eigen_val <= 0.7:
+while max_real_eigen_val >= 1.2 or max_real_eigen_val <= 1.0:
     Z = np.random.rand(*A_shape)
     A = Z.T @ Z
     W,V = np.linalg.eig(A)
-    max_real_eigen_val = np.max(np.real(W))
+    max_real_eigen_val = np.max(np.real(W)) """
+A = np.array([
+    [1.0, 0.02,  0.0,        0.0 ],
+    [0.0, 1.0,  -0.01434146, 0.0 ],
+    [0.0, 0.0,   1.0,        0.02],
+    [0.0, 0.0,   0.3155122,  1.0 ]
+])
+W,V = np.linalg.eig(A)
+max_real_eigen_val = np.max(np.real(W))
 print("A:", A)
 print("A's max real eigenvalue:", max_real_eigen_val)
-B = np.ones([A_shape[0],action_dim])
+
+# B = np.ones([A_shape[0],action_dim])
+B = np.array([
+    [0],
+    [0.0195122],
+    [0],
+    [-0.02926829]
+])
 
 def f(x, u):
     return A @ x + B @ u
@@ -42,8 +60,18 @@ def f(x, u):
 #%% Define cost
 # Q_ = np.eye(A.shape[1])
 # R = 1
+
 Q_ = np.eye(A.shape[1])
-R = 0.01
+R = 0.001
+
+# Q_ = np.array([
+#     [10.0, 0.0,  0.0, 0.0],
+#     [ 0.0, 1.0,  0.0, 0.0],
+#     [ 0.0, 0.0, 10.0, 0.0],
+#     [ 0.0, 0.0,  0.0, 1.0]
+# ])
+# R = 0.1
+
 def cost(x, u):
     # Assuming that data matrices are passed in for X and U. Columns vectors are snapshots
     # x.T Q x + u.T R u
@@ -60,12 +88,13 @@ action_column_shape = [action_dim, 1]
 phi_dim = int( comb( state_order+state_dim, state_order ) )
 psi_dim = int( comb( action_order+action_dim, action_order ) )
 
-step_size = 0.01
-# all_us = np.arange(-action_range, action_range+step_size, step_size)
-all_us = np.arange(-5, 5+step_size, step_size)
+step_size = 0.1
+all_us = np.arange(-action_range, action_range+step_size, step_size)
+# all_us = np.arange(-5, 5+step_size, step_size)
+# all_us = np.arange(-10, 10+step_size, step_size)
 all_us = np.round(all_us, decimals=2)
 
-gamma = 0.5
+gamma = 0.8
 lamb = 0.0001
 
 #%% Optimal policy
@@ -150,12 +179,12 @@ def init_weights(m):
     if type(m) == torch.nn.Linear:
         m.weight.data.fill_(0.0)
 
-model = torch.nn.Sequential(
-    torch.nn.Linear(phi_dim, 1)
-)
-model.apply(init_weights)
+# model = torch.nn.Sequential(
+#     torch.nn.Linear(phi_dim, 1)
+# )
+# model.apply(init_weights)
 
-# model = torch.load('lqr-value-model.pt')
+model = torch.load('lqr-value-model.pt')
 
 learning_rate = 0.003
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
@@ -217,7 +246,7 @@ def discrete_bellman_error(batch_size):
 
     return total
 
-epochs = 5000
+epochs = 3000
 epsilon = 0.01
 batch_size = 2**9
 batch_scale = 3
@@ -285,12 +314,13 @@ def learned_policy(x):
     return np.random.choice(all_us, p=pis_response.data.numpy())
 
 #%% Plot state path
-num_steps = 10
+num_steps = 200
 true_states = np.zeros([num_steps, A.shape[1]])
 true_actions = np.zeros([num_steps, B.shape[1]])
 koopman_states = np.zeros([num_steps, A.shape[1]])
 koopman_actions = np.zeros([num_steps, B.shape[1]])
-state = np.random.rand(A.shape[0],1)*state_range*np.random.choice(np.array([-1,1]), size=(A.shape[0],1))
+# state = np.random.rand(A.shape[0],1)*state_range*np.random.choice(np.array([-1,1]), size=(A.shape[0],1))
+state = np.vstack(env.reset())
 true_state = state
 koopman_state = state
 for i in range(num_steps):
@@ -318,7 +348,8 @@ axs[0].set(xlabel='Timestep', ylabel='State value')
 axs[1].set_title('Learned dynamics')
 axs[1].set(xlabel='Timestep', ylabel='State value')
 
-labels = np.array(['x_0', 'x_1', 'x_2', 'x_3', 'x_4', 'x_5'])
+labels = np.array(['cart position', 'cart velocity', 'pole angle', 'pole angular velocity'])
+# labels = np.array(['x_0', 'x_1', 'x_2', 'x_3', 'x_4', 'x_5', 'x_6'])
 for i in range(A.shape[1]):
     axs[0].plot(true_states[:,i], label=labels[i])
     axs[1].plot(koopman_states[:,i], label=labels[i])
@@ -328,5 +359,23 @@ fig.legend(lines, labels)
 
 plt.tight_layout()
 plt.show()
+
+#%% Test model in gym environment
+# num_episodes = 100
+# num_steps_per_episode = 200
+# rewards = np.zeros([num_episodes])
+# for episode in range(num_episodes):
+#     state = env.reset()
+#     done = False
+#     for steps in range(num_steps_per_episode):
+#         # env.render()
+#         action = optimal_policy(np.vstack(state))
+#         # action = np.array([[ learned_policy(np.vstack(state)) ]])
+#         state, _, done, ___ = env.step(action[0])
+#         rewards[episode] += 1
+#         if done:
+#             break
+# # env.close()
+# print("Average reward per episode:", np.mean(rewards))
 
 #%%
