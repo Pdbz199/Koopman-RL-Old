@@ -94,7 +94,8 @@ all_us = np.arange(-action_range, action_range+step_size, step_size)
 # all_us = np.arange(-10, 10+step_size, step_size)
 all_us = np.round(all_us, decimals=2)
 
-gamma = 0.8
+gamma = 0.97 # in increments of 0.01
+print(f"gamma: {gamma}")
 lamb = 0.0001
 
 #%% Optimal policy
@@ -246,7 +247,7 @@ def discrete_bellman_error(batch_size):
 
     return total
 
-epochs = 3000
+epochs = 0#5000
 epsilon = 0.01
 batch_size = 2**9
 batch_scale = 3
@@ -254,58 +255,70 @@ bellman_errors = [discrete_bellman_error(batch_size*batch_scale).data.numpy()]
 BE = bellman_errors[-1]
 print("Initial Bellman error:", BE)
 
-for epoch in range(epochs):
-    # Get random batch of X and Phi_X
-    x_batch_indices = np.random.choice(X.shape[1], batch_size, replace=False)
-    x_batch = X[:,x_batch_indices] # X.shape[0] x batch_size
-    phi_x_batch = tensor.phi(x_batch) # dim_phi x batch_size
+while gamma <= 0.99:
 
-    # Compute estimate of V(x) given the current model
-    V_x = model(torch.from_numpy(phi_x_batch.T).float()).T # (1, batch_size)
+    for epoch in range(epochs):
+        # Get random batch of X and Phi_X
+        x_batch_indices = np.random.choice(X.shape[1], batch_size, replace=False)
+        x_batch = X[:,x_batch_indices] # X.shape[0] x batch_size
+        phi_x_batch = tensor.phi(x_batch) # dim_phi x batch_size
 
-    # Get current distribution of actions for each state
-    pis_response = pis(x_batch) # (all_us.shape[0], batch_size)
-    log_pis = torch.log(pis_response) # (all_us.shape[0], batch_size)
+        # Compute estimate of V(x) given the current model
+        V_x = model(torch.from_numpy(phi_x_batch.T).float()).T # (1, batch_size)
 
-    # Compute V(x)'
-    phi_x_primes = tensor.K_(np.array([all_us])) @ phi_x_batch # all_us.shape[0] x dim_phi x batch_size
-    V_x_primes_arr = torch.zeros([all_us.shape[0], batch_size])
-    for u in range(phi_x_primes.shape[0]):
-        V_x_primes_arr[u] = model(torch.from_numpy(phi_x_primes[u].T).float()).T
+        # Get current distribution of actions for each state
+        pis_response = pis(x_batch) # (all_us.shape[0], batch_size)
+        log_pis = torch.log(pis_response) # (all_us.shape[0], batch_size)
 
-    # Get costs
-    costs = torch.from_numpy(cost(x_batch, np.array([all_us]))).float() # (all_us.shape[0], batch_size)
+        # Compute V(x)'
+        phi_x_primes = tensor.K_(np.array([all_us])) @ phi_x_batch # all_us.shape[0] x dim_phi x batch_size
+        V_x_primes_arr = torch.zeros([all_us.shape[0], batch_size])
+        for u in range(phi_x_primes.shape[0]):
+            V_x_primes_arr[u] = model(torch.from_numpy(phi_x_primes[u].T).float()).T
 
-    # Compute expectations
-    expectation_term_1 = torch.sum(
-        torch.mul(
-            (costs + lamb*log_pis + gamma*V_x_primes_arr),
-            pis_response
-        ),
-        dim=0
-    ).reshape(1,-1) # (1, batch_size)
+        # Get costs
+        costs = torch.from_numpy(cost(x_batch, np.array([all_us]))).float() # (all_us.shape[0], batch_size)
 
-    # Equation 2.21 in Overleaf
-    loss = torch.sum( torch.pow( V_x - expectation_term_1, 2 ) ) # ()
-    
-    # Back propogation
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
+        # Compute expectations
+        expectation_term_1 = torch.sum(
+            torch.mul(
+                (costs + lamb*log_pis + gamma*V_x_primes_arr),
+                pis_response
+            ),
+            dim=0
+        ).reshape(1,-1) # (1, batch_size)
 
-    # Recompute Bellman error
-    BE = discrete_bellman_error(batch_size*batch_scale).data.numpy()
-    bellman_errors = np.append(bellman_errors, BE)
+        # Equation 2.21 in Overleaf
+        loss = torch.sum( torch.pow( V_x - expectation_term_1, 2 ) ) # ()
+        
+        # Back propogation
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
 
-    # Every so often, print out and save the bellman error(s)
-    if (epoch+1) % 500 == 0:
-        # np.save('bellman_errors.npy', bellman_errors)
-        torch.save(model, 'lqr-value-model.pt')
-        print(f"Bellman error at epoch {epoch+1}: {BE}")
+        # Recompute Bellman error
+        BE = discrete_bellman_error(batch_size*batch_scale).data.numpy()
+        bellman_errors = np.append(bellman_errors, BE)
 
-    if BE <= epsilon:
-        torch.save(model, 'lqr-value-model.pt')
-        break
+        # Every so often, print out and save the bellman error(s)
+        if (epoch+1) % 500 == 0:
+            # np.save('bellman_errors.npy', bellman_errors)
+            torch.save(model, 'lqr-value-model.pt')
+            print(f"Bellman error at epoch {epoch+1}: {BE}")
+
+        if BE <= epsilon:
+            torch.save(model, 'lqr-value-model.pt')
+            break
+
+    gamma += 0.01
+
+#%% Optimal policy
+soln = dare(A*np.sqrt(gamma), B*np.sqrt(gamma), Q_, R)
+P = soln[0]
+C = np.linalg.inv(R + gamma*B.T @ P @ B) @ (gamma*B.T @ P @ A)
+sigma_t = lamb * np.linalg.inv(R + B.T @ P @ B)
+def optimal_policy(x):
+    return np.random.normal(-(C @ x), sigma_t)
 
 #%% Extract latest policy
 def learned_policy(x):
@@ -314,7 +327,7 @@ def learned_policy(x):
     return np.random.choice(all_us, p=pis_response.data.numpy())
 
 #%% Plot state path
-num_steps = 200
+num_steps = 100
 true_states = np.zeros([num_steps, A.shape[1]])
 true_actions = np.zeros([num_steps, B.shape[1]])
 koopman_states = np.zeros([num_steps, A.shape[1]])

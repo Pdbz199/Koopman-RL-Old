@@ -1,6 +1,5 @@
 # import gym
 import numpy as np
-import scipy as sp
 import torch
 import torch.nn as nn
 
@@ -17,8 +16,9 @@ sys.path.append('../')
 from tensor import KoopmanTensor, OLS
 sys.path.append('../../')
 import observables
+import utilities
 
-PATH = './fluid-flow-policy.pt'
+PATH = './lorenz-policy.pt'
 
 #%% System dynamics
 state_dim = 3
@@ -26,24 +26,28 @@ action_dim = 1
 
 state_range = 25
 action_range = 25
-state_order = 2
-action_order = 2
+state_order = 4
+action_order = 4
 
 state_column_shape = [state_dim, 1]
 action_column_shape = [action_dim, 1]
 phi_dim = int( comb( state_order+state_dim, state_order ) )
 psi_dim = int( comb( action_order+action_dim, action_order ) )
 
-action_range = torch.Tensor([-1, 1])
-# all_actions = torch.arange(action_range[0], action_range[1], 0.01) #* if too compute heavy, 0.05
-all_actions = torch.arange(-10, 10, 0.1)
+action_range = torch.Tensor([-50, 50])
+step_size = 0.1
+all_actions = torch.arange(action_range[0], action_range[1]+step_size, step_size) #* if too compute heavy, 0.05
 all_actions = np.round(all_actions, decimals=2)
 
-omega = 1.0
-mu = 0.1
-A = -0.1
-lamb = 1
-t_span = np.arange(0, 0.001, 0.0001)
+sigma = 10
+rho = 28
+beta = 8/3
+t_span = np.arange(0, 0.01, 0.001)
+t_span_range = np.array([0, 0.5])
+
+x_e = np.sqrt( beta * ( rho - 1 ) )
+y_e = np.sqrt( beta * ( rho - 1 ) )
+z_e = rho - 1
 
 def continuous_f(action=None):
     """
@@ -59,15 +63,15 @@ def continuous_f(action=None):
         """
         x, y, z = input
 
-        x_dot = mu*x - omega*y + A*x*z
-        y_dot = omega*x + mu*y + A*y*z
-        z_dot = -lamb * ( z - np.power(x, 2) - np.power(y, 2) )
+        x_dot = sigma * ( y - x )
+        y_dot = ( rho - z ) * x - y
+        z_dot = x * y - beta * z
 
         u = action
         if u is None:
             u = np.random.choice(all_actions, size=action_column_shape)
 
-        return [ x_dot, y_dot + u, z_dot ]
+        return [ x_dot + u, y_dot, z_dot ]
 
     return f_u
 
@@ -98,14 +102,16 @@ initial_xs = np.zeros([num_episodes, state_dim])
 for episode in range(num_episodes):
     x = np.random.random(state_column_shape) * 0.5 * np.random.choice([-1,1], size=state_column_shape)
     u = np.array([[0]])
-    soln = solve_ivp(fun=continuous_f(u), t_span=[0, 10.0], y0=x[:,0], method='RK45')
+    soln = solve_ivp(fun=continuous_f(u), t_span=[t_span_range[0], t_span_range[1]], y0=x[:,0], method='RK45')
     initial_xs[episode] = soln.y[:,-1]
 
 for episode in range(num_episodes):
     x = np.vstack(initial_xs[episode])
+    # x = np.zeros(state_column_shape) + (np.random.rand(*state_column_shape) * 5)# * np.random.choice([-1,1], size=state_column_shape))
     for step in range(num_steps_per_episode):
         X[:,(episode*num_steps_per_episode)+step] = x[:,0]
         u = np.random.choice(all_actions, size=action_column_shape)
+        # u = np.array([[0]])
         U[:,(episode*num_steps_per_episode)+step] = u[:,0]
         x = f(x, u)
         Y[:,(episode*num_steps_per_episode)+step] = x[:,0]
@@ -120,14 +126,51 @@ tensor = KoopmanTensor(
     regressor='ols'
 )
 
+#%% Training error
+training_norms = np.zeros([num_episodes, num_steps_per_episode])
+for episode in range(num_episodes):
+    x = np.vstack(X[:,(episode*num_steps_per_episode)])
+    for step in range(num_steps_per_episode):
+        u = np.vstack(U[:,(episode*num_steps_per_episode)+step])
+        true_x_prime = np.vstack(Y[:,(episode*num_steps_per_episode)+step])
+        estimated_x_prime = tensor.f(x, u)
+        training_norms[episode,step] = utilities.l2_norm(true_x_prime, estimated_x_prime)
+        x = true_x_prime
+print(f"Average training norm per episode over {num_episodes} episodes:", np.mean(np.sum(training_norms, axis=0)))
+
+#%% Testing error
+initial_xs = np.zeros([num_episodes, state_dim])
+for episode in range(num_episodes):
+    x = np.random.random(state_column_shape) * 0.5 * np.random.choice([-1,1], size=state_column_shape)
+    u = np.array([[0]])
+    soln = solve_ivp(fun=continuous_f(u), t_span=[t_span_range[0], t_span_range[1]], y0=x[:,0], method='RK45')
+    initial_xs[episode] = soln.y[:,-1]
+
+testing_norms = np.zeros([num_episodes, num_steps_per_episode])
+for episode in range(num_episodes):
+    x = np.vstack(initial_xs[episode])
+    # x = np.zeros(state_column_shape) + (np.random.rand(*state_column_shape) * 5)# * np.random.choice([-1,1], size=state_column_shape))
+    for step in range(num_steps_per_episode):
+        u = np.random.choice(all_actions, size=action_column_shape)
+        # u = np.array([[0]])
+        true_x_prime = f(x, u)
+        estimated_x_prime = tensor.f(x, u)
+        testing_norms[episode,step] = utilities.l2_norm(true_x_prime, estimated_x_prime)
+        x = true_x_prime
+print(f"Average testing norm per episode over {num_episodes} episodes:", np.mean(np.sum(testing_norms, axis=0)))
+
+# sys.exit(0)
+
 #%% Reward function
+
+#%% LQR
 w_r = np.array([
-    [0],
-    [0],
-    [0] # 1
+    [x_e],
+    [y_e],
+    [z_e]
 ])
 Q_ = np.eye(state_dim)
-R = 0.0001 # TODO: vary this parameter
+R = 0.001
 def cost(x, u):
     # Assuming that data matrices are passed in for X and U. Columns vectors are snapshots
     _x = x - w_r
@@ -135,6 +178,20 @@ def cost(x, u):
     return mat.T
 def reward(x, u):
     return -cost(x, u)
+
+#%% Eq 7 from Chaos Control paper
+# def cost(state, action):
+#     x = state[0,0]
+#     y = state[1,0]
+#     z = state[2,0]
+
+#     c_1 = action[0,0]
+#     c_2 = action[1,0]
+#     c_3 = action[2,0]
+
+#     return 1/2 * ( c_1 * ( x - x_e )**2 + c_3 * ( z - z_e )**2 )
+# def reward(x, u):
+#     -cost(x, u)
 
 #%% Estimate Q function for current policy
 w_hat_batch_size = 2**12
@@ -291,7 +348,7 @@ initial_xs = np.zeros([num_episodes, state_dim])
 for episode in range(num_episodes):
     x = np.random.random(state_column_shape) * 0.5 * np.random.choice([-1,1], size=state_column_shape)
     u = np.array([[0]])
-    soln = solve_ivp(fun=continuous_f(u), t_span=[0, 10.0], y0=x[:,0], method='RK45')
+    soln = solve_ivp(fun=continuous_f(u), t_span=[t_span_range[0], t_span_range[1]], y0=x[:,0], method='RK45')
     initial_xs[episode] = soln.y[:,-1]
 
 #%% Run REINFORCE
@@ -314,7 +371,7 @@ initial_xs = np.zeros([num_episodes, state_dim])
 for episode in range(num_episodes):
     x = np.random.random(state_column_shape) * 0.5 * np.random.choice([-1,1], size=state_column_shape)
     u = np.array([[0]])
-    soln = solve_ivp(fun=continuous_f(u), t_span=[0, 10.0], y0=x[:,0], method='RK45')
+    soln = solve_ivp(fun=continuous_f(u), t_span=[t_span_range[0], t_span_range[1]], y0=x[:,0], method='RK45')
     initial_xs[episode] = soln.y[:,-1]
 
 step_limit = 10000
@@ -328,8 +385,11 @@ def watch_agent():
         cumulative_cost = 0
         step = 0
         while step < step_limit:
+            # print(state)
             with torch.no_grad():
                 action, _ = policy_net.get_action(state[:,0])
+                # action = np.array([[0]])
+                # print(action)
             state = tensor.f(state, action)
             states[episode,:,step] = state[:,0]
             actions[episode,:,step] = action
@@ -341,12 +401,13 @@ def watch_agent():
     print(f"Mean cost per episode over {num_episodes} episodes:", torch.mean(costs))
     print("Initial state of final episode:", states[-1,:,0])
     print("Final state of final episode:", states[-1,:,-1])
+    print("Reference state:", w_r[:,0])
     print("Difference between final state of final episode and reference state:", np.abs(states[-1,:,-1] - w_r[:,0]))
 
     ax = plt.axes(projection='3d')
-    ax.set_xlim(-1.0, 1.0)
-    ax.set_ylim(-1.0, 1.0)
-    ax.set_zlim(0.0, 1.0)
+    ax.set_xlim(-20.0, 20.0)
+    ax.set_ylim(-50.0, 50.0)
+    ax.set_zlim(0.0, 50.0)
     ax.plot3D(states[-1,0], states[-1,1], states[-1,2], 'gray')
     plt.show()
 
