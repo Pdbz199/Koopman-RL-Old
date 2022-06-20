@@ -91,7 +91,8 @@ class KoopmanTensor:
         # Construct Phi and Psi matrices
         self.Phi_X = self.phi(X)
         if is_generator:
-            self.dPhi_Y = np.einsum('ijk,jk->ik', self.phi.diff(self.X), self.Y)
+            self.dX = self.Y - self.X
+            self.dPhi_Y = np.einsum('ijk,jk->ik', self.phi.diff(self.X), self.dX)
         else:
             self.Phi_Y = self.phi(Y)
         self.Psi_U = self.psi(U)
