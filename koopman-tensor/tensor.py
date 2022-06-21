@@ -93,11 +93,11 @@ class KoopmanTensor:
         if is_generator:
             self.dX = self.Y - self.X
             self.dPhi_Y = np.einsum('ijk,jk->ik', self.phi.diff(self.X), self.dX)
+            self.regression_Y = self.dPhi_Y
         else:
             self.Phi_Y = self.phi(Y)
+            self.regression_Y = self.Phi_Y
         self.Psi_U = self.psi(U)
-
-        self.regression_Y = self.dPhi_Y if is_generator else self.Phi_Y
 
         # Get dimensions
         self.dim_phi = self.Phi_X.shape[0]
