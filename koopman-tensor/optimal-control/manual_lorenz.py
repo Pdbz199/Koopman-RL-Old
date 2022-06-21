@@ -22,7 +22,8 @@ sigma = 10
 rho = 28
 beta = 8/3
 
-action_range = np.array([-50, 50])
+# action_range = np.array([-50, 50])
+action_range = np.array([-75, 75])
 step_size = 0.1
 all_actions = np.arange(action_range[0], action_range[1]+step_size, step_size)
 all_actions = np.round(all_actions, decimals=2)
@@ -112,8 +113,8 @@ ax_c = plt.axes([0.15, 0.25, 0.0225, 0.63], facecolor=axcolor)
 c_slider = Slider(
     ax=ax_c,
     label="action",
-    valmin=-50,
-    valmax=50,
+    valmin=action_range[0],
+    valmax=action_range[1],
     valinit=init_c,
     orientation="vertical"
 )

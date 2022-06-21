@@ -1,4 +1,4 @@
-# import gym
+#%% Imports
 import numpy as np
 import torch
 import torch.nn as nn
@@ -24,19 +24,18 @@ PATH = './lorenz-policy.pt'
 state_dim = 3
 action_dim = 1
 
-state_range = 25
-action_range = 25
-state_order = 4
-action_order = 4
+state_order = 2
+action_order = 2
 
 state_column_shape = [state_dim, 1]
 action_column_shape = [action_dim, 1]
 phi_dim = int( comb( state_order+state_dim, state_order ) )
 psi_dim = int( comb( action_order+action_dim, action_order ) )
 
-action_range = torch.Tensor([-50, 50])
+# action_range = torch.Tensor([-50, 50])
+action_range = torch.Tensor([-75, 75])
 step_size = 0.1
-all_actions = torch.arange(action_range[0], action_range[1]+step_size, step_size) #* if too compute heavy, 0.05
+all_actions = torch.arange(action_range[0], action_range[1]+step_size, step_size)
 all_actions = np.round(all_actions, decimals=2)
 
 sigma = 10
@@ -98,16 +97,16 @@ X = np.zeros([state_dim,N])
 Y = np.zeros([state_dim,N])
 U = np.zeros([action_dim,N])
 
-initial_xs = np.zeros([num_episodes, state_dim])
-for episode in range(num_episodes):
-    x = np.random.random(state_column_shape) * 0.5 * np.random.choice([-1,1], size=state_column_shape)
-    u = np.array([[0]])
-    soln = solve_ivp(fun=continuous_f(u), t_span=[t_span_range[0], t_span_range[1]], y0=x[:,0], method='RK45')
-    initial_xs[episode] = soln.y[:,-1]
+# initial_xs = np.zeros([num_episodes, state_dim])
+# for episode in range(num_episodes):
+#     x = np.random.random(state_column_shape) * 0.5 * np.random.choice([-1,1], size=state_column_shape)
+#     u = np.array([[0]])
+#     soln = solve_ivp(fun=continuous_f(u), t_span=[t_span_range[0], t_span_range[1]], y0=x[:,0], method='RK45')
+#     initial_xs[episode] = soln.y[:,-1]
 
 for episode in range(num_episodes):
-    x = np.vstack(initial_xs[episode])
-    # x = np.zeros(state_column_shape) + (np.random.rand(*state_column_shape) * 5)# * np.random.choice([-1,1], size=state_column_shape))
+    # x = np.vstack(initial_xs[episode])
+    x = np.array([[0], [1], [1.05]]) + (np.random.rand(*state_column_shape) * 5 * np.random.choice([-1,1], size=state_column_shape))
     for step in range(num_steps_per_episode):
         X[:,(episode*num_steps_per_episode)+step] = x[:,0]
         u = np.random.choice(all_actions, size=action_column_shape)
@@ -116,7 +115,7 @@ for episode in range(num_episodes):
         x = f(x, u)
         Y[:,(episode*num_steps_per_episode)+step] = x[:,0]
 
-#%% Estimate Koopman operator
+#%% Estimate Koopman tensor
 tensor = KoopmanTensor(
     X,
     Y,
@@ -129,27 +128,26 @@ tensor = KoopmanTensor(
 #%% Training error
 training_norms = np.zeros([num_episodes, num_steps_per_episode])
 for episode in range(num_episodes):
-    x = np.vstack(X[:,(episode*num_steps_per_episode)])
     for step in range(num_steps_per_episode):
+        x = np.vstack(X[:,(episode*num_steps_per_episode)+step])
         u = np.vstack(U[:,(episode*num_steps_per_episode)+step])
         true_x_prime = np.vstack(Y[:,(episode*num_steps_per_episode)+step])
         estimated_x_prime = tensor.f(x, u)
         training_norms[episode,step] = utilities.l2_norm(true_x_prime, estimated_x_prime)
-        x = true_x_prime
 print(f"Average training norm per episode over {num_episodes} episodes:", np.mean(np.sum(training_norms, axis=0)))
 
 #%% Testing error
-initial_xs = np.zeros([num_episodes, state_dim])
-for episode in range(num_episodes):
-    x = np.random.random(state_column_shape) * 0.5 * np.random.choice([-1,1], size=state_column_shape)
-    u = np.array([[0]])
-    soln = solve_ivp(fun=continuous_f(u), t_span=[t_span_range[0], t_span_range[1]], y0=x[:,0], method='RK45')
-    initial_xs[episode] = soln.y[:,-1]
+# initial_xs = np.zeros([num_episodes, state_dim])
+# for episode in range(num_episodes):
+#     x = np.random.random(state_column_shape) * 0.5 * np.random.choice([-1,1], size=state_column_shape)
+#     u = np.array([[0]])
+#     soln = solve_ivp(fun=continuous_f(u), t_span=[t_span_range[0], t_span_range[1]], y0=x[:,0], method='RK45')
+#     initial_xs[episode] = soln.y[:,-1]
 
 testing_norms = np.zeros([num_episodes, num_steps_per_episode])
 for episode in range(num_episodes):
-    x = np.vstack(initial_xs[episode])
-    # x = np.zeros(state_column_shape) + (np.random.rand(*state_column_shape) * 5)# * np.random.choice([-1,1], size=state_column_shape))
+    # x = np.vstack(initial_xs[episode])
+    x = np.array([[0], [1], [1.05]]) + (np.random.rand(*state_column_shape) * 5 * np.random.choice([-1,1], size=state_column_shape))
     for step in range(num_steps_per_episode):
         u = np.random.choice(all_actions, size=action_column_shape)
         # u = np.array([[0]])
@@ -169,8 +167,13 @@ w_r = np.array([
     [y_e],
     [z_e]
 ])
+# w_r = np.array([
+#     [0.0],
+#     [0.0],
+#     [z_e]
+# ])
 Q_ = np.eye(state_dim)
-R = 0.001
+R = 0.0001
 def cost(x, u):
     # Assuming that data matrices are passed in for X and U. Columns vectors are snapshots
     _x = x - w_r
@@ -237,7 +240,7 @@ class PolicyNetwork():
             @param s: input state array
             @return: predicted policy
         """
-        return self.model(torch.Tensor(s))
+        return self.model(torch.Tensor(s - w_r[:,0]))
 
     def update(self, returns, log_probs):
         """
@@ -281,8 +284,7 @@ def reinforce(estimator, n_episode, gamma=1.0):
         actions = []
         log_probs = []
         rewards = []
-        # state = np.random.rand(state_dim,1)*state_range*np.random.choice(np.array([-1,1]), size=(state_dim,1))
-        state = np.vstack(initial_xs[episode])
+        state = np.array([[0], [1], [1.05]]) + (np.random.rand(*state_column_shape) * 5 * np.random.choice([-1,1], size=state_column_shape))
 
         step = 0
         while len(rewards) < num_steps_per_trajectory:
@@ -300,11 +302,7 @@ def reinforce(estimator, n_episode, gamma=1.0):
 
             if len(rewards) == num_steps_per_trajectory:
                 returns = torch.zeros([len(rewards)])
-                Gt = 0
                 for i in range(len(rewards)-1, -1, -1):
-                    # Gt = rewards[i] + (gamma * Gt)
-                    # returns[i] = Gt
-                    
                     Q_val = Q(
                         np.vstack(states[i]),
                         np.array([[actions[i]]]),
@@ -327,7 +325,6 @@ def reinforce(estimator, n_episode, gamma=1.0):
         w_hat = w_hat_t()
 
 #%%
-# n_state = env.observation_space.shape[0]
 num_actions = all_actions.shape[0]
 
 def init_weights(m):
@@ -341,55 +338,39 @@ lr = 0.003
 
 policy_net = torch.load(PATH)
 
-#%% Generate new initial xs for learning control
-num_episodes = 0#2000
-
-initial_xs = np.zeros([num_episodes, state_dim])
-for episode in range(num_episodes):
-    x = np.random.random(state_column_shape) * 0.5 * np.random.choice([-1,1], size=state_column_shape)
-    u = np.array([[0]])
-    soln = solve_ivp(fun=continuous_f(u), t_span=[t_span_range[0], t_span_range[1]], y0=x[:,0], method='RK45')
-    initial_xs[episode] = soln.y[:,-1]
-
 #%% Run REINFORCE
 gamma = 0.99
+# num_episodes = 2000
+num_episodes = 0
 total_reward_episode = [0] * num_episodes
 reinforce(policy_net, num_episodes, gamma)
 
-# import matplotlib.pyplot as plt
-# plt.plot(total_reward_episode)
-# plt.title('Episode reward over time')
-# plt.xlabel('Episode')
-# plt.ylabel('Total reward')
-# plt.show()
-
 #%% Test policy in environment
-num_episodes = 10 # 1000
+# num_episodes = 1000
+num_episodes = 1
 
 # Generate new initial xs to test learned policy
-initial_xs = np.zeros([num_episodes, state_dim])
-for episode in range(num_episodes):
-    x = np.random.random(state_column_shape) * 0.5 * np.random.choice([-1,1], size=state_column_shape)
-    u = np.array([[0]])
-    soln = solve_ivp(fun=continuous_f(u), t_span=[t_span_range[0], t_span_range[1]], y0=x[:,0], method='RK45')
-    initial_xs[episode] = soln.y[:,-1]
+# initial_xs = np.zeros([num_episodes, state_dim])
+# for episode in range(num_episodes):
+#     x = np.random.random(state_column_shape) * 0.5 * np.random.choice([-1,1], size=state_column_shape)
+#     u = np.array([[0]])
+#     soln = solve_ivp(fun=continuous_f(u), t_span=[t_span_range[0], t_span_range[1]], y0=x[:,0], method='RK45')
+#     initial_xs[episode] = soln.y[:,-1]
 
-step_limit = 10000
+step_limit = 100000
 def watch_agent():
     states = np.zeros([num_episodes,state_dim,step_limit])
     actions = np.zeros([num_episodes,action_dim,step_limit])
     costs = torch.zeros([num_episodes])
     for episode in range(num_episodes):
-        state = np.vstack(initial_xs[episode])
+        # state = np.vstack(initial_xs[episode])
+        state = np.array([[0], [1], [1.05]]) + (np.random.rand(*state_column_shape) * 5 * np.random.choice([-1,1], size=state_column_shape))
         states[episode,:,0] = state[:,0]
         cumulative_cost = 0
         step = 0
         while step < step_limit:
-            # print(state)
             with torch.no_grad():
                 action, _ = policy_net.get_action(state[:,0])
-                # action = np.array([[0]])
-                # print(action)
             state = tensor.f(state, action)
             states[episode,:,step] = state[:,0]
             actions[episode,:,step] = action
@@ -411,7 +392,7 @@ def watch_agent():
     ax.plot3D(states[-1,0], states[-1,1], states[-1,2], 'gray')
     plt.show()
 
-    plt.scatter(np.arange(actions.shape[2]), actions[-1,0], s=10)
+    plt.scatter(np.arange(actions.shape[2]), actions[-1,0], s=5)
     plt.show()
 print("Testing learned policy...")
 watch_agent()
