@@ -19,8 +19,8 @@ import observables
 state_dim = 3
 action_dim = 1
 
-state_order = 2
-action_order = 2
+state_order = 3
+action_order = 3
 
 state_column_shape = [state_dim, 1]
 action_column_shape = [action_dim, 1]
@@ -30,8 +30,8 @@ psi_dim = int( comb( action_order+action_dim, action_order ) )
 
 phi_column_shape = [phi_dim, 1]
 
-action_range = np.array([-50, 50])
-# action_range = np.array([-75, 75])
+# action_range = np.array([-50, 50])
+action_range = np.array([-75, 75])
 step_size = 0.1
 all_actions = np.arange(action_range[0], action_range[1]+step_size, step_size)
 all_actions = np.round(all_actions, decimals=2)
@@ -42,10 +42,6 @@ beta = 8/3
 
 dt = 0.001
 t_span = np.arange(0, dt, dt/10)
-
-x_e = np.sqrt( beta * ( rho - 1 ) )
-y_e = np.sqrt( beta * ( rho - 1 ) )
-z_e = rho - 1
 
 def continuous_f(action=None):
     """
@@ -88,12 +84,21 @@ def f(state, action):
     
     return np.vstack(soln.y[:,-1])
 
+#%% Policy function(s)
+def zero_policy(x):
+    return np.array([[0]])
+
+def random_policy(x):
+    return np.random.choice(action_range, size=action_column_shape)
+
 #%% Generate data
-num_episodes = 500
-num_steps_per_episode = 1000
-N = num_episodes*num_steps_per_episode # Number of datapoints
-X = np.zeros([state_dim,N])
-Y = np.zeros([state_dim,N])
+T = 50
+# num_episodes = 500
+# num_steps_per_episode = int(T / dt)
+# N = num_episodes*num_steps_per_episode # Number of datapoints
+N = int(T / dt)
+# X = np.zeros([state_dim,N])
+# Y = np.zeros([state_dim,N])
 U = np.zeros([action_dim,N])
 
 # initial_xs = np.zeros([num_episodes, state_dim])
@@ -103,16 +108,24 @@ U = np.zeros([action_dim,N])
 #     soln = solve_ivp(fun=continuous_f(u), t_span=[0.0, 10.0], y0=x[:,0], method='RK45')
 #     initial_xs[episode] = soln.y[:,-1]
 
-for episode in range(num_episodes):
+x = np.array([[-8], [8], [27]])
+u = np.array([[0]])
+X = odeint(continuous_f(u), x[:,0], np.arange(0, T+dt, dt), tfirst=True).T
+
+# for episode in range(num_episodes):
     # x = np.vstack(initial_xs[episode])
-    x = np.array([[0], [1], [1.05]]) + (np.random.rand(*state_column_shape) * 5 * np.random.choice([-1,1], size=state_column_shape))
-    for step in range(num_steps_per_episode):
-        X[:,(episode*num_steps_per_episode)+step] = x[:,0]
-        # u = np.random.choice(all_actions, size=action_column_shape)
-        u = np.array([[0]])
-        U[:,(episode*num_steps_per_episode)+step] = u[:,0]
-        x = f(x, u)
-        Y[:,(episode*num_steps_per_episode)+step] = x[:,0]
+    # x = np.array([[0], [1], [1.05]]) + (np.random.rand(*state_column_shape) * 5 * np.random.choice([-1,1], size=state_column_shape))
+    # u = np.array([[0]])
+    # X[:,(episode*num_steps_per_episode):(episode*num_steps_per_episode)+num_steps_per_episode] = odeint(continuous_f(u), x[:,0], np.arange(0, T, dt), tfirst=True).T
+    # for step in range(num_steps_per_episode):
+    #     X[:,(episode*num_steps_per_episode)+step] = x[:,0]
+    #     u = np.random.choice(all_actions, size=action_column_shape)
+    #     U[:,(episode*num_steps_per_episode)+step] = u[:,0]
+    #     x = f(x, u)
+    #     Y[:,(episode*num_steps_per_episode)+step] = x[:,0]
+
+Y = np.roll(X, -1, axis=1)[:,:-1]
+X = X[:,:-1]
 
 #%% Estimate Koopman tensor
 tensor = KoopmanTensor(
@@ -140,9 +153,7 @@ for i in range(N):
     )
 
 dX = (Y - X) / dt
-# dPhi_Y = np.einsum('ijk,jk->ik', tensor.phi.diff(X), dX)
-# regression_Y = dPhi_Y
-M = SINDy(kronMatrix.T, dX.T).T
+M = SINDy(kronMatrix.T, dX.T, lamb=0.025).T
 
 # reshape M into tensor K
 K = np.empty([
@@ -187,32 +198,28 @@ def continuous_tensor_f(action=None):
         """
         u = action
         if u is None:
-            u = np.random.choice(all_actions, size=action_column_shape)
+            # u = np.random.choice(all_actions, size=action_column_shape)
+            u = np.array([[0]])
 
         x_column_vector = np.zeros(state_column_shape)
         for i in range(state_dim):
             x_column_vector[i,0] = input[i]
 
-        x_dot_column_vector = K_(u) @ tensor.phi(x_column_vector)
+        K_u = K_(u)
+        K_u[2,0] = 0.0
+        x_dot_column_vector = K_u @ tensor.phi(x_column_vector)
 
         x_dot = np.zeros(state_dim)
         for i in range(state_dim):
-            x_dot[i] = x_dot_column_vector[i,0] + (u if i == 0 else 0)
+            x_dot[i] = x_dot_column_vector[i,0]
 
         return x_dot
 
     return f_u
 
-#%% Policy function(s)
-def zero_policy(x):
-    return np.array([[0]])
-
-def random_policy(x):
-    return np.random.choice(action_range, size=action_column_shape)
-
 #%% Compute true and learned dynamics over time
-initial_state = np.array([[2], [1], [1.05]])
-tspan = np.arange(0, 25, dt)
+initial_state = np.array([[-8], [8], [27]])
+tspan = np.arange(0, T+dt, dt)
 u = zero_policy(initial_state)
 
 true_xs = odeint(continuous_f(u), initial_state[:,0], tspan, tfirst=True)
@@ -259,9 +266,9 @@ line2, = ax2.plot3D(
 )
 
 ax1.set_title('True Dynamics')
-ax2.set_xlabel('x_1')
-ax2.set_ylabel('x_2')
-ax2.set_zlabel('x_3')
+ax1.set_xlabel('x_1')
+ax1.set_ylabel('x_2')
+ax1.set_zlabel('x_3')
 ax1.set_xlim(-20.0, 20.0)
 ax1.set_ylim(-50.0, 50.0)
 ax1.set_zlim(0.0, 50.0)
