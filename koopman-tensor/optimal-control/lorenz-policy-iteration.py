@@ -40,9 +40,9 @@ step_size = 1.0
 all_actions = torch.arange(action_range[0], action_range[1]+step_size, step_size)
 all_actions = np.round(all_actions, decimals=2)
 
-#%% Policy function(s)
+#%% Default policy functions
 def zero_policy(x):
-    return np.array([[0.0]])
+    return np.zeros(action_column_shape)
 
 def random_policy(x):
     return np.random.choice(all_actions, size=action_column_shape)
@@ -52,11 +52,11 @@ sigma = 10
 rho = 28
 beta = 8/3
 
-dt = 0.001
+dt = 0.01
 t_span = np.arange(0, dt, dt/10)
 
-x_e = -np.sqrt( beta * ( rho - 1 ) )
-y_e = -np.sqrt( beta * ( rho - 1 ) )
+x_e = np.sqrt( beta * ( rho - 1 ) )
+y_e = np.sqrt( beta * ( rho - 1 ) )
 z_e = rho - 1
 
 def continuous_f(action=None):
@@ -102,13 +102,14 @@ def f(state, action):
 
 #%% Generate data
 num_episodes = 500
-num_steps_per_episode = 1000
+num_steps_per_episode = int(10.0 / dt)
 N = num_episodes*num_steps_per_episode # Number of datapoints
 X = np.zeros([state_dim,N])
 Y = np.zeros([state_dim,N])
 U = np.zeros([action_dim,N])
 
-initial_x = np.array([[-8], [8], [27]])
+# initial_x = np.array([[-8], [-8], [27]])
+initial_x = np.array([[0], [1], [1.05]])
 
 for episode in range(num_episodes):
     x = initial_x + (np.random.rand(*state_column_shape) * 5 * np.random.choice([-1,1], size=state_column_shape))
@@ -133,18 +134,18 @@ tensor = KoopmanTensor(
 #%% Reward function
 
 # LQR
-w_r = np.array([
-    [x_e],
-    [y_e],
-    [z_e]
-])
 # w_r = np.array([
-#     [0.0],
-#     [0.0],
+#     [-x_e],
+#     [-y_e],
 #     [z_e]
 # ])
+w_r = np.array([
+    [0.0],
+    [0.0],
+    [z_e]
+])
 Q_ = np.eye(state_dim)
-R = 0.0001
+R = 0.001
 def cost(x, u):
     # Assuming that data matrices are passed in for X and U. Columns vectors are snapshots
     _x = x - w_r
@@ -248,7 +249,7 @@ def reinforce(estimator, n_episode, gamma=1.0):
         @param n_episode: number of episodes
         @param gamma: the discount factor
     """
-    num_steps_per_trajectory = 1000
+    num_steps_per_trajectory = int(10.0 / dt)
     w_hat = np.zeros([phi_dim,1])
     for episode in range(n_episode):
         states = []
@@ -304,23 +305,23 @@ def init_weights(m):
 
 lr = 0.003
 
-# policy_net = PolicyNetwork(state_dim, num_actions, lr)
-# policy_net.model.apply(init_weights)
+policy_net = PolicyNetwork(state_dim, num_actions, lr)
+policy_net.model.apply(init_weights)
 
-policy_net = torch.load(PATH)
+# policy_net = torch.load(PATH)
 
 #%% Run REINFORCE
 gamma = 0.99
-# num_episodes = 2000
-num_episodes = 0
+num_episodes = 2000
+# num_episodes = 0
 total_reward_episode = [0] * num_episodes
 reinforce(policy_net, num_episodes, gamma)
 
 #%% Test policy in environment
 # num_episodes = 1000
-num_episodes = 100
+num_episodes = 10
 
-step_limit = 25000
+step_limit = int(25.0 / dt)
 def watch_agent():
     states = np.zeros([num_episodes,state_dim,step_limit])
     actions = np.zeros([num_episodes,action_dim,step_limit])
