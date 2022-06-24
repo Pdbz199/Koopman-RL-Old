@@ -134,25 +134,42 @@ tensor = KoopmanTensor(
 #%% Reward function
 
 # LQR
-# w_r = np.array([
-#     [-x_e],
-#     [-y_e],
-#     [z_e]
-# ])
 w_r = np.array([
-    [0.0],
-    [0.0],
+    [-x_e],
+    [-y_e],
     [z_e]
 ])
+# w_r = np.array([
+#     [0.0],
+#     [0.0],
+#     [z_e]
+# ])
 Q_ = np.eye(state_dim)
 R = 0.001
 def cost(x, u):
     # Assuming that data matrices are passed in for X and U. Columns vectors are snapshots
-    _x = x - w_r
+    _x = x # - w_r
     mat = np.vstack(np.diag(_x.T @ Q_ @ _x)) + np.power(u, 2)*R
     return mat.T
 def reward(x, u):
     return -cost(x, u)
+
+# x_0 = -0.5*initial_x + 1
+# x_1 = np.array([
+#     [x_e],
+#     [y_e],
+#     [z_e]
+# ])
+# x_2 = np.array([
+#     [-x_e],
+#     [-y_e],
+#     [z_e]
+# ])
+# u = np.array([[3]])
+# print("reward:", reward(x_0, u))
+# print("reward:", reward(x_1, u))
+# print("reward:", reward(x_2, u))
+# sys.exit(0)
 
 # Eq 7 from Chaos Control paper
 # def cost(state, action):
@@ -212,7 +229,7 @@ class PolicyNetwork():
             @param s: input state array
             @return: predicted policy
         """
-        return self.model(torch.Tensor(s)) # - w_r[:,0]
+        return self.model(torch.Tensor(s-w_r[:,0]))
 
     def update(self, returns, log_probs):
         """
@@ -263,7 +280,7 @@ def reinforce(estimator, n_episode, gamma=1.0):
             u, log_prob = estimator.get_action(state[:,0])
             action = np.array([[u]])
             next_state = f(state, action)
-            curr_reward = reward(state, action)[0,0]
+            curr_reward = reward(state - w_r, action)[0,0]
 
             states.append(state)
             actions.append(u)
@@ -305,40 +322,40 @@ def init_weights(m):
 
 lr = 0.003
 
-policy_net = PolicyNetwork(state_dim, num_actions, lr)
-policy_net.model.apply(init_weights)
+# policy_net = PolicyNetwork(state_dim, num_actions, lr) #initial policy model 
+# policy_net.model.apply(init_weights) #initial policy model 
 
-# policy_net = torch.load(PATH)
+policy_net = torch.load(PATH) # if you want to load trained policy
 
 #%% Run REINFORCE
 gamma = 0.99
-num_episodes = 2000
-# num_episodes = 0
+# num_episodes = 2000 # for training
+num_episodes = 0 # for evaluation
 total_reward_episode = [0] * num_episodes
 reinforce(policy_net, num_episodes, gamma)
 
 #%% Test policy in environment
 # num_episodes = 1000
-num_episodes = 10
+num_episodes = 10 # for eval avg cost diagnostic
 
-step_limit = int(25.0 / dt)
+step_limit = int(250.0 / dt)
 def watch_agent():
     states = np.zeros([num_episodes,state_dim,step_limit])
     actions = np.zeros([num_episodes,action_dim,step_limit])
     costs = torch.zeros([num_episodes])
     for episode in range(num_episodes):
-        # state = np.vstack(initial_xs[episode])
+        # state = np.vstack(initial_xs[episode]) # to start with different initial condition, but same policy
         state = initial_x + (np.random.rand(*state_column_shape) * 5 * np.random.choice([-1,1], size=state_column_shape))
-        states[episode,:,0] = state[:,0]
+        #states[episode,:,0] = state[:,0]
         cumulative_cost = 0
         step = 0
         while step < step_limit:
+            states[episode,:,step] = state[:,0]
             with torch.no_grad():
                 action, _ = policy_net.get_action(state[:,0])
-            state = tensor.f(state, action)
-            states[episode,:,step] = state[:,0]
             actions[episode,:,step] = action
-            cumulative_cost += cost(state, action)[0,0]
+            state = tensor.f(state, action)
+            cumulative_cost += cost(state - w_r, action)[0,0]
             step += 1
             if step == step_limit:
                 costs[episode] = cumulative_cost
