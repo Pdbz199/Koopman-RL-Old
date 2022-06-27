@@ -18,7 +18,6 @@ def checkConditionNumber(X, name, threshold=200):
         # raise ValueError(f"Condition number of {name} is too large ({cond_num} > {threshold})")
         pass
 
-
 def gedmd(X, Y, rank=8):
     U, Sigma, VT = sp.linalg.svd(X, full_matrices=False)
     U_tilde = U[:, :rank]
@@ -62,6 +61,9 @@ def rrr(X, Y, rank=8):
     L = B_rr#.T
     return L
 
+def RRR(X, Y, rank=8):
+    return rrr(X, Y, rank)
+
 @nb.njit(fastmath=True)
 def ridgeRegression(X, y, lamb=0.05):
     return np.linalg.inv(X.T @ X + (lamb * np.identity(X.shape[1]))) @ X.T @ y
@@ -75,9 +77,10 @@ class KoopmanTensor:
         phi,
         psi,
         regressor='ols',
+        p_inv=True,
         rank=8,
         is_generator=False,
-        p_inv=True
+        dt = 0.01
     ):
         self.X = X
         self.Y = Y
@@ -90,18 +93,19 @@ class KoopmanTensor:
 
         # Construct Phi and Psi matrices
         self.Phi_X = self.phi(X)
+        self.Phi_Y = self.phi(Y)
         if is_generator:
-            self.dX = self.Y - self.X
-            self.dPhi_Y = np.einsum('ijk,jk->ik', self.phi.diff(self.X), self.dX)
-            self.regression_Y = self.dPhi_Y
+            self.dt = dt
+            self.regression_Y = (self.Phi_Y - self.Phi_X) / self.dt
         else:
-            self.Phi_Y = self.phi(Y)
             self.regression_Y = self.Phi_Y
         self.Psi_U = self.psi(U)
 
         # Get dimensions
-        self.dim_phi = self.Phi_X.shape[0]
-        self.dim_psi = self.Psi_U.shape[0]
+        self.x_dim = self.X.shape[0]
+        self.u_dim = self.U.shape[0]
+        self.phi_dim = self.Phi_X.shape[0]
+        self.psi_dim = self.Psi_U.shape[0]
 
         # Make sure data is full rank
         checkMatrixRank(self.Phi_X, "Phi_X")
@@ -114,38 +118,38 @@ class KoopmanTensor:
         checkConditionNumber(self.Psi_U, "Psi_U")
 
         # Build matrix of kronecker products between u_i and x_i for all 0 <= i <= N
-        self.kronMatrix = np.empty([
-            self.dim_psi * self.dim_phi,
+        self.kron_matrix = np.empty([
+            self.psi_dim * self.phi_dim,
             self.N
         ])
         for i in range(self.N):
-            self.kronMatrix[:,i] = np.kron(
+            self.kron_matrix[:,i] = np.kron(
                 self.Psi_U[:,i],
                 self.Phi_X[:,i]
             )
 
         # Solve for M and B
         if regressor.lower() == 'rrr':
-            self.M = rrr(self.kronMatrix.T, self.regression_Y.T, rank).T
+            self.M = rrr(self.kron_matrix.T, self.regression_Y.T, rank).T
             self.B = rrr(self.Phi_X.T, self.X.T, rank)
         elif regressor.lower() == 'sindy':
-            self.M = SINDy(self.kronMatrix.T, self.regression_Y.T).T
+            self.M = SINDy(self.kron_matrix.T, self.regression_Y.T).T
             self.B = SINDy(self.Phi_X.T, self.X.T)
         elif regressor.lower() == 'ols':
-            self.M = ols(self.kronMatrix.T, self.regression_Y.T, p_inv).T
+            self.M = ols(self.kron_matrix.T, self.regression_Y.T, p_inv).T
             self.B = ols(self.Phi_X.T, self.X.T, p_inv)
         else:
             raise Error("Did not pick a supported regression algorithm.")
 
         # reshape M into tensor K
         self.K = np.empty([
-            self.dim_phi,
-            self.dim_phi,
-            self.dim_psi
+            self.phi_dim,
+            self.phi_dim,
+            self.psi_dim
         ])
-        for i in range(self.dim_phi):
+        for i in range(self.phi_dim):
             self.K[i] = self.M[i].reshape(
-                [self.dim_phi, self.dim_psi],
+                [self.phi_dim, self.psi_dim],
                 order='F'
             )
 
@@ -168,21 +172,23 @@ class KoopmanTensor:
     def phi_f(self, x, u):
         """
             INPUTS:
-            x - state column vector (could also be a matrix)
-            u - action column vector (could also be a matrix)
+                x - state column vector(s)
+                u - action column vector(s)
 
             OUTPUTS:
-            phi(state) column vector (could also be a matrix)
+                phi(x) column vector(s)
         """
+        
         return self.K_(u) @ self.phi(x)
 
     def f(self, x, u):
         """
             INPUTS:
-            x - state column vector (could also be a matrix)
-            u - action column vector (could also be a matrix)
+                x - state column vector(s)
+                u - action column vector(s)
 
             OUTPUTS:
-            state column vector (could also be a matrix)
+                x column vector(s)
         """
+
         return self.B.T @ self.phi_f(x, u)
