@@ -18,33 +18,36 @@ import sys
 sys.path.append('../')
 from tensor import KoopmanTensor, OLS
 sys.path.append('../../')
-import cartpole_reward
 import observables
 import utilities
 
 #%% Initialize environment
 state_dim = 4
 action_dim = 1
-A_shape = [state_dim,state_dim]
 
-A = np.zeros(A_shape)
-max_real_eigen_val = 1.0
-# while max_real_eigen_val >= 1.0 or max_real_eigen_val <= 0.7:
-while max_real_eigen_val >= 1.2 or max_real_eigen_val <= 1.0:
-    Z = np.random.rand(*A_shape)
+A = np.zeros([state_dim,state_dim])
+max_abs_real_eigen_val = 1.0
+while max_abs_real_eigen_val >= 1.0 or max_abs_real_eigen_val <= 0.7:
+    Z = np.random.rand(*A.shape)
     A = Z.T @ Z
     W,V = np.linalg.eig(A)
-    max_real_eigen_val = np.max(np.real(W))
+    max_abs_real_eigen_val = np.max(np.abs(np.real(W)))
 # A = np.array([
 #     [1.0, 0.02,  0.0,        0.0 ],
 #     [0.0, 1.0,  -0.01434146, 0.0 ],
 #     [0.0, 0.0,   1.0,        0.02],
 #     [0.0, 0.0,   0.3155122,  1.0 ]
 # ])
+# A = np.array([
+#     [0.35782475, 0.17592175, 0.3477801, 0.22458724],
+#     [0.17592175, 0.10036655, 0.11508892, 0.12756766],
+#     [0.3477801,  0.11508892, 0.84861714, 0.18164662],
+#     [0.22458724, 0.12756766, 0.18164662, 0.19736555]
+# ])
 W,V = np.linalg.eig(A)
-max_real_eigen_val = np.max(np.real(W))
+max_real_eigen_val = np.max(np.abs(np.real(W)))
 print("A:", A)
-print("A's max real eigenvalue:", max_real_eigen_val)
+print("A's max absolute real eigenvalue:", max_abs_real_eigen_val)
 B = np.ones([state_dim,action_dim])
 
 def f(x, u):
@@ -69,7 +72,7 @@ def reward(x, u):
 
 #%% Initialize important vars
 state_range = 25
-action_range = 25
+action_range = 5
 state_order = 2
 action_order = 2
 
@@ -79,12 +82,12 @@ phi_dim = int( comb( state_order+state_dim, state_order ) )
 psi_dim = int( comb( action_order+action_dim, action_order ) )
 
 step_size = 0.1
-# all_us = torch.arange(-action_range, action_range+step_size, step_size)
-all_us = torch.arange(-5, 5+step_size, step_size)
+all_us = torch.arange(-action_range, action_range+step_size, step_size)
 all_us = np.round(all_us, decimals=2)
 
 gamma = 0.99
-lamb = 0.0001
+# lamb = 0.0001
+lamb = 1.0
 
 #%% Optimal policy
 soln = dare(A*np.sqrt(gamma), B*np.sqrt(gamma), Q_, R)
@@ -122,8 +125,6 @@ Y = f(X, U)
 #         state = np.vstack(Y[:,(episode*num_steps_per_episode)+step])
 
 #%% Estimate Koopman tensor
-identity = lambda x: x
-
 tensor = KoopmanTensor(
     X,
     Y,
@@ -134,19 +135,19 @@ tensor = KoopmanTensor(
 )
 
 #%% Shotgun-based training error
-training_norms = np.zeros([X.shape[1]])
-state_norms = np.zeros([X.shape[1]])
-for i in range(X.shape[1]):
-    state = np.vstack(X[:,i])
-    state_norms[i] = utilities.l2_norm(state, np.zeros_like(state))
-    action = np.vstack(U[:,i])
-    true_x_prime = np.vstack(Y[:,i])
-    predicted_x_prime = tensor.f(state, action)
-    training_norms[i] = utilities.l2_norm(true_x_prime, predicted_x_prime)
-average_training_norm = np.mean(training_norms)
-average_state_norm = np.mean(state_norms)
-print(f"Average training norm: {average_training_norm}")
-print(f"Average training norm normalized by average state norm: {average_training_norm / average_state_norm}")
+# training_norms = np.zeros([X.shape[1]])
+# state_norms = np.zeros([X.shape[1]])
+# for i in range(X.shape[1]):
+#     state = np.vstack(X[:,i])
+#     state_norms[i] = utilities.l2_norm(state, np.zeros_like(state))
+#     action = np.vstack(U[:,i])
+#     true_x_prime = np.vstack(Y[:,i])
+#     predicted_x_prime = tensor.f(state, action)
+#     training_norms[i] = utilities.l2_norm(true_x_prime, predicted_x_prime)
+# average_training_norm = np.mean(training_norms)
+# average_state_norm = np.mean(state_norms)
+# print(f"Average training norm: {average_training_norm}")
+# print(f"Average training norm normalized by average state norm: {average_training_norm / average_state_norm}")
 
 #%% Path-based training error
 # training_norms = np.zeros([num_episodes,num_steps_per_episode])
@@ -166,20 +167,20 @@ print(f"Average training norm normalized by average state norm: {average_trainin
 # print(f"Average training norm per episode over {num_episodes} episodes normalized by average state norm: {average_training_norm_per_episode / average_state_norm}")
 
 #%% Testing error
-testing_norms = np.zeros([num_episodes,num_steps_per_episode])
-state_norms = np.zeros([num_episodes,num_steps_per_episode])
-for episode in range(num_episodes):
-    state = np.random.rand(state_dim,1)*state_range*np.random.choice(np.array([-1,1]), size=(state_dim,1))
-    for step in range(num_steps_per_episode):
-        action = np.random.rand(action_dim,1)*action_range*np.random.choice(np.array([-1,1]), size=(action_dim,1))
-        true_state_prime = f(state, action)
-        predicted_state_prime = tensor.f(state, action)
-        testing_norms[episode,step] = utilities.l2_norm(true_state_prime, predicted_state_prime)
-        state_norms[episode,step] = utilities.l2_norm(state, np.zeros_like(state))
-average_testing_norm_per_episode = np.mean(np.sum(testing_norms, axis=1))
-average_state_norm_per_episode = np.mean(np.sum(state_norms, axis=1))
-print(f"Average testing norm per episode over {num_episodes} episodes: {average_testing_norm_per_episode}")
-print(f"Average training norm per episode normalized by average state norm: {average_testing_norm_per_episode / average_state_norm_per_episode}")
+# testing_norms = np.zeros([num_episodes,num_steps_per_episode])
+# state_norms = np.zeros([num_episodes,num_steps_per_episode])
+# for episode in range(num_episodes):
+#     state = np.random.rand(state_dim,1)*state_range*np.random.choice(np.array([-1,1]), size=(state_dim,1))
+#     for step in range(num_steps_per_episode):
+#         action = np.random.rand(action_dim,1)*action_range*np.random.choice(np.array([-1,1]), size=(action_dim,1))
+#         true_state_prime = f(state, action)
+#         predicted_state_prime = tensor.f(state, action)
+#         testing_norms[episode,step] = utilities.l2_norm(true_state_prime, predicted_state_prime)
+#         state_norms[episode,step] = utilities.l2_norm(state, np.zeros_like(state))
+# average_testing_norm_per_episode = np.mean(np.sum(testing_norms, axis=1))
+# average_state_norm_per_episode = np.mean(np.sum(state_norms, axis=1))
+# print(f"Average testing norm per episode over {num_episodes} episodes: {average_testing_norm_per_episode}")
+# print(f"Average training norm per episode normalized by average state norm: {average_testing_norm_per_episode / average_state_norm_per_episode}")
 
 #%% Policy function as PyTorch model
 class PolicyNetwork():
@@ -258,7 +259,7 @@ def reinforce(estimator, n_episode, gamma=1.0):
 
             if len(rewards) == num_steps_per_trajectory:
                 returns = torch.zeros([len(rewards)])
-                Gt = 0
+                # Gt = 0
                 for i in range(len(rewards)-1, -1, -1):
                     # Gt = rewards[i] + (gamma * Gt)
                     # returns[i] = Gt
@@ -273,7 +274,7 @@ def reinforce(estimator, n_episode, gamma=1.0):
                 returns = (returns - returns.mean()) / (returns.std() + torch.finfo(torch.float64).eps)
 
                 estimator.update(returns, log_probs)
-                if episode % 100 == 0:
+                if episode % 250 == 0:
                     print(f"Episode: {episode}, discounted total reward: {total_reward_episode[episode]}")
                     torch.save(estimator, 'lqr-policy-model.pt')
 
@@ -296,7 +297,9 @@ policy_net.model.apply(init_weights)
 
 # policy_net = torch.load('lqr-policy-model.pt')
 
-n_episode = 5000
+n_episode = 20000
+# n_episode = 500
+# n_episode = 0
 total_reward_episode = [0] * n_episode
 
 #%% Estimate Q function for current policy
@@ -334,29 +337,35 @@ reinforce(policy_net, n_episode, gamma)
 #%% Test
 test_steps = 200
 def watch_agent():
-    optimal_states = np.zeros([test_steps,state_dim])
-    learned_states = np.zeros([test_steps,state_dim])
+    optimal_states = np.zeros([num_episodes,test_steps,state_dim])
+    learned_states = np.zeros([num_episodes,test_steps,state_dim])
+    optimal_costs = np.zeros([num_episodes])
+    learned_costs = np.zeros([num_episodes])
 
-    for _ in range(num_episodes):
+    for episode in range(num_episodes):
         state = np.random.rand(state_dim,1)*state_range*np.random.choice(np.array([-1,1]), size=(state_dim,1))
         optimal_state = state
         learned_state = state
         step = 0
         while step < test_steps:
-            optimal_states[step] = optimal_state[:,0]
-            learned_states[step] = learned_state[:,0]
+            optimal_states[episode,step] = optimal_state[:,0]
+            learned_states[episode,step] = learned_state[:,0]
 
             optimal_action = optimal_policy(optimal_state)
             optimal_state = f(optimal_state, optimal_action)
+            optimal_costs[episode] += cost(optimal_state, optimal_action)
 
             with torch.no_grad():
                 learned_u, _ = policy_net.get_action(learned_state[:,0])
             learned_action = np.array([[learned_u]])
             learned_state = f(learned_state, learned_action)
+            learned_costs[episode] += cost(learned_state, learned_action)
 
             step += 1
 
-    print("Norm between entire paths:", utilities.l2_norm(optimal_states, learned_states))
+    print("Norm between entire path (final episode):", utilities.l2_norm(optimal_states[-1], learned_states[-1]))
+    print(f"Average cost per episode (optimal controller): {np.mean(optimal_costs)}")
+    print(f"Average cost per episode (learned controller): {np.mean(learned_costs)}")
 
     fig, axs = plt.subplots(2)
     fig.suptitle('Dynamics Over Time')
@@ -369,8 +378,8 @@ def watch_agent():
 
     labels = np.array(['x_0', 'x_1', 'x_2', 'x_3'])
     for i in range(A.shape[1]):
-        axs[0].plot(optimal_states[:,i], label=labels[i])
-        axs[1].plot(learned_states[:,i], label=labels[i])
+        axs[0].plot(optimal_states[-1,:,i], label=labels[i])
+        axs[1].plot(learned_states[-1,:,i], label=labels[i])
     lines_labels = [axs[0].get_legend_handles_labels()]
     lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
     fig.legend(lines, labels)

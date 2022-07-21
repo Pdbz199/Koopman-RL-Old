@@ -8,19 +8,19 @@ seed = 123
 torch.manual_seed(seed)
 np.random.seed(seed)
 
-from control import lqr, care
+from control import care
 from matplotlib import pyplot as plt
 from scipy.integrate import solve_ivp
 from scipy.special import comb
 
 import sys
 sys.path.append('../')
-from tensor import KoopmanTensor, OLS
+from tensor import KoopmanTensor
 sys.path.append('../../')
 import observables
 import utilities
 
-PATH = './lorenz-policy.pt'
+PATH = './lorenz-value-model.pt'
 
 #%% System dynamics
 state_dim = 3
@@ -37,9 +37,9 @@ psi_dim = int( comb( action_order+action_dim, action_order ) )
 
 phi_column_shape = [phi_dim, 1]
 
-action_range = torch.Tensor([-75, 75])
+action_range = np.array([-75, 75])
 step_size = 1.0
-all_actions = torch.arange(action_range[0], action_range[1]+step_size, step_size)
+all_actions = np.arange(action_range[0], action_range[1]+step_size, step_size)
 all_actions = np.round(all_actions, decimals=2)
 
 #%% Rest of dynamics
@@ -207,7 +207,9 @@ Y = np.zeros([state_dim,N])
 U = np.zeros([action_dim,N])
 
 # initial_x = np.array([[-8], [-8], [27]])
-initial_x = np.array([[0 - x_e], [1 - y_e], [1.05 + z_e]])
+initial_x = np.array([[-x_e], [-y_e], [z_e]])
+# initial_x = np.array([[0], [1], [1.05]])
+# initial_x = np.array([[0 + x_e], [1 + y_e], [1.05 + z_e]])
 
 for episode in range(num_episodes):
     x = initial_x + (np.random.rand(*state_column_shape) * 5 * np.random.choice([-1,1], size=state_column_shape))
@@ -229,161 +231,151 @@ tensor = KoopmanTensor(
     regressor='ols'
 )
 
-#%% Estimate Q function for current policy
-w_hat_batch_size = 2**12
-def w_hat_t():
-    x_batch_indices = np.random.choice(X.shape[1], w_hat_batch_size, replace=False)
-    x_batch = X[:, x_batch_indices] # (state_dim, w_hat_batch_size)
-    phi_x_batch = tensor.phi(x_batch) # (phi_dim, w_hat_batch_size)
-
-    with torch.no_grad():
-        pi_response = policy_net.predict(x_batch.T).T # (all_actions.shape[0], w_hat_batch_size)
-
-    phi_x_prime_batch = tensor.K_(np.array([all_actions.data.numpy()])) @ phi_x_batch # (all_actions.shape[0], phi_dim, w_hat_batch_size)
-    phi_x_prime_batch_prob = np.einsum('upw,uw->upw', phi_x_prime_batch, pi_response.data.numpy()) # (all_actions.shape[0], phi_dim, w_hat_batch_size)
-    expectation_term_1 = np.sum(phi_x_prime_batch_prob, axis=0) # (phi_dim, w_hat_batch_size)
-
-    reward_batch_prob = np.einsum('uw,uw->wu', reward(x_batch, np.array([all_actions.data.numpy()])), pi_response.data.numpy()) # (w_hat_batch_size, all_actions.shape[0])
-    expectation_term_2 = np.array([
-        np.sum(reward_batch_prob, axis=1) # (w_hat_batch_size,)
-    ]) # (1, w_hat_batch_size)
-
-    w_hat = OLS(
-        (phi_x_batch - (gamma*expectation_term_1)).T,
-        expectation_term_2.T
-    )
-
-    return w_hat
-
-def Q(x, u, w_hat_t):
-    return (reward(x, u) + gamma*w_hat_t.T @ tensor.phi_f(x, u))[0,0]
 
 #%% Policy function as PyTorch model
-class PolicyNetwork():
-    def __init__(self, n_state, n_action, lr=0.001):
-        self.model = nn.Sequential(
-            nn.Linear(n_state, n_action),
-            nn.Softmax(dim=-1)
-        )
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr)
+def inner_pi_us(us, xs):
+    phi_x_primes = tensor.K_(us) @ tensor.phi(xs) # us.shape[1] x dim_phi x xs.shape[1]
 
-    def predict(self, s):
-        """
-            Compute the action probabilities of state s using the learning model
-            @param s: input state array
-            @return: predicted policy
-        """
-        return self.model(torch.Tensor(s))
+    V_x_primes_arr = torch.zeros([all_actions.shape[0], xs.shape[1]])
+    for u in range(phi_x_primes.shape[0]):
+        V_x_primes_arr[u] = model(torch.from_numpy(phi_x_primes[u].T).float()).T # (1, xs.shape[1])
 
-    def update(self, returns, log_probs):
-        """
-            Update the weights of the policy network given the training samples
-            @param returns: return (cumulative rewards) for each step in an episode
-            @param log_probs: log probability for each step
-        """
-        policy_gradient = []
-        for i, (log_prob, Gt) in enumerate(zip(log_probs, returns)):
-            policy_gradient.append(-log_prob * gamma**(len(returns)-i) * Gt)
+    inner_pi_us_values = -(torch.from_numpy(cost(xs, us)).float() + gamma * V_x_primes_arr) # us.shape[1] x xs.shape[1]
 
-        loss = torch.stack(policy_gradient).sum()
+    return inner_pi_us_values * (1 / lamb) # us.shape[1] x xs.shape[1]
 
-        self.optimizer.zero_grad()
-        loss.backward()
-        self.optimizer.step()
+def pis(xs):
+    delta = np.finfo(np.float32).eps # 1e-25
 
-    def get_action(self, s):
-        """
-            Estimate the policy and sample an action, compute its log probability
-            @param s: input state
-            @return: the selected action and log probability
-        """
-        probs = self.predict(s)
-        action_index = torch.multinomial(probs, 1).item()
-        log_prob = torch.log(probs[action_index])
-        action = all_actions[action_index].item()
-        return action, log_prob
+    inner_pi_us_response = torch.real(inner_pi_us(np.array([all_actions]), xs)) # all_actions.shape[0] x xs.shape[1]
 
-def reinforce(estimator, n_episode, gamma=1.0):
-    """
-        REINFORCE algorithm
-        @param estimator: policy network
-        @param n_episode: number of episodes
-        @param gamma: the discount factor
-    """
-    num_steps_per_trajectory = int(25.0 / dt)
-    w_hat = np.zeros([phi_dim,1])
-    for episode in range(n_episode):
-        states = []
-        actions = []
-        log_probs = []
-        rewards = []
-        state = initial_x + (np.random.rand(*state_column_shape) * 5 * np.random.choice([-1,1], size=state_column_shape))
+    # Max trick
+    max_inner_pi_u = torch.amax(inner_pi_us_response, axis=0) # xs.shape[1]
+    diff = inner_pi_us_response - max_inner_pi_u
 
-        step = 0
-        while len(rewards) < num_steps_per_trajectory:
-            u, log_prob = estimator.get_action(state[:,0])
-            action = np.array([[u]])
-            next_state = f(state, action)
-            curr_reward = reward(state, action)[0,0]
+    pi_us = torch.exp(diff) + delta # all_actions.shape[0] x xs.shape[1]
+    Z_x = torch.sum(pi_us, axis=0) # xs.shape[1]
+    
+    return pi_us / Z_x # all_actions.shape[0] x xs.shape[1]
 
-            states.append(state)
-            actions.append(u)
+def discrete_bellman_error(batch_size):
+    ''' Equation 12 in writeup '''
+    x_batch_indices = np.random.choice(X.shape[1], batch_size, replace=False)
+    x_batch = X[:, x_batch_indices] # X.shape[0] x batch_size
+    phi_xs = tensor.phi(x_batch) # dim_phi x batch_size
+    phi_x_primes = tensor.K_(np.array([all_actions])) @ phi_xs # all_actions.shape[0] x dim_phi x batch_size
 
-            total_reward_episode[episode] += gamma**step * curr_reward 
-            log_probs.append(log_prob)
-            rewards.append(curr_reward)
+    pis_response = pis(x_batch) # all_actions.shape[0] x x_batch_size
+    log_pis = torch.log(pis_response) # all_actions.shape[0] x batch_size
 
-            if len(rewards) == num_steps_per_trajectory:
-                returns = torch.zeros([len(rewards)])
-                # Gt = 0
-                for i in range(len(rewards)-1, -1, -1):
-                    # Gt = rewards[i] + (gamma * Gt)
-                    # returns[i] = Gt
+    # Compute V(x)'s
+    V_x_primes_arr = torch.zeros([all_actions.shape[0], batch_size])
+    for u in range(phi_x_primes.shape[0]):
+        V_x_primes_arr[u] = model(torch.from_numpy(phi_x_primes[u].T).float()).T
+    
+    # Get costs
+    costs = torch.from_numpy(cost(x_batch, np.array([all_actions]))).float() # all_actions.shape[0] x batch_size
 
-                    Q_val = Q(
-                        np.vstack(states[i]),
-                        np.array([[actions[i]]]),
-                        w_hat
-                    )
-                    returns[i] = Q_val
+    # Compute expectations
+    expectation_us = (costs + lamb*log_pis + gamma*V_x_primes_arr) * pis_response # all_actions.shape[0] x batch_size
+    expectation_u = torch.sum(expectation_us, axis=0).reshape(-1,1) # (batch_size, 1)
 
-                returns = (returns - returns.mean()) / (returns.std() + torch.finfo(torch.float64).eps)
+    # Use model to get V(x) for all phi(x)s
+    V_xs = model(torch.from_numpy(phi_xs.T).float()) # (batch_size, 1)
 
-                estimator.update(returns, log_probs)
-                if (episode+1) % 250 == 0:
-                    print(f"Episode: {episode+1}, discounted total reward: {total_reward_episode[episode]}")
-                    torch.save(estimator, PATH)
+    # Compute squared differences
+    squared_differences = torch.pow(V_xs - expectation_u, 2) # 1 x batch_size
+    total = torch.sum(squared_differences) / batch_size # scalar
 
-                break
-
-            step += 1
-            state = next_state
-
-        w_hat = w_hat_t()
+    return total
 
 #%%
-num_actions = all_actions.shape[0]
-
 def init_weights(m):
     if type(m) == torch.nn.Linear:
         m.weight.data.fill_(0.0)
 
-lr = 0.003
+model = torch.nn.Sequential(torch.nn.Linear(phi_dim, 1))
+model.apply(init_weights)
 
-policy_net = PolicyNetwork(state_dim, num_actions, lr) #initial policy model 
-policy_net.model.apply(init_weights) #initial policy model 
+# model = torch.load(PATH)
 
-# policy_net = torch.load(PATH) # if you want to load trained policy
+learning_rate = 0.003
+optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
-#%% Run REINFORCE
-num_episodes = 5000 # for training
-# num_episodes = 0 # for evaluation
-total_reward_episode = [0] * num_episodes
-reinforce(policy_net, num_episodes, gamma)
+#%% Run Algorithm
+epochs = 500
+epsilon = 1e-2
+batch_size = 2**9
+batch_scale = 3
+bellman_errors = [discrete_bellman_error(batch_size*batch_scale).data.numpy()]
+BE = bellman_errors[-1]
+print("Initial Bellman error:", BE)
+
+while gamma <= 0.99:
+    for epoch in range(epochs):
+        # Get random batch of X and Phi_X
+        x_batch_indices = np.random.choice(X.shape[1], batch_size, replace=False)
+        x_batch = X[:,x_batch_indices] # X.shape[0] x batch_size
+        phi_x_batch = tensor.phi(x_batch) # dim_phi x batch_size
+
+        # Compute estimate of V(x) given the current model
+        V_x = model(torch.from_numpy(phi_x_batch.T).float()).T # (1, batch_size)
+
+        # Get current distribution of actions for each state
+        pis_response = pis(x_batch) # (all_actions.shape[0], batch_size)
+        log_pis = torch.log(pis_response) # (all_actions.shape[0], batch_size)
+
+        # Compute V(x)'
+        phi_x_primes = tensor.K_(np.array([all_actions])) @ phi_x_batch # all_actions.shape[0] x dim_phi x batch_size
+        V_x_primes_arr = torch.zeros([all_actions.shape[0], batch_size])
+        for u in range(phi_x_primes.shape[0]):
+            V_x_primes_arr[u] = model(torch.from_numpy(phi_x_primes[u].T).float()).T
+
+        # Get costs
+        costs = torch.from_numpy(cost(x_batch, np.array([all_actions]))).float() # (all_actions.shape[0], batch_size)
+
+        # Compute expectations
+        expectation_term_1 = torch.sum(
+            torch.mul(
+                (costs + lamb*log_pis + gamma*V_x_primes_arr),
+                pis_response
+            ),
+            dim=0
+        ).reshape(1,-1) # (1, batch_size)
+
+        # Equation 2.21 in Overleaf
+        loss = torch.sum( torch.pow( V_x - expectation_term_1, 2 ) ) # ()
+        
+        # Back propogation
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        # Recompute Bellman error
+        BE = discrete_bellman_error(batch_size*batch_scale).data.numpy()
+        bellman_errors = np.append(bellman_errors, BE)
+
+        # Every so often, print out and save the bellman error(s)
+        if (epoch+1) % 500 == 0:
+            # np.save('lorenz_bellman_errors.npy', bellman_errors)
+            torch.save(model, PATH)
+            print(f"Bellman error at epoch {epoch+1}: {BE}")
+
+        if BE <= epsilon:
+            torch.save(model, PATH)
+            break
+
+    gamma += 0.02
+
+#%% Extract
+def learned_policy(x):
+    with torch.no_grad():
+        pis_response = pis(x)[:,0]
+    return np.random.choice(all_actions, size=action_column_shape, p=pis_response.data.numpy())
 
 #%% Test policy in environment
 # num_episodes = 1000
-num_episodes = 100 # for eval avg cost diagnostic
+num_episodes = 1#00 # for eval avg cost diagnostic
 
 step_limit = int(50.0 / dt)
 def watch_agent():
@@ -398,10 +390,8 @@ def watch_agent():
         step = 0
         while step < step_limit:
             states[episode,:,step] = state[:,0]
-            with torch.no_grad():
-                action, _ = policy_net.get_action(state[:,0])
-                action = np.array([[action]])
-                # action = lqr_policy(state)
+            action = learned_policy(state)
+            # action = lqr_policy(state)
             if action[0,0] > action_range[1]:
                 action = np.array([[action_range[1]]])
             if action[0,0] < action_range[0]:

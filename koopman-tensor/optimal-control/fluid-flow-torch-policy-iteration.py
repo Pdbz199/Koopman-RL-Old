@@ -8,6 +8,7 @@ seed = 123
 torch.manual_seed(seed)
 np.random.seed(seed)
 
+from control import lqr, care
 from matplotlib import pyplot as plt
 from scipy.integrate import solve_ivp
 from scipy.special import comb
@@ -25,7 +26,6 @@ state_dim = 3
 action_dim = 1
 
 state_range = 25
-action_range = 25
 state_order = 2
 action_order = 2
 
@@ -34,9 +34,8 @@ action_column_shape = [action_dim, 1]
 phi_dim = int( comb( state_order+state_dim, state_order ) )
 psi_dim = int( comb( action_order+action_dim, action_order ) )
 
-action_range = torch.Tensor([-1, 1])
-# all_actions = torch.arange(action_range[0], action_range[1], 0.01) #* if too compute heavy, 0.05
-all_actions = torch.arange(-10, 10, 0.1)
+action_range = np.array([-100, 100])
+all_actions = torch.arange(action_range[0], action_range[1], 1.0)
 all_actions = np.round(all_actions, decimals=2)
 
 omega = 1.0
@@ -86,6 +85,63 @@ def f(state, action):
     
     return np.vstack(soln.y[:,-1])
 
+x_bar = 0
+y_bar = 0
+z_bar = 0
+continuous_A = np.array([
+    [mu + A * z_bar, -omega, A * x_bar],
+    [omega, mu + A * z_bar, A * y_bar],
+    [2 * lamb * x_bar, 2 * lamb * y_bar, -lamb]
+])
+continuous_B = np.array([
+    [0],
+    [1],
+    [0]
+])
+W,V = np.linalg.eig(continuous_A)
+print("Eigenvalues of continuous A:", W)
+print("Eigenvectors of continuous A:", V)
+
+#%% Reward function
+w_r = np.array([
+    [0],
+    [0],
+    [0] # 1
+])
+Q_ = np.eye(state_dim)
+R = 0.0001 # TODO: vary this parameter
+def cost(x, u):
+    # Assuming that data matrices are passed in for X and U. Columns vectors are snapshots
+    _x = x - w_r
+    mat = np.vstack(np.diag(_x.T @ Q_ @ _x)) + np.power(u, 2)*R
+    return mat.T
+def reward(x, u):
+    return -cost(x, u)
+
+#%% Solve riccati equation
+# C = lqr(continuous_A, continuous_B, Q_, R)[0]
+
+gamma = 0.99
+lamb = 1
+
+soln = care(continuous_A*np.sqrt(gamma), continuous_B*np.sqrt(gamma), Q_, R)
+P = soln[0]
+C = np.linalg.inv(R + gamma*continuous_B.T @ P @ continuous_B) @ (gamma*continuous_B.T @ P @ continuous_A)
+sigma_t = lamb * np.linalg.inv(R + continuous_B.T @ P @ continuous_B)
+
+#%% Default policy functions
+def zero_policy(x):
+    return np.zeros(action_column_shape)
+
+def random_policy(x):
+    return np.random.choice(all_actions, size=action_column_shape)
+
+# def lqr_policy(x):
+#     return -C @ (x - w_r)
+
+def lqr_policy(x):
+    return np.random.normal(-C @ (x - w_r), sigma_t)
+
 #%% Generate data
 num_episodes = 500
 num_steps_per_episode = 1000
@@ -119,22 +175,6 @@ tensor = KoopmanTensor(
     psi=observables.monomials(action_order),
     regressor='ols'
 )
-
-#%% Reward function
-w_r = np.array([
-    [0],
-    [0],
-    [0] # 1
-])
-Q_ = np.eye(state_dim)
-R = 0.0001 # TODO: vary this parameter
-def cost(x, u):
-    # Assuming that data matrices are passed in for X and U. Columns vectors are snapshots
-    _x = x - w_r
-    mat = np.vstack(np.diag(_x.T @ Q_ @ _x)) + np.power(u, 2)*R
-    return mat.T
-def reward(x, u):
-    return -cost(x, u)
 
 #%% Estimate Q function for current policy
 w_hat_batch_size = 2**12
@@ -243,7 +283,7 @@ def reinforce(estimator, n_episode, gamma=1.0):
 
             if len(rewards) == num_steps_per_trajectory:
                 returns = torch.zeros([len(rewards)])
-                Gt = 0
+                # Gt = 0
                 for i in range(len(rewards)-1, -1, -1):
                     # Gt = rewards[i] + (gamma * Gt)
                     # returns[i] = Gt
@@ -255,19 +295,19 @@ def reinforce(estimator, n_episode, gamma=1.0):
                     )
                     returns[i] = Q_val
 
-                returns = (returns - returns.mean()) / (returns.std() + torch.finfo(torch.float64).eps)
+                # returns = (returns - returns.mean()) / (returns.std() + torch.finfo(torch.float64).eps)
 
-                estimator.update(returns, log_probs)
+                # estimator.update(returns, log_probs)
                 if (episode+1) % 250 == 0:
                     print(f"Episode: {episode+1}, discounted total reward: {total_reward_episode[episode]}")
-                    torch.save(estimator, PATH)
+                    # torch.save(estimator, PATH)
 
                 break
 
             step += 1
             state = next_state
 
-        w_hat = w_hat_t()
+        # w_hat = w_hat_t()
 
 #%%
 # n_state = env.observation_space.shape[0]
@@ -279,13 +319,14 @@ def init_weights(m):
 
 lr = 0.003
 
-# policy_net = PolicyNetwork(state_dim, num_actions, lr)
-# policy_net.model.apply(init_weights)
+policy_net = PolicyNetwork(state_dim, num_actions, lr)
+policy_net.model.apply(init_weights)
 
-policy_net = torch.load(PATH)
+# policy_net = torch.load(PATH)
 
 #%% Generate new initial xs for learning control
-num_episodes = 0#2000
+num_episodes = 2000
+# num_episodes = 0
 
 initial_xs = np.zeros([num_episodes, state_dim])
 for episode in range(num_episodes):
@@ -307,7 +348,7 @@ reinforce(policy_net, num_episodes, gamma)
 # plt.show()
 
 #%% Test policy in environment
-num_episodes = 10 # 1000
+num_episodes = 100
 
 # Generate new initial xs to test learned policy
 initial_xs = np.zeros([num_episodes, state_dim])
@@ -329,7 +370,12 @@ def watch_agent():
         step = 0
         while step < step_limit:
             with torch.no_grad():
-                action, _ = policy_net.get_action(state[:,0])
+                # action, _ = policy_net.get_action(state[:,0])
+                action = lqr_policy(state)
+            if action[0,0] > action_range[1]:
+                action = np.array([[action_range[1]]])
+            if action[0,0] < action_range[0]:
+                action = np.array([[action_range[0]]])
             state = tensor.f(state, action)
             states[episode,:,step] = state[:,0]
             actions[episode,:,step] = action
