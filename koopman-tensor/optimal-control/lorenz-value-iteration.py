@@ -68,8 +68,8 @@ def continuous_f(action=None):
         """
         x, y, z = input
 
-        x = x - x_e
-        y = y - y_e
+        x = x + x_e
+        y = y + y_e
         z = z + z_e
 
         x_dot = sigma * ( y - x )   # sigma*y - sigma*x
@@ -415,6 +415,9 @@ def watch_agent():
     ax.set_ylim(-50.0, 50.0)
     ax.set_zlim(0.0, 50.0)
     ax.plot3D(states[-1,0], states[-1,1], states[-1,2], 'gray')
+    plt.show()
+
+    plt.hist(actions[-1,0])
     plt.show()
 
     plt.scatter(np.arange(actions.shape[2]), actions[-1,0], s=5)

@@ -218,16 +218,17 @@ def init_weights(m):
     if type(m) == torch.nn.Linear:
         m.weight.data.fill_(0.0)
 
-model = torch.nn.Sequential(torch.nn.Linear(phi_dim, 1))
-model.apply(init_weights)
+# model = torch.nn.Sequential(torch.nn.Linear(phi_dim, 1))
+# model.apply(init_weights)
 
-# model = torch.load(PATH)
+# learning_rate = 0.003
+# optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
-learning_rate = 0.003
-optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+model = torch.load(PATH)
 
 #%% Run Algorithm
-epochs = 500
+# epochs = 500
+epochs = 0
 epsilon = 1e-2
 batch_size = 2**9
 batch_scale = 3
@@ -300,8 +301,6 @@ def learned_policy(x):
 #%% Test policy in environment
 num_episodes = 100 # for eval avg cost diagnostic
 
-num_timesteps = 15.0
-step_limit = int(num_timesteps / dt)
 def watch_agent(num_episodes, num_steps_per_episode):
     states = np.zeros([num_episodes,state_dim,num_steps_per_episode])
     actions = np.zeros([num_episodes,action_dim,num_steps_per_episode])
@@ -327,14 +326,20 @@ def watch_agent(num_episodes, num_steps_per_episode):
     print(f"Norm between final state of final episode and reference state: {utilities.l2_norm(states[-1,:,-1], w_r[:,0])}")
 
     ax = plt.axes()
-    ax.set_xlim(-10.0, 10.0)
-    ax.set_ylim(-10.0, 10.0)
+    ax.set_xlim(-5.0, 5.0)
+    ax.set_ylim(-5.0, 5.0)
     ax.plot(states[-1,0], states[-1,1], 'gray')
     plt.show()
 
     plt.scatter(np.arange(actions.shape[2]), actions[-1,0], s=5)
     plt.show()
+
+    plt.hist(actions[-1,0])
+    plt.show()
 print("Testing learned policy...")
+
+num_timesteps = 15.0
+step_limit = int(num_timesteps / dt)
 watch_agent(100, step_limit)
 
 #%%
