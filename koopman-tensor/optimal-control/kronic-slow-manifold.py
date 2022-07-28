@@ -4,6 +4,7 @@ import numpy as np
 seed = 123
 np.random.seed(123)
 
+from control import lqr
 from scipy.integrate import solve_ivp
 from scipy.special import comb
 
@@ -35,9 +36,18 @@ all_actions = np.round(all_actions, decimals=2)
 
 mu = -0.1
 lamb = -1
-B = np.array([
-
+B_1 = np.array([
+    [0],
+    [1]
 ])
+# B_1 = np.array([
+#     [1],
+#     [1]
+# ])
+# B_1 = np.array([
+#     [1],
+#     [0]
+# ])
 
 dt = 0.01
 t_span = np.arange(0, dt, dt/10)
@@ -71,9 +81,9 @@ def continuous_f(action=None):
         if u is None:
             u = random_policy(x_dot)
 
-        B @ B * u
+        control = B_1 * u
 
-        return [ x_dot, y_dot ]
+        return [ x_dot + control[0,0], y_dot + control[1,0] ]
 
     return f_u
 
@@ -91,6 +101,27 @@ def f(state, action):
     soln = solve_ivp(fun=continuous_f(u), t_span=[t_span[0], t_span[-1]], y0=state[:,0], method='RK45')
 
     return np.vstack(soln.y[:,-1])
+
+continuous_A = np.array([
+
+])
+continuous_B = np.array([
+
+])
+
+#%% Reward/Cost
+Q_ = np.array([
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, 0]
+])
+R = 1
+
+#%% LQR using KOOC/KRONIC
+C = lqr(continuous_A, continuous_B, Q_, R)[0]
+
+def lqr_policy(x):
+    return -C @ x
 
 #%% Generate data
 num_episodes = 200
