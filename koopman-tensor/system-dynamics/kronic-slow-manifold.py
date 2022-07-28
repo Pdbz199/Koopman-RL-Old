@@ -120,4 +120,82 @@ tensor = KoopmanTensor(
     regressor='ols'
 )
 
-#%%
+#%% Plot one of the trajectories
+plt.title("Dynamics over time (trajectory 1 from dataset)")
+plt.xlabel("x")
+plt.ylabel("step")
+plt.plot(np.arange(num_steps_per_episode), X[0,:num_steps_per_episode])
+plt.plot(np.arange(num_steps_per_episode), X[1,:num_steps_per_episode])
+plt.legend(labels=['x_1', 'x_2'])
+plt.show()
+
+#%% Plot x1 v x2
+plt.title("x_1 vs. x_2 (trajectory 1 from dataset)")
+plt.xlabel("x_1")
+plt.ylabel("x_2")
+plt.plot(X[0,:num_steps_per_episode], X[1,:num_steps_per_episode])
+plt.show()
+
+#%% Generate trajectory from Koopman tensor
+true_xs = np.zeros([state_dim,num_steps_per_episode])
+koopman_xs = np.zeros([state_dim,num_steps_per_episode])
+
+x = np.random.rand(*state_column_shape) * 3 * np.random.choice([-1,1], size=state_column_shape)
+true_x = x
+koopman_x = x
+for step in range(num_steps_per_episode):
+    true_xs[:,step] = true_x[:,0]
+    koopman_xs[:,step] = koopman_x[:,0]
+    u = zero_policy(x)
+    # u = random_policy(x)
+    true_x = f(true_x, u)
+    koopman_x = tensor.f(koopman_x, u)
+
+#%% Plot comparison trajectories (true vs. Koopman)
+fig, axs = plt.subplots(2)
+fig.suptitle("Comparison Trajectories (True vs. Koopman)")
+
+axs[0].set_title("Dynamics Over Time (True)")
+axs[0].set(xlabel="step", ylabel="x")
+axs[0].plot(np.arange(num_steps_per_episode), true_xs[0])
+axs[0].plot(np.arange(num_steps_per_episode), true_xs[1])
+
+axs[1].set_title("Dynamics Over Time (Koopman)")
+axs[1].set(xlabel="step", ylabel="x")
+axs[1].plot(np.arange(num_steps_per_episode), koopman_xs[0])
+axs[1].plot(np.arange(num_steps_per_episode), koopman_xs[1])
+
+fig.legend(labels=['x_1', 'x_2'])
+
+plt.tight_layout()
+plt.show()
+
+#%% Plot x1 v x2
+fig, axs = plt.subplots(2)
+fig.suptitle("x_1 vs. x_2 (True vs. Koopman)")
+
+axs[1].set_title("x_1 vs. x_2 (True)")
+axs[1].set(xlabel="x_1", ylabel="x_2")
+axs[1].plot(true_xs[0], true_xs[1])
+
+axs[0].set_title("x_1 vs. x_2 (Koopman)")
+axs[0].set(xlabel="x_1", ylabel="x_2")
+axs[0].plot(koopman_xs[0], koopman_xs[1])
+
+plt.tight_layout()
+plt.show()
+
+#%% Plot differences
+fig, axs = plt.subplots(2)
+fig.suptitle("Distribution of Errors")
+
+axs[0].set_title("True state - Koopman state")
+axs[0].set(xlabel="Error", ylabel="Count")
+axs[0].hist(np.sum(true_xs - koopman_xs, axis=0))
+
+axs[1].set_title("(True state - Koopman state)^2")
+axs[1].set(xlabel="Error", ylabel="Count")
+axs[1].hist(np.sum((true_xs - koopman_xs)**2, axis=0))
+
+plt.tight_layout()
+plt.show()
