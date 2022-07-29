@@ -81,9 +81,9 @@ def continuous_f(action=None):
         if u is None:
             u = random_policy(x_dot)
 
-        control = B_1 * u
+        # control = B_1 * u
 
-        return [ x_dot + control[0,0], y_dot + control[1,0] ]
+        return [ x_dot + u[0,0], y_dot + u[0,0] ]
 
     return f_u
 
@@ -96,17 +96,21 @@ def f(state, action):
         OUTPUTS:
         state column vector pushed forward in time
     """
-    u = action[:,0]
+    # u = action[:,0]
 
-    soln = solve_ivp(fun=continuous_f(u), t_span=[t_span[0], t_span[-1]], y0=state[:,0], method='RK45')
+    soln = solve_ivp(fun=continuous_f(action), t_span=[t_span[0], t_span[-1]], y0=state[:,0], method='RK45')
 
     return np.vstack(soln.y[:,-1])
 
 continuous_A = np.array([
-
+    [mu, 0, 0],
+    [0, lamb, -lamb],
+    [0, 0, 2*mu]
 ])
 continuous_B = np.array([
-
+    [0],
+    [1],
+    [0]
 ])
 
 #%% Reward/Cost
@@ -125,7 +129,7 @@ def lqr_policy(x):
 
 #%% Generate data
 num_episodes = 200
-num_steps_per_episode = int(20.0 / dt)
+num_steps_per_episode = int(30.0 / dt)
 N = num_episodes*num_steps_per_episode # Number of datapoints
 X = np.zeros([state_dim,N])
 Y = np.zeros([state_dim,N])
@@ -152,3 +156,41 @@ tensor = KoopmanTensor(
 )
 
 #%%
+kronic_xs = np.zeros([num_steps_per_episode,state_dim])
+koopman_xs = np.zeros([num_steps_per_episode,state_dim])
+
+x = np.random.rand(*state_column_shape) * 3 * np.random.choice([-1,1], size=state_column_shape)
+kronic_x = x
+koopman_x = x
+for step in range(num_steps_per_episode):
+    kronic_xs[step] = kronic_x[:,0]
+    koopman_xs[step] = koopman_x[:,0]
+
+    phi_kronic_x = np.append(kronic_x, [[kronic_x[0,0]**2]], axis=0)
+    phi_koopman_x = np.append(koopman_x, [[koopman_x[0,0]**2]], axis=0)
+
+    kronic_u = lqr_policy(phi_kronic_x)
+    koopman_u = zero_policy(phi_koopman_x)
+
+    kronic_x = f(kronic_x, kronic_u)
+    koopman_x = f(koopman_x, koopman_u)
+
+data_points_range = np.arange(num_steps_per_episode)
+
+fig, axs = plt.subplots(2)
+fig.suptitle("Dynamics Over Time (KRONIC vs. Koopman)")
+
+axs[0].set_title("KRONIC dynamics")
+axs[0].set(xlabel="Step", ylabel="State value")
+
+axs[1].set_title("Koopman dynamics")
+axs[1].set(xlabel="Step", ylabel="State value")
+
+for i in range(state_dim):
+    axs[0].plot(data_points_range, kronic_xs[:,i])
+    axs[1].plot(data_points_range, koopman_xs[:,i])
+
+# fig.legend(labels=['x_1', 'x_2'])
+
+plt.tight_layout()
+plt.show()
