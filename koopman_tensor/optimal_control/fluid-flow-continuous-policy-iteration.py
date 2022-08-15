@@ -2,8 +2,8 @@
 from importlib.metadata import requires
 import numpy as np
 import scipy as sp
+import time
 import torch
-import torch.nn as nn
 
 seed = 123
 torch.manual_seed(seed)
@@ -143,7 +143,7 @@ initial_xs = np.zeros([num_episodes, state_dim])
 for episode in range(num_episodes):
     x = np.random.random(state_column_shape) * 0.5 * np.random.choice([-1,1], size=state_column_shape)
     u = np.array([[0]])
-    soln = solve_ivp(fun=continuous_f(u), t_span=[0, 10.0], y0=x[:,0], method='RK45')
+    soln = solve_ivp(fun=continuous_f(u), t_span=[0, 50.0], y0=x[:,0], method='RK45')
     initial_xs[episode] = soln.y[:,-1]
 
 for episode in range(num_episodes):
@@ -248,7 +248,7 @@ def reinforce(estimator, n_episode, gamma=1.0):
         @param n_episode: number of episodes
         @param gamma: the discount factor
     """
-    num_steps_per_trajectory = 1000
+    num_steps_per_trajectory = 500
     for episode in range(n_episode):
         states = []
         actions = []
@@ -261,7 +261,7 @@ def reinforce(estimator, n_episode, gamma=1.0):
         while len(rewards) < num_steps_per_trajectory:
             u, log_prob = estimator.sample_action(state)
             action = np.array([[u]])
-            next_state = f(state, action)
+            next_state = f(state, action) # tensor.f(state, action) for speed?
             curr_reward = reward(state, action)[0,0]
 
             states.append(state)
@@ -301,19 +301,19 @@ def reinforce(estimator, n_episode, gamma=1.0):
 # n_state = env.observation_space.shape[0]
 num_actions = all_actions.shape[0]
 
-policy_net = PolicyNetwork(phi_dim)
+# policy_net = PolicyNetwork(phi_dim)
 
-# policy_net = torch.load(PATH)
+policy_net = torch.load(PATH)
 
 #%% Generate new initial xs for learning control
-num_episodes = 2000
-# num_episodes = 0
+# num_episodes = 2000
+num_episodes = 0
 
 initial_xs = np.zeros([num_episodes, state_dim])
 for episode in range(num_episodes):
     x = np.random.random(state_column_shape) * 0.5 * np.random.choice([-1,1], size=state_column_shape)
     u = np.array([[0]])
-    soln = solve_ivp(fun=continuous_f(u), t_span=[0, 10.0], y0=x[:,0], method='RK45')
+    soln = solve_ivp(fun=continuous_f(u), t_span=[0, 50.0], y0=x[:,0], method='RK45')
     initial_xs[episode] = soln.y[:,-1]
 
 #%% Run REINFORCE
@@ -335,10 +335,10 @@ initial_xs = np.zeros([num_episodes, state_dim])
 for episode in range(num_episodes):
     x = np.random.random(state_column_shape) * 0.5 * np.random.choice([-1,1], size=state_column_shape)
     u = np.array([[0]])
-    soln = solve_ivp(fun=continuous_f(u), t_span=[0, 10.0], y0=x[:,0], method='RK45')
+    soln = solve_ivp(fun=continuous_f(u), t_span=[0, 50.0], y0=x[:,0], method='RK45')
     initial_xs[episode] = soln.y[:,-1]
 
-step_limit = 10000
+step_limit = 2000
 def watch_agent():
     states = np.zeros([num_episodes,state_dim,step_limit])
     actions = np.zeros([num_episodes,action_dim,step_limit])
@@ -350,12 +350,13 @@ def watch_agent():
         step = 0
         while step < step_limit:
             with torch.no_grad():
-                # action, _ = policy_net.sample_action(state)
-                action = lqr_policy(state)
-            if action[0,0] > action_range[1]:
-                action = np.array([[action_range[1]]])
-            if action[0,0] < action_range[0]:
-                action = np.array([[action_range[0]]])
+                action, _ = policy_net.sample_action(state)
+                action = np.array([[action]])
+            #     action = lqr_policy(state)
+            # if action[0,0] > action_range[1]:
+            #     action = np.array([[action_range[1]]])
+            # if action[0,0] < action_range[0]:
+            #     action = np.array([[action_range[0]]])
             state = tensor.f(state, action)
             states[episode,:,step] = state[:,0]
             actions[episode,:,step] = action

@@ -47,8 +47,7 @@ sigma = 10
 rho = 28
 beta = 8/3
 
-dt = 0.01
-t_span = np.arange(0, dt, dt/10)
+dt = 0.01 #! try to increase this?
 
 x_e = np.sqrt( beta * ( rho - 1 ) )
 y_e = np.sqrt( beta * ( rho - 1 ) )
@@ -68,9 +67,9 @@ def continuous_f(action=None):
         """
         x, y, z = input
 
-        x = x - x_e
-        y = y - y_e
-        z = z + z_e
+        # x = x - x_e
+        # y = y - y_e
+        # z = z + z_e
 
         x_dot = sigma * ( y - x )   # sigma*y - sigma*x
         y_dot = ( rho - z ) * x - y # rho*x - x*z - y
@@ -95,7 +94,7 @@ def f(state, action):
     """
     u = action[:,0]
 
-    soln = solve_ivp(fun=continuous_f(u), t_span=[t_span[0], t_span[-1]], y0=state[:,0], method='RK45')
+    soln = solve_ivp(fun=continuous_f(u), t_span=[0, dt], y0=state[:,0], method='RK45')
     
     return np.vstack(soln.y[:,-1])
 
@@ -119,21 +118,21 @@ print("Eigenvectors of continuous A:", V)
 #%% Reward function
 
 # LQR
-# w_r = np.array([
-#     [x_e],
-#     [y_e],
-#     [z_e]
-# ])
+w_r = np.array([
+    [x_e],
+    [y_e],
+    [z_e]
+])
 # w_r = np.array([
 #     [-x_e],
 #     [-y_e],
 #     [z_e]
 # ])
-w_r = np.array([
-    [0.0],
-    [0.0],
-    [0.0]
-])
+# w_r = np.array([
+#     [0.0],
+#     [0.0],
+#     [0.0]
+# ])
 Q_ = np.eye(state_dim)
 R = 0.001
 def cost(x, u):
@@ -180,7 +179,7 @@ def reward(x, u):
 
 # C = lqr(continuous_A, continuous_B, Q_, R)[0]
 
-gamma = 0.99
+gamma = 0.99 # 0.999
 lamb = 1
 
 soln = care(continuous_A*np.sqrt(gamma), continuous_B*np.sqrt(gamma), Q_, R)
@@ -206,8 +205,8 @@ X = np.zeros([state_dim,N])
 Y = np.zeros([state_dim,N])
 U = np.zeros([action_dim,N])
 
-# initial_x = np.array([[-8], [-8], [27]])
-initial_x = np.array([[0 - x_e], [1 - y_e], [1.05 + z_e]])
+initial_x = np.array([[-8], [-8], [27]])
+# initial_x = np.array([[0 - x_e], [1 - y_e], [1.05 + z_e]])
 
 for episode in range(num_episodes):
     x = initial_x + (np.random.rand(*state_column_shape) * 5 * np.random.choice([-1,1], size=state_column_shape))
@@ -283,7 +282,7 @@ class PolicyNetwork():
         """
         policy_gradient = []
         for i, (log_prob, Gt) in enumerate(zip(log_probs, returns)):
-            policy_gradient.append(-log_prob * gamma**(len(returns)-i) * Gt)
+            policy_gradient.append(-log_prob * gamma**(len(returns)-i * dt) * Gt)
 
         loss = torch.stack(policy_gradient).sum()
 
@@ -317,6 +316,7 @@ def reinforce(estimator, n_episode, gamma=1.0):
         actions = []
         log_probs = []
         rewards = []
+
         state = initial_x + (np.random.rand(*state_column_shape) * 5 * np.random.choice([-1,1], size=state_column_shape))
 
         step = 0
@@ -329,7 +329,7 @@ def reinforce(estimator, n_episode, gamma=1.0):
             states.append(state)
             actions.append(u)
 
-            total_reward_episode[episode] += gamma**step * curr_reward 
+            total_reward_episode[episode] += gamma**(step * dt) * curr_reward
             log_probs.append(log_prob)
             rewards.append(curr_reward)
 
@@ -376,7 +376,7 @@ policy_net.model.apply(init_weights) #initial policy model
 # policy_net = torch.load(PATH) # if you want to load trained policy
 
 #%% Run REINFORCE
-num_episodes = 5000 # for training
+num_episodes = 500 # for training
 # num_episodes = 0 # for evaluation
 total_reward_episode = [0] * num_episodes
 reinforce(policy_net, num_episodes, gamma)

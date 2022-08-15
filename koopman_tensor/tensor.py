@@ -106,6 +106,9 @@ class KoopmanTensor:
         self.u_dim = self.U.shape[0]
         self.phi_dim = self.Phi_X.shape[0]
         self.psi_dim = self.Psi_U.shape[0]
+        self.x_column_dim = [self.x_dim, 1]
+        self.u_column_dim = [self.u_dim, 1]
+        self.phi_column_dim = [self.phi_dim, 1]
 
         # Make sure data is full rank
         checkMatrixRank(self.Phi_X, "Phi_X")
