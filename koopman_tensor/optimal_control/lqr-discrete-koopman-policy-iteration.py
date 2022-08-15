@@ -9,7 +9,6 @@ np.random.seed(seed)
 
 from control import dare
 from generalized.discrete_koopman_policy_iteration_policy import DiscreteKoopmanPolicyIterationPolicy
-from scipy.special import comb
 
 import sys
 sys.path.append('../')
@@ -19,30 +18,17 @@ import observables
 import utilities
 
 #%% Initialize environment
-state_dim = 4
+state_dim = 4 # state dim >= 4 fails. This happens because rewards become extreme.
 action_dim = 1
 
-A = np.zeros([state_dim,state_dim])
+A = np.zeros([state_dim, state_dim])
 max_abs_real_eigen_val = 1.0
 while max_abs_real_eigen_val >= 1.0 or max_abs_real_eigen_val <= 0.7:
     Z = np.random.rand(*A.shape)
     A = Z.T @ Z
     W,V = np.linalg.eig(A)
     max_abs_real_eigen_val = np.max(np.abs(np.real(W)))
-# A = np.array([
-#     [1.0, 0.02,  0.0,        0.0 ],
-#     [0.0, 1.0,  -0.01434146, 0.0 ],
-#     [0.0, 0.0,   1.0,        0.02],
-#     [0.0, 0.0,   0.3155122,  1.0 ]
-# ])
-# A = np.array([
-#     [0.35782475, 0.17592175, 0.3477801, 0.22458724],
-#     [0.17592175, 0.10036655, 0.11508892, 0.12756766],
-#     [0.3477801,  0.11508892, 0.84861714, 0.18164662],
-#     [0.22458724, 0.12756766, 0.18164662, 0.19736555]
-# ])
-W,V = np.linalg.eig(A)
-max_real_eigen_val = np.max(np.abs(np.real(W)))
+
 print("A:", A)
 print("A's max absolute real eigenvalue:", max_abs_real_eigen_val)
 B = np.ones([state_dim,action_dim])
@@ -51,43 +37,32 @@ def f(x, u):
     return A @ x + B @ u
 
 #%% Define cost
-Q_ = np.eye(state_dim)
-R = 1
+Q = np.eye(state_dim)
+R = 1e-4
 w_r = np.array([
     [0.0],
     [0.0],
     [0.0],
     [0.0]
 ])
-# w_r = np.array([
-#     [2.0],
-#     [2.0],
-#     [2.0],
-#     [2.0]
-# ])
 def cost(x, u):
     # Assuming that data matrices are passed in for X and U. Columns are snapshots
     # x.T Q x + u.T R u
     x_ = x - w_r
-    mat = np.vstack(np.diag(x_.T @ Q_ @ x_)) + np.power(u, 2)*R
+    mat = np.vstack(np.diag(x_.T @ Q @ x_)) + np.power(u, 2)*R
     return mat.T
 
 #%% Initialize important vars
 state_range = 25.0
-minimum_state = np.ones([state_dim,1]) * -state_range
-maximum_state = np.ones([state_dim,1]) * state_range
+state_minimums = np.ones([state_dim,1]) * -state_range
+state_maximums = np.ones([state_dim,1]) * state_range
 
 action_range = 5.0
-minimum_action = np.ones([action_dim,1]) * -action_range
-maximum_action = np.ones([action_dim,1]) * action_range
+action_minimums = np.ones([action_dim,1]) * -action_range
+action_maximums = np.ones([action_dim,1]) * action_range
 
 state_order = 2
 action_order = 2
-
-state_column_shape = [state_dim, 1]
-action_column_shape = [action_dim, 1]
-phi_dim = int( comb( state_order+state_dim, state_order ) )
-psi_dim = int( comb( action_order+action_dim, action_order ) )
 
 step_size = 0.1
 all_actions = np.arange(-action_range, action_range+step_size, step_size)
@@ -97,8 +72,7 @@ gamma = 0.99
 lamb = 1.0
 
 #%% Optimal policy
-soln = dare(A*np.sqrt(gamma), B*np.sqrt(gamma), Q_, R)
-P = soln[0]
+P = dare(A*np.sqrt(gamma), B*np.sqrt(gamma), Q, R)[0]
 C = np.linalg.inv(R + gamma*B.T @ P @ B) @ (gamma*B.T @ P @ A)
 sigma_t = lamb * np.linalg.inv(R + B.T @ P @ B)
 
@@ -111,8 +85,8 @@ num_steps_per_episode = 200
 N = num_episodes * num_steps_per_episode # Number of datapoints
 
 # Shotgun-based approach
-X = np.random.uniform(minimum_state, maximum_state, [state_dim,N])
-U = np.random.uniform(minimum_action, maximum_action, [action_dim,N])
+X = np.random.uniform(state_minimums, state_maximums, [state_dim,N])
+U = np.random.uniform(action_minimums, action_maximums, [action_dim,N])
 Y = f(X, U)
 
 #%% Estimate Koopman tensor
@@ -127,18 +101,20 @@ tensor = KoopmanTensor(
 
 #%% Compute optimal policy
 #! For some reason, this is not working. It keeps computing cost is 800,000+ when it should be something like 4,000
+#! The results are extremely finicky too. If we change the number of training episodes,
+#! the results on overlapping episodes are not the same.
 policy = DiscreteKoopmanPolicyIterationPolicy(
     f,
     gamma,
     lamb,
     tensor,
-    minimum_state,
-    maximum_state,
+    state_minimums,
+    state_maximums,
     all_actions,
     cost,
     'lqr-policy-iteration.pt'
 )
-policy.reinforce(num_training_episodes=500, num_steps_per_episode=200)
+policy.reinforce(num_training_episodes=1000, num_steps_per_episode=200)
 
 #%% Test
 test_steps = 200

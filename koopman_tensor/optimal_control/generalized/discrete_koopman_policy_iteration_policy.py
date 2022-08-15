@@ -13,7 +13,6 @@ from tensor import KoopmanTensor, OLS
 class DiscreteKoopmanPolicyIterationPolicy:
     """
         Compute the optimal policy for the given state using discrete Koopman policy iteration methodology.
-        This is meant to be a general method for computing an optimal policy for any system using policy iteration.
     """
 
     def __init__(
@@ -27,9 +26,9 @@ class DiscreteKoopmanPolicyIterationPolicy:
         all_actions,
         cost,
         saved_file_path,
-        dt = 1.0,
-        learning_rate = 0.003,
-        w_hat_batch_size = 2**12,
+        dt=1.0,
+        learning_rate=0.003,
+        w_hat_batch_size=2**12,
     ):
         """
             Constructor for the DiscreteKoopmanPolicyIterationPolicy class.
@@ -93,7 +92,7 @@ class DiscreteKoopmanPolicyIterationPolicy:
 
         policy_gradient = torch.zeros(log_probs.shape[0])
         for i, (log_prob, Gt) in enumerate(zip(log_probs, returns)):
-            policy_gradient[i] = -log_prob * self.gamma**(len(returns)-i * self.dt) * Gt
+            policy_gradient[i] = -log_prob * self.gamma**((len(returns)-i) * self.dt) * Gt
 
         loss = policy_gradient.sum()
 
@@ -101,21 +100,21 @@ class DiscreteKoopmanPolicyIterationPolicy:
         loss.backward()
         self.optimizer.step()
 
-    def get_action(self, s):
+    def get_action(self, s, num_samples=1):
         """
-            Estimate the policy and sample an action, compute its log probability
+            Estimate the policy distribution and sample an action, compute its log probability.
             
             INPUTS:
-                s: input state
+                s: Input state. Should be a 1D array.
             OUTPUTS:
-                the selected action and log probability
+                the selected action and log probability.
         """
 
         probs = self.predict(s)
-        action_index = torch.multinomial(probs, 1).item()
-        log_prob = torch.log(probs[action_index])
-        action = self.all_actions[action_index].item()
-        return action, log_prob
+        action_indices = torch.multinomial(probs, num_samples).item()
+        actions = self.all_actions[action_indices].item()
+        log_probs = torch.log(probs[action_indices])
+        return actions, log_probs
 
     def update_w_hat(self):
         x_batch_indices = np.random.choice(self.dynamics_model.X.shape[1], self.w_hat_batch_size, replace=False)
@@ -143,8 +142,8 @@ class DiscreteKoopmanPolicyIterationPolicy:
             expectation_term_2.T
         )
 
-    def Q(self, x, u, w_hat_t):
-        return (-self.cost(x, u) + self.gamma*w_hat_t.T @ self.dynamics_model.phi_f(x, u))[0,0]
+    def Q(self, x, u):
+        return (-self.cost(x, u) + self.gamma*self.w_hat.T @ self.dynamics_model.phi_f(x, u))[0,0]
 
     def reinforce(self, num_training_episodes, num_steps_per_episode):
         """
@@ -155,20 +154,24 @@ class DiscreteKoopmanPolicyIterationPolicy:
                 num_steps_per_episode: number of steps per episode
         """
 
-        initial_states = np.random.uniform(self.state_minimums, self.state_maximums, [self.dynamics_model.x_dim, num_training_episodes])
+        initial_states = np.random.uniform(
+            self.state_minimums,
+            self.state_maximums,
+            [self.dynamics_model.x_dim, num_training_episodes]
+        )
         total_reward_episode = torch.zeros(num_training_episodes)
 
         for episode in range(num_training_episodes):
-            states = torch.zeros([num_steps_per_episode,self.dynamics_model.x_dim]) # []
-            actions = torch.zeros(num_steps_per_episode) # []
-            log_probs = torch.zeros(num_steps_per_episode) # []
-            rewards = torch.zeros(num_steps_per_episode) # []
+            states = torch.zeros([num_steps_per_episode, self.dynamics_model.x_dim])
+            actions = torch.zeros(num_steps_per_episode)
+            log_probs = torch.zeros(num_steps_per_episode)
+            rewards = torch.zeros(num_steps_per_episode)
 
-            state = np.vstack(initial_states[:,episode])
+            state = np.vstack(initial_states[:, episode])
             for step in range(num_steps_per_episode):
-                states[step] = torch.Tensor(state)[:,0]
+                states[step] = torch.Tensor(state)[:, 0]
 
-                u, log_prob = self.get_action(state[:,0])
+                u, log_prob = self.get_action(state[:, 0])
                 action = np.array([[u]])
                 actions[step] = u
                 log_probs[step] = log_prob
@@ -183,13 +186,12 @@ class DiscreteKoopmanPolicyIterationPolicy:
             returns = torch.zeros(num_steps_per_episode)
             # Gt = 0
             for i in range(num_steps_per_episode-1, -1, -1):
-                # Gt = rewards[i] + (gamma * Gt)
+                # Gt = rewards[i] + (self.gamma * Gt) # How do we update this for dt < 1?
                 # returns[i] = Gt
 
                 Q_val = self.Q(
                     np.vstack(states[i]),
-                    np.array([[actions[i]]]),
-                    self.w_hat
+                    np.array([[actions[i]]])
                 )
                 returns[i] = Q_val
 
