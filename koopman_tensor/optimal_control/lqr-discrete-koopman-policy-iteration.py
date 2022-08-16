@@ -18,15 +18,17 @@ import observables
 import utilities
 
 #%% Initialize environment
-state_dim = 4 # state dim >= 4 fails. This happens because rewards become extreme.
+state_dim = 5
 action_dim = 1
 
 A = np.zeros([state_dim, state_dim])
 max_abs_real_eigen_val = 1.0
 while max_abs_real_eigen_val >= 1.0 or max_abs_real_eigen_val <= 0.7:
     Z = np.random.rand(*A.shape)
+    _,sigma,__ = np.linalg.svd(Z)
+    Z /= np.max(sigma)
     A = Z.T @ Z
-    W,V = np.linalg.eig(A)
+    W,_ = np.linalg.eig(A)
     max_abs_real_eigen_val = np.max(np.abs(np.real(W)))
 
 print("A:", A)
@@ -38,8 +40,10 @@ def f(x, u):
 
 #%% Define cost
 Q = np.eye(state_dim)
-R = 1e-4
+R = 1
+#! This doesn't work super well with different reference states
 w_r = np.array([
+    [0.0],
     [0.0],
     [0.0],
     [0.0],
@@ -100,9 +104,6 @@ tensor = KoopmanTensor(
 )
 
 #%% Compute optimal policy
-#! For some reason, this is not working. It keeps computing cost is 800,000+ when it should be something like 4,000
-#! The results are extremely finicky too. If we change the number of training episodes,
-#! the results on overlapping episodes are not the same.
 policy = DiscreteKoopmanPolicyIterationPolicy(
     f,
     gamma,
@@ -152,13 +153,15 @@ def watch_agent():
     fig, axs = plt.subplots(2)
     fig.suptitle('Dynamics Over Time')
 
-    axs[0].set_title('True dynamics')
+    axs[0].set_title('LQR Controller')
     axs[0].set(xlabel='Timestep', ylabel='State value')
 
-    axs[1].set_title('Learned dynamics')
+    axs[1].set_title('Koopman Controller')
     axs[1].set(xlabel='Timestep', ylabel='State value')
 
-    labels = np.array(['x_0', 'x_1', 'x_2', 'x_3'])
+    labels = []
+    for i in range(state_dim):
+        labels.append(f"x_{i}")
     for i in range(A.shape[1]):
         axs[0].plot(optimal_states[-1,:,i], label=labels[i])
         axs[1].plot(learned_states[-1,:,i], label=labels[i])
