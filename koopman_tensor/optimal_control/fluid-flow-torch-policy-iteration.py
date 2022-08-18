@@ -396,7 +396,7 @@ def watch_agent():
     ax.plot3D(states[-1,0], states[-1,1], states[-1,2], 'gray')
     plt.show()
 
-    plt.scatter(np.arange(actions.shape[2]), actions[-1,0], s=10)
+    plt.scatter(np.arange(actions.shape[1]), actions[-1,0], s=10)
     plt.show()
 print("Testing learned policy...")
 watch_agent()
