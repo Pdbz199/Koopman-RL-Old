@@ -67,6 +67,11 @@ class DiscreteKoopmanPolicyIterationPolicy:
         )
         self.optimizer = torch.optim.Adam(self.policy_model.parameters(), self.learning_rate)
         self.w_hat = np.zeros(self.dynamics_model.phi_column_dim)
+        
+        def init_weights(m):
+            if type(m) == torch.nn.Linear:
+                m.weight.data.fill_(0.0)
+        self.policy_model.apply(init_weights)
 
     def predict(self, s):
         """

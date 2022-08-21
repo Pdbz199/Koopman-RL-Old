@@ -57,11 +57,11 @@ def cost(x, u):
     return mat.T
 
 #%% Initialize important vars
-state_range = 25.0
-state_minimums = np.ones([state_dim,1]) * -state_range
+state_range = 10.0
+state_minimums = np.ones([state_dim,1]) * -state_range + 20
 state_maximums = np.ones([state_dim,1]) * state_range
 
-action_range = 5.0
+action_range = 25.0
 action_minimums = np.ones([action_dim,1]) * -action_range
 action_maximums = np.ones([action_dim,1]) * action_range
 
