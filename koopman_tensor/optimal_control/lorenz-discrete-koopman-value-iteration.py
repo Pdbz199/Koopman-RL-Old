@@ -235,8 +235,7 @@ def watch_agent():
         state = initial_x + (np.random.rand(*state_column_shape) * 5 * np.random.choice([-1,1], size=state_column_shape))
         # state = np.array([[-x_e],[-y_e],[z_e]])
         cumulative_cost = 0
-        step = 0
-        while step < step_limit:
+        for step in range(step_limit):
             states[episode,:,step] = state[:,0]
             action = policy.get_action(state)
             # action = lqr_policy(state)
@@ -245,12 +244,10 @@ def watch_agent():
             # if action[0,0] < -action_range:
             #     action = np.array([[-action_range]])
             actions[episode,:,step] = action
-            state = tensor.f(state, action)
+            state = f(state, action)
             cumulative_cost += cost(state, action)[0,0]
-            step += 1
-            if step == step_limit:
-                costs[episode] = cumulative_cost
-                # print(f"Total cost for episode {episode}:", cumulative_cost)
+        costs[episode] = cumulative_cost
+        # print(f"Total cost for episode {episode}:", cumulative_cost)
     print(f"Mean cost per episode over {num_episodes} episode(s): {torch.mean(costs)}")
     print(f"Initial state of final episode: {states[-1,:,0]}")
     print(f"Final state of final episode: {states[-1,:,-1]}")
