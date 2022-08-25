@@ -171,4 +171,6 @@ class DiscreteKoopmanValueIterationPolicy:
                     torch.save(self.policy_model, self.saved_file_path)
                     break
 
+            if self.gamma == 0.99: break
             self.gamma += gamma_increment_amount
+            if self.gamma > 0.99: self.gamma = 0.99

@@ -18,7 +18,7 @@ import observables
 import utilities
 
 #%% Initialize environment
-state_dim = 5
+state_dim = 3
 action_dim = 1
 
 A = np.zeros([state_dim, state_dim])
@@ -44,11 +44,9 @@ def f(x, u):
 Q = np.eye(state_dim)
 R = 1
 w_r = np.array([
-    [0.0],
-    [0.0],
-    [0.0],
-    [0.0],
-    [0.0]
+    [10.0],
+    [10.0],
+    [10.0]
 ])
 def cost(x, u):
     # Assuming that data matrices are passed in for X and U. Columns are snapshots
@@ -58,11 +56,11 @@ def cost(x, u):
     return mat.T
 
 #%% Initialize important vars
-state_range = 25.0
+state_range = 50.0
 state_minimums = np.ones([state_dim,1]) * -state_range
 state_maximums = np.ones([state_dim,1]) * state_range
 
-action_range = 25.0
+action_range = 50.0
 action_minimums = np.ones([action_dim,1]) * -action_range
 action_maximums = np.ones([action_dim,1]) * action_range
 
@@ -73,7 +71,7 @@ step_size = 0.1
 all_actions = np.arange(-action_range, action_range+step_size, step_size)
 all_actions = np.round(all_actions, decimals=2)
 
-gamma = 0.8
+gamma = 0.99
 reg_lambda = 1.0
 
 #%% Optimal policy
@@ -121,7 +119,7 @@ policy.train(
     batch_size=2**9,
     batch_scale=3,
     epsilon=1e-2,
-    gamma_increment_amount=0.05
+    gamma_increment_amount=0.01
 )
 
 #%% Test
@@ -182,6 +180,9 @@ def watch_agent():
 
     plt.tight_layout()
     plt.show()
+
+    print(f"Minimum optimal action: {np.min(optimal_actions)}")
+    print(f"Minimum optimal action: {np.max(optimal_actions)}")
 
     plt.hist(learned_actions[-1,:,0])
     plt.show()
