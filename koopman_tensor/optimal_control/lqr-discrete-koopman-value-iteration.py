@@ -18,7 +18,7 @@ import observables
 import utilities
 
 #%% Initialize environment
-state_dim = 3
+state_dim = 5
 action_dim = 1
 
 A = np.zeros([state_dim, state_dim])
@@ -33,7 +33,7 @@ while max_abs_real_eigen_val >= 1.0 or max_abs_real_eigen_val <= 0.7:
     max_abs_real_eigen_val = np.max(np.abs(np.real(W)))
 
 print(f"Maximum eigenvalue: {max_eigenvalue}")
-print("A:", A)
+print("A:\n", A)
 print("A's max absolute real eigenvalue:", max_abs_real_eigen_val)
 B = np.ones([state_dim,action_dim])
 
@@ -46,6 +46,8 @@ R = 1
 w_r = np.array([
     [0.0],
     [0.0],
+    [0.0],
+    [0.0],
     [0.0]
 ])
 def cost(x, u):
@@ -56,8 +58,8 @@ def cost(x, u):
     return mat.T
 
 #%% Initialize important vars
-state_range = 10.0
-state_minimums = np.ones([state_dim,1]) * -state_range + 20
+state_range = 25.0
+state_minimums = np.ones([state_dim,1]) * -state_range
 state_maximums = np.ones([state_dim,1]) * state_range
 
 action_range = 25.0
@@ -71,7 +73,7 @@ step_size = 0.1
 all_actions = np.arange(-action_range, action_range+step_size, step_size)
 all_actions = np.round(all_actions, decimals=2)
 
-gamma = 0.99
+gamma = 0.8
 reg_lambda = 1.0
 
 #%% Optimal policy
@@ -119,7 +121,7 @@ policy.train(
     batch_size=2**9,
     batch_scale=3,
     epsilon=1e-2,
-    gamma_increment_amount=0.02
+    gamma_increment_amount=0.05
 )
 
 #%% Test
