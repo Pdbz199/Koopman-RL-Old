@@ -18,12 +18,13 @@ import observables
 import utilities
 
 #%% Initialize environment
-state_dim = 3
+state_dim = 1
 action_dim = 1
 
 A = np.zeros([state_dim, state_dim])
 max_abs_real_eigen_val = 1.0
-while max_abs_real_eigen_val >= 1.0 or max_abs_real_eigen_val <= 0.7:
+step = 0
+while (max_abs_real_eigen_val >= 1.0 or max_abs_real_eigen_val <= 0.7) and (step < 100000):
     Z = np.random.rand(*A.shape)
     _,sigma,__ = np.linalg.svd(Z)
     Z /= np.max(sigma)
@@ -31,6 +32,7 @@ while max_abs_real_eigen_val >= 1.0 or max_abs_real_eigen_val <= 0.7:
     W,_ = np.linalg.eig(A)
     max_eigenvalue = np.max(np.absolute(W, W))
     max_abs_real_eigen_val = np.max(np.abs(np.real(W)))
+    step += 1
 
 print(f"Maximum eigenvalue: {max_eigenvalue}")
 print("A:\n", A)
@@ -44,8 +46,6 @@ def f(x, u):
 Q = np.eye(state_dim)
 R = 1
 w_r = np.array([
-    [10.0],
-    [10.0],
     [10.0]
 ])
 def cost(x, u):
@@ -182,7 +182,7 @@ def watch_agent():
     plt.show()
 
     print(f"Minimum optimal action: {np.min(optimal_actions)}")
-    print(f"Minimum optimal action: {np.max(optimal_actions)}")
+    print(f"Maximum optimal action: {np.max(optimal_actions)}")
 
     plt.hist(learned_actions[-1,:,0])
     plt.show()

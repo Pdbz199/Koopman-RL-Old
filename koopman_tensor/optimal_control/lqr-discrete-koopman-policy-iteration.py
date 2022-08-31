@@ -18,7 +18,7 @@ import observables
 import utilities
 
 #%% Initialize environment
-state_dim = 5
+state_dim = 4
 action_dim = 1
 
 A = np.zeros([state_dim, state_dim])
@@ -43,11 +43,10 @@ Q = np.eye(state_dim)
 R = 1
 #! This doesn't work super well with different reference states
 w_r = np.array([
-    [10.0],
-    [10.0],
-    [10.0],
-    [10.0],
-    [10.0]
+    [0.0],
+    [0.0],
+    [0.0],
+    [0.0]
 ])
 def cost(x, u):
     # Assuming that data matrices are passed in for X and U. Columns are snapshots
@@ -57,8 +56,8 @@ def cost(x, u):
     return mat.T
 
 #%% Initialize important vars
-state_range = 10.0
-state_minimums = np.ones([state_dim,1]) * -state_range + 20
+state_range = 25.0
+state_minimums = np.ones([state_dim,1]) * -state_range
 state_maximums = np.ones([state_dim,1]) * state_range
 
 action_range = 25.0
@@ -151,7 +150,7 @@ def watch_agent():
 
             step += 1
 
-    print("Norm between entire path (final episode):", utilities.l2_norm(optimal_states[-1], learned_states[-1]))
+    print(f"Norm between entire path (final episode): {utilities.l2_norm(optimal_states[-1], learned_states[-1])}")
     print(f"Average cost per episode (optimal controller): {np.mean(optimal_costs)}")
     print(f"Average cost per episode (learned controller): {np.mean(learned_costs)}")
 
@@ -177,10 +176,16 @@ def watch_agent():
     plt.tight_layout()
     plt.show()
 
+    labels = ['optimal', 'learned']
+
+    plt.hist(optimal_actions[-1,:,0])
     plt.hist(learned_actions[-1,:,0])
+    plt.legend(labels)
     plt.show()
 
+    plt.scatter(np.arange(optimal_actions.shape[1]), optimal_actions[-1,:,0], s=5)
     plt.scatter(np.arange(learned_actions.shape[1]), learned_actions[-1,:,0], s=5)
+    plt.legend(labels)
     plt.show()
 
 watch_agent()

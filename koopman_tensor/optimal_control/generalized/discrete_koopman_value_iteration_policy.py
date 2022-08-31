@@ -27,6 +27,7 @@ class DiscreteKoopmanValueIterationPolicy:
         all_actions,
         cost,
         saved_file_path,
+        dt=1.0,
         learning_rate=0.003
     ):
         self.true_dynamics = true_dynamics
@@ -38,6 +39,7 @@ class DiscreteKoopmanValueIterationPolicy:
         self.all_actions = all_actions
         self.cost = cost
         self.saved_file_path = saved_file_path
+        self.dt = dt
         self.learning_rate = learning_rate
 
         self.policy_model = torch.nn.Sequential(torch.nn.Linear(self.dynamics_model.phi_dim, 1))
@@ -55,7 +57,7 @@ class DiscreteKoopmanValueIterationPolicy:
         for u in range(phi_x_primes.shape[0]):
             V_x_primes_arr[u] = self.policy_model(torch.from_numpy(phi_x_primes[u].T).float()).T # (1, xs.shape[1])
 
-        inner_pi_us_values = -(torch.from_numpy(self.cost(xs, us)).float() + self.gamma * V_x_primes_arr) # us.shape[1] x xs.shape[1]
+        inner_pi_us_values = -(torch.from_numpy(self.cost(xs, us)).float() + (self.gamma**self.dt) * V_x_primes_arr) # us.shape[1] x xs.shape[1]
 
         return inner_pi_us_values * (1 / self.lamb) # us.shape[1] x xs.shape[1]
 
@@ -92,7 +94,7 @@ class DiscreteKoopmanValueIterationPolicy:
         costs = torch.from_numpy(self.cost(x_batch, np.array([self.all_actions]))).float() # all_actions.shape[0] x batch_size
 
         # Compute expectations
-        expectation_us = (costs + self.lamb*log_pis + self.gamma*V_x_primes_arr) * pis_response # all_actions.shape[0] x batch_size
+        expectation_us = (costs + self.lamb*log_pis + (self.gamma**self.dt)*V_x_primes_arr) * pis_response # all_actions.shape[0] x batch_size
         expectation_u = torch.sum(expectation_us, axis=0).reshape(-1,1) # (batch_size, 1)
 
         # Use model to get V(x) for all phi(x)s
@@ -143,7 +145,7 @@ class DiscreteKoopmanValueIterationPolicy:
                 # Compute expectations
                 expectation_term_1 = torch.sum(
                     torch.mul(
-                        (costs + self.lamb*log_pis + self.gamma*V_x_primes_arr),
+                        (costs + self.lamb*log_pis + (self.gamma**self.dt)*V_x_primes_arr),
                         pis_response
                     ),
                     dim=0

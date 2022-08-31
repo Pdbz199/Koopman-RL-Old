@@ -213,6 +213,7 @@ policy = DiscreteKoopmanValueIterationPolicy(
     all_actions,
     cost,
     'lorenz-value-iteration.pt',
+    dt
 )
 policy.train(
     training_epochs=500,

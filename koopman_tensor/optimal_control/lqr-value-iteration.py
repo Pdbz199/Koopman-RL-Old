@@ -23,13 +23,14 @@ import utilities
 # import gym
 # env = gym.make('env:CartPoleControlEnv-v0')
 
-state_dim = 3
+state_dim = 1 # 3
 action_dim = 1
 A_shape = [state_dim,state_dim]
 
 A = np.zeros(A_shape)
 max_abs_real_eigen_val = 1.0
-while max_abs_real_eigen_val >= 1.0 or max_abs_real_eigen_val <= 0.7:
+step = 0
+while (max_abs_real_eigen_val >= 1.0 or max_abs_real_eigen_val <= 0.7) and (step < 100000):
     Z = np.random.rand(*A_shape)
     A = Z.T @ Z
     W,V = np.linalg.eig(A)
@@ -61,7 +62,7 @@ def f(x, u):
 # R = 1
 
 Q_ = np.eye(A.shape[1])
-R = 0.001
+R = 1 # 0.001
 
 # Q_ = np.array([
 #     [10.0, 0.0,  0.0, 0.0],
@@ -71,15 +72,19 @@ R = 0.001
 # ])
 # R = 0.1
 
+w_r = np.array([
+    [10.0]
+])
 def cost(x, u):
     # Assuming that data matrices are passed in for X and U. Columns vectors are snapshots
     # x.T Q x + u.T R u
-    mat = np.vstack(np.diag(x.T @ Q_ @ x)) + np.power(u, 2)*R
+    x_ = x - w_r
+    mat = np.vstack(np.diag(x_.T @ Q_ @ x_)) + np.power(u, 2)*R
     return mat.T
 
 #%% Initialize important vars
-state_range = 25
-action_range = 5
+state_range = 50
+action_range = 50
 state_order = 2
 action_order = 2
 state_column_shape = [state_dim, 1]
@@ -236,7 +241,7 @@ def discrete_bellman_error(batch_size):
 
     return total
 
-epochs = 2000
+epochs = 500
 epsilon = 1e-2
 batch_size = 2**9
 batch_scale = 3
@@ -289,7 +294,7 @@ while gamma <= 0.99:
         bellman_errors = np.append(bellman_errors, BE)
 
         # Every so often, print out and save the bellman error(s)
-        if (epoch+1) % 100 == 0:
+        if (epoch+1) % 250 == 0:
             # np.save('bellman_errors.npy', bellman_errors)
             torch.save(model, 'lqr-value-model.pt')
             print(f"Bellman error at epoch {epoch+1}: {BE}")
@@ -306,7 +311,7 @@ P = soln[0]
 C = np.linalg.inv(R + gamma*B.T @ P @ B) @ (gamma*B.T @ P @ A)
 sigma_t = lamb * np.linalg.inv(R + B.T @ P @ B)
 def optimal_policy(x):
-    return np.random.normal(-(C @ x), sigma_t)
+    return np.random.normal(-C @ (x - w_r), sigma_t)
 
 #%% Extract latest policy
 def learned_policy(x):

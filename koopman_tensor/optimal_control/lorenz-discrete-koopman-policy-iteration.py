@@ -258,13 +258,28 @@ def watch_agent():
     ax.set_xlim(-20.0, 20.0)
     ax.set_ylim(-50.0, 50.0)
     ax.set_zlim(0.0, 50.0)
+    ax.plot3D(optimal_states[-1,:,0], optimal_states[-1,:,1], optimal_states[-1,:,2], 'gray')
+    plt.title("LQR Controller in Environment (3D)")
+    plt.show()
+
+    ax = plt.axes(projection='3d')
+    ax.set_xlim(-20.0, 20.0)
+    ax.set_ylim(-50.0, 50.0)
+    ax.set_zlim(0.0, 50.0)
     ax.plot3D(learned_states[-1,:,0], learned_states[-1,:,1], learned_states[-1,:,2], 'gray')
+    plt.title("Learned Controller in Environment (3D)")
     plt.show()
 
+    labels = ['lqr controller', 'learned controller']
+
+    plt.hist(optimal_actions[-1,:,0])
     plt.hist(learned_actions[-1,:,0])
+    plt.legend(labels)
     plt.show()
 
+    plt.scatter(np.arange(optimal_actions.shape[1]), optimal_actions[-1,:,0], s=5)
     plt.scatter(np.arange(learned_actions.shape[1]), learned_actions[-1,:,0], s=5)
+    plt.legend(labels)
     plt.show()
 
 watch_agent()

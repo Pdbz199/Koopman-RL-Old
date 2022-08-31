@@ -244,9 +244,14 @@ def watch_agent():
     ax.plot3D(learned_states[-1,:,0], learned_states[-1,:,1], learned_states[-1,:,2], 'gray')
     plt.show()
 
+    labels = ['optimal', 'learned']
+
+    plt.hist(optimal_actions[-1,:,0])
     plt.hist(learned_actions[-1,:,0])
+    plt.legend(labels)
     plt.show()
 
+    plt.scatter(np.arange(optimal_actions.shape[1]), optimal_actions[-1,:,0], s=5)
     plt.scatter(np.arange(learned_actions.shape[1]), learned_actions[-1,:,0], s=5)
     plt.show()
 
