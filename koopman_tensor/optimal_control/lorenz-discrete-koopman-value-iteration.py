@@ -178,15 +178,20 @@ Y = np.zeros([state_dim,N])
 U = np.zeros([action_dim,N])
 
 # initial_x = np.array([[-8], [-8], [27]])
-initial_x = np.array([[-x_e], [-y_e], [z_e]])
+# initial_x = np.array([[-x_e], [-y_e], [z_e]])
 # initial_x = np.array([[0], [1], [1.05]])
 # initial_x = np.array([[0 + x_e], [1 + y_e], [1.05 + z_e]])
+initial_states = np.random.uniform(
+    state_minimums,
+    state_maximums,
+    [state_dim, num_episodes]
+)
 
 for episode in range(num_episodes):
-    x = initial_x + (np.random.rand(*state_column_shape) * 5 * np.random.choice([-1,1], size=state_column_shape))
+    # x = initial_x + (np.random.rand(*state_column_shape) * 5 * np.random.choice([-1,1], size=state_column_shape))
+    x = np.vstack(initial_states[:, episode])
     for step in range(num_steps_per_episode):
         X[:,(episode*num_steps_per_episode)+step] = x[:,0]
-        # u = zero_policy(x)
         u = random_policy(x)
         U[:,(episode*num_steps_per_episode)+step] = u[:,0]
         x = f(x, u)
@@ -208,8 +213,6 @@ policy = DiscreteKoopmanValueIterationPolicy(
     gamma,
     lamb,
     tensor,
-    state_minimums,
-    state_maximums,
     all_actions,
     cost,
     'lorenz-value-iteration.pt',
@@ -224,51 +227,102 @@ policy.train(
 )
 
 #%% Test policy in environment
-num_episodes = 100 # for eval avg cost diagnostic
+def watch_agent(num_episodes, step_limit):
+    lqr_states = np.zeros([num_episodes,state_dim,step_limit])
+    lqr_actions = np.zeros([num_episodes,action_dim,step_limit])
+    lqr_costs = torch.zeros([num_episodes])
 
-step_limit = int(50.0 / dt)
-def watch_agent():
-    states = np.zeros([num_episodes,state_dim,step_limit])
-    actions = np.zeros([num_episodes,action_dim,step_limit])
-    costs = torch.zeros([num_episodes])
+    koopman_states = np.zeros([num_episodes,state_dim,step_limit])
+    koopman_actions = np.zeros([num_episodes,action_dim,step_limit])
+    koopman_costs = torch.zeros([num_episodes])
+
+    initial_states = np.random.uniform(
+        state_minimums,
+        state_maximums,
+        [tensor.x_dim, num_episodes]
+    )
+
     for episode in range(num_episodes):
         # state = np.vstack(initial_xs[episode]) # to start with different initial condition, but same policy
-        state = initial_x + (np.random.rand(*state_column_shape) * 5 * np.random.choice([-1,1], size=state_column_shape))
+        # state = initial_x + (np.random.rand(*state_column_shape) * 5 * np.random.choice([-1,1], size=state_column_shape))
         # state = np.array([[-x_e],[-y_e],[z_e]])
-        cumulative_cost = 0
+        state = np.vstack(initial_states[:, episode])
+
+        lqr_state = state
+        koopman_state = state
+
+        lqr_cumulative_cost = 0
+        koopman_cumulative_cost = 0
+
         for step in range(step_limit):
-            states[episode,:,step] = state[:,0]
-            action = policy.get_action(state)
-            # action = lqr_policy(state)
-            # if action[0,0] > action_range:
-            #     action = np.array([[action_range]])
-            # if action[0,0] < -action_range:
-            #     action = np.array([[-action_range]])
-            actions[episode,:,step] = action
-            state = f(state, action)
-            cumulative_cost += cost(state, action)[0,0]
-        costs[episode] = cumulative_cost
-        # print(f"Total cost for episode {episode}:", cumulative_cost)
-    print(f"Mean cost per episode over {num_episodes} episode(s): {torch.mean(costs)}")
-    print(f"Initial state of final episode: {states[-1,:,0]}")
-    print(f"Final state of final episode: {states[-1,:,-1]}")
-    print(f"Reference state: {w_r[:,0]}")
-    print(f"Difference between final state of final episode and reference state: {np.abs(states[-1,:,-1] - w_r[:,0])}")
-    print(f"Norm between final state of final episode and reference state: {utilities.l2_norm(states[-1,:,-1], w_r[:,0])}")
+            lqr_states[episode,:,step] = lqr_state[:,0]
+            koopman_states[episode,:,step] = koopman_state[:,0]
+
+            lqr_action = lqr_policy(state)
+            # if lqr_action[0,0] > action_range:
+            #     lqr_action = np.array([[action_range]])
+            # elif lqr_action[0,0] < -action_range:
+            #     lqr_action = np.array([[-action_range]])
+            lqr_actions[episode,:,step] = lqr_action
+
+            koopman_action = policy.get_action(state)
+            koopman_actions[episode,:,step] = koopman_action
+
+            lqr_cumulative_cost += cost(lqr_state, lqr_action)[0,0]
+            koopman_cumulative_cost += cost(koopman_state, lqr_action)[0,0]
+
+            lqr_state = f(lqr_state, lqr_action)
+            koopman_state = f(koopman_state, koopman_action)
+
+        lqr_costs[episode] = lqr_cumulative_cost
+        koopman_costs[episode] = koopman_cumulative_cost
+
+    print(f"Mean cost per episode over {num_episodes} episode(s) (LQR controller): {torch.mean(lqr_costs)}")
+    print(f"Mean cost per episode over {num_episodes} episode(s) (Koopman controller): {torch.mean(koopman_costs)}\n")
+
+    print(f"Initial state of final episode (LQR controller): {lqr_states[-1,:,0]}")
+    print(f"Final state of final episode (LQR controller): {lqr_states[-1,:,-1]}\n")
+
+    print(f"Initial state of final episode (Koopman controller): {koopman_states[-1,:,0]}")
+    print(f"Final state of final episode (Koopman controller): {koopman_states[-1,:,-1]}\n")
+
+    print(f"Reference state: {w_r[:,0]}\n")
+
+    print(f"Difference between final state of final episode and reference state (LQR controller): {np.abs(lqr_states[-1,:,-1] - w_r[:,0])}")
+    print(f"Norm between final state of final episode and reference state (LQR controller): {utilities.l2_norm(lqr_states[-1,:,-1], w_r[:,0])}\n")
+
+    print(f"Difference between final state of final episode and reference state (Koopman controller): {np.abs(koopman_states[-1,:,-1] - w_r[:,0])}")
+    print(f"Norm between final state of final episode and reference state (Koopman controller): {utilities.l2_norm(koopman_states[-1,:,-1], w_r[:,0])}")
 
     ax = plt.axes(projection='3d')
     ax.set_xlim(-20.0, 20.0)
     ax.set_ylim(-50.0, 50.0)
     ax.set_zlim(0.0, 50.0)
-    ax.plot3D(states[-1,0], states[-1,1], states[-1,2], 'gray')
+    ax.plot3D(lqr_states[-1,:,0], lqr_states[-1,:,1], lqr_states[-1,:,2], 'gray')
+    plt.title("LQR Controller in Environment (3D)")
     plt.show()
 
-    plt.hist(actions[-1,0])
+    ax = plt.axes(projection='3d')
+    ax.set_xlim(-20.0, 20.0)
+    ax.set_ylim(-50.0, 50.0)
+    ax.set_zlim(0.0, 50.0)
+    ax.plot3D(koopman_states[-1,:,0], koopman_states[-1,:,1], koopman_states[-1,:,2], 'gray')
+    plt.title("Koopman Controller in Environment (3D)")
     plt.show()
 
-    plt.scatter(np.arange(actions.shape[2]), actions[-1,0], s=5)
+    labels = ['LQR controller', 'Koopman controller']
+
+    plt.hist(lqr_actions[-1,:,0])
+    plt.hist(koopman_actions[-1,:,0])
+    plt.legend(labels)
     plt.show()
-print("Testing learned policy...")
-watch_agent()
+
+    plt.scatter(np.arange(lqr_actions.shape[1]), lqr_actions[-1,:,0], s=5)
+    plt.scatter(np.arange(koopman_actions.shape[1]), koopman_actions[-1,:,0], s=5)
+    plt.legend(labels)
+    plt.show()
+
+print("\nTesting learned policy...\n")
+watch_agent(num_episodes=100, step_limit=int(50.0 / dt))
 
 #%%

@@ -22,8 +22,6 @@ class DiscreteKoopmanValueIterationPolicy:
         gamma,
         lamb,
         dynamics_model: KoopmanTensor,
-        state_minimums,
-        state_maximums,
         all_actions,
         cost,
         saved_file_path,
@@ -34,8 +32,6 @@ class DiscreteKoopmanValueIterationPolicy:
         self.gamma = gamma
         self.lamb = lamb
         self.dynamics_model = dynamics_model
-        self.state_minimums = state_minimums
-        self.state_maximums = state_maximums
         self.all_actions = all_actions
         self.cost = cost
         self.saved_file_path = saved_file_path

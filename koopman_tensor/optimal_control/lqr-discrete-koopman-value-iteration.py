@@ -108,8 +108,6 @@ policy = DiscreteKoopmanValueIterationPolicy(
     gamma,
     reg_lambda,
     tensor,
-    state_minimums,
-    state_maximums,
     all_actions,
     cost,
     'lqr-value-iteration.pt'
