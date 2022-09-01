@@ -230,11 +230,11 @@ policy.train(
 def watch_agent(num_episodes, step_limit):
     lqr_states = np.zeros([num_episodes,state_dim,step_limit])
     lqr_actions = np.zeros([num_episodes,action_dim,step_limit])
-    lqr_costs = torch.zeros([num_episodes])
+    lqr_costs = np.zeros([num_episodes])
 
     koopman_states = np.zeros([num_episodes,state_dim,step_limit])
     koopman_actions = np.zeros([num_episodes,action_dim,step_limit])
-    koopman_costs = torch.zeros([num_episodes])
+    koopman_costs = np.zeros([num_episodes])
 
     initial_states = np.random.uniform(
         state_minimums,
@@ -258,14 +258,14 @@ def watch_agent(num_episodes, step_limit):
             lqr_states[episode,:,step] = lqr_state[:,0]
             koopman_states[episode,:,step] = koopman_state[:,0]
 
-            lqr_action = lqr_policy(state)
+            lqr_action = lqr_policy(lqr_state)
             # if lqr_action[0,0] > action_range:
             #     lqr_action = np.array([[action_range]])
             # elif lqr_action[0,0] < -action_range:
             #     lqr_action = np.array([[-action_range]])
             lqr_actions[episode,:,step] = lqr_action
 
-            koopman_action = policy.get_action(state)
+            koopman_action = policy.get_action(koopman_state)
             koopman_actions[episode,:,step] = koopman_action
 
             lqr_cumulative_cost += cost(lqr_state, lqr_action)[0,0]
@@ -277,8 +277,8 @@ def watch_agent(num_episodes, step_limit):
         lqr_costs[episode] = lqr_cumulative_cost
         koopman_costs[episode] = koopman_cumulative_cost
 
-    print(f"Mean cost per episode over {num_episodes} episode(s) (LQR controller): {torch.mean(lqr_costs)}")
-    print(f"Mean cost per episode over {num_episodes} episode(s) (Koopman controller): {torch.mean(koopman_costs)}\n")
+    print(f"Mean cost per episode over {num_episodes} episode(s) (LQR controller): {np.mean(lqr_costs)}")
+    print(f"Mean cost per episode over {num_episodes} episode(s) (Koopman controller): {np.mean(koopman_costs)}\n")
 
     print(f"Initial state of final episode (LQR controller): {lqr_states[-1,:,0]}")
     print(f"Final state of final episode (LQR controller): {lqr_states[-1,:,-1]}\n")
@@ -294,11 +294,33 @@ def watch_agent(num_episodes, step_limit):
     print(f"Difference between final state of final episode and reference state (Koopman controller): {np.abs(koopman_states[-1,:,-1] - w_r[:,0])}")
     print(f"Norm between final state of final episode and reference state (Koopman controller): {utilities.l2_norm(koopman_states[-1,:,-1], w_r[:,0])}")
 
+    fig, axs = plt.subplots(2)
+    fig.suptitle('Dynamics Over Time')
+
+    axs[0].set_title('LQR Controller')
+    axs[0].set(xlabel='Timestep', ylabel='State value')
+
+    axs[1].set_title('Koopman Controller')
+    axs[1].set(xlabel='Timestep', ylabel='State value')
+
+    labels = []
+    for i in range(state_dim):
+        labels.append(f"x_{i}")
+    for i in range(state_dim):
+        axs[0].plot(lqr_states[-1,i], label=labels[i])
+        axs[1].plot(koopman_states[-1,i], label=labels[i])
+    lines_labels = [axs[0].get_legend_handles_labels()]
+    lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
+    fig.legend(lines, labels)
+
+    plt.tight_layout()
+    plt.show()
+
     ax = plt.axes(projection='3d')
     ax.set_xlim(-20.0, 20.0)
     ax.set_ylim(-50.0, 50.0)
     ax.set_zlim(0.0, 50.0)
-    ax.plot3D(lqr_states[-1,:,0], lqr_states[-1,:,1], lqr_states[-1,:,2], 'gray')
+    ax.plot3D(lqr_states[-1,0], lqr_states[-1,1], lqr_states[-1,2], 'gray')
     plt.title("LQR Controller in Environment (3D)")
     plt.show()
 
@@ -306,19 +328,19 @@ def watch_agent(num_episodes, step_limit):
     ax.set_xlim(-20.0, 20.0)
     ax.set_ylim(-50.0, 50.0)
     ax.set_zlim(0.0, 50.0)
-    ax.plot3D(koopman_states[-1,:,0], koopman_states[-1,:,1], koopman_states[-1,:,2], 'gray')
+    ax.plot3D(koopman_states[-1,0], koopman_states[-1,1], koopman_states[-1,2], 'gray')
     plt.title("Koopman Controller in Environment (3D)")
     plt.show()
 
     labels = ['LQR controller', 'Koopman controller']
 
-    plt.hist(lqr_actions[-1,:,0])
-    plt.hist(koopman_actions[-1,:,0])
+    plt.hist(lqr_actions[-1,0])
+    plt.hist(koopman_actions[-1,0])
     plt.legend(labels)
     plt.show()
 
-    plt.scatter(np.arange(lqr_actions.shape[1]), lqr_actions[-1,:,0], s=5)
-    plt.scatter(np.arange(koopman_actions.shape[1]), koopman_actions[-1,:,0], s=5)
+    plt.scatter(np.arange(lqr_actions.shape[2]), lqr_actions[-1,0], s=5)
+    plt.scatter(np.arange(koopman_actions.shape[2]), koopman_actions[-1,0], s=5)
     plt.legend(labels)
     plt.show()
 

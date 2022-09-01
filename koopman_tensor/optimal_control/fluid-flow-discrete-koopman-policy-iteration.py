@@ -125,7 +125,7 @@ P = care(continuous_A*np.sqrt(gamma), continuous_B*np.sqrt(gamma), Q, R)[0]
 C = np.linalg.inv(R + gamma*continuous_B.T @ P @ continuous_B) @ (gamma*continuous_B.T @ P @ continuous_A)
 sigma_t = reg_lambda * np.linalg.inv(R + continuous_B.T @ P @ continuous_B)
 
-def optimal_policy(x):
+def lqr_policy(x):
     return np.random.normal(-C @ (x - w_r), sigma_t)
 
 #%% Construct datasets
@@ -178,42 +178,66 @@ policy = DiscreteKoopmanPolicyIterationPolicy(
 policy.reinforce(num_training_episodes=1000, num_steps_per_episode=int(20.0 / dt))
 
 #%% Test
-test_steps = int(50.0 / dt)
-def watch_agent():
-    optimal_states = np.zeros([num_episodes,test_steps,state_dim])
-    learned_states = np.zeros([num_episodes,test_steps,state_dim])
-    optimal_actions = np.zeros([num_episodes,test_steps,action_dim])
-    learned_actions = np.zeros([num_episodes,test_steps,action_dim])
-    optimal_costs = np.zeros([num_episodes])
-    learned_costs = np.zeros([num_episodes])
+def watch_agent(num_episodes, test_steps):
+    lqr_states = np.zeros([num_episodes,state_dim,test_steps])
+    lqr_actions = np.zeros([num_episodes,action_dim,test_steps])
+    lqr_costs = np.zeros([num_episodes])
+
+    koopman_states = np.zeros([num_episodes,state_dim,test_steps])
+    koopman_actions = np.zeros([num_episodes,action_dim,test_steps])
+    koopman_costs = np.zeros([num_episodes])
+
+    initial_xs = np.zeros([num_episodes, state_dim])
+    for episode in range(num_episodes):
+        x = np.random.random(state_column_shape) * 0.5 * np.random.choice([-1,1], size=state_column_shape)
+        u = np.array([[0]])
+        soln = solve_ivp(fun=continuous_f(u), t_span=[0, 50.0], y0=x[:,0], method='RK45')
+        initial_xs[episode] = soln.y[:,-1]
 
     for episode in range(num_episodes):
-        state = np.random.rand(state_dim,1)*state_range*np.random.choice(np.array([-1,1]), size=(state_dim,1))
-        optimal_state = state
-        learned_state = state
-        step = 0
-        while step < test_steps:
-            optimal_states[episode,step] = optimal_state[:,0]
-            learned_states[episode,step] = learned_state[:,0]
+        state = np.vstack(initial_xs[episode])
+        
+        lqr_state = state
+        koopman_state = state
 
-            optimal_action = optimal_policy(optimal_state)
-            optimal_state = f(optimal_state, optimal_action)
-            optimal_costs[episode] += cost(optimal_state, optimal_action)
+        for step in range(test_steps):
+            lqr_states[episode,:,step] = lqr_state[:,0]
+            koopman_states[episode,:,step] = koopman_state[:,0]
+
+            lqr_action = lqr_policy(lqr_state)
+            # if lqr_action[0,0] > action_range:
+            #     lqr_action = np.array([[action_range]])
+            # elif lqr_action[0,0] < -action_range:
+            #     lqr_action = np.array([[-action_range]])
+            lqr_actions[episode,:,step] = lqr_action[:,0]
 
             with torch.no_grad():
-                learned_u, _ = policy.get_action(learned_state[:,0])
-            learned_action = np.array([[learned_u]])
-            learned_state = f(learned_state, learned_action)
-            learned_costs[episode] += cost(learned_state, learned_action)
+                koopman_u, _ = policy.get_action(koopman_state[:,0])
+            koopman_action = np.array([[koopman_u]])
+            koopman_actions[episode,:,step] = koopman_action[:,0]
 
-            optimal_actions[episode,step] = optimal_action[:,0]
-            learned_actions[episode,step] = learned_action[:,0]
+            lqr_costs[episode] += cost(lqr_state, lqr_action)[0,0]
+            koopman_costs[episode] += cost(koopman_state, koopman_action)[0,0]
 
-            step += 1
+            lqr_state = f(lqr_state, lqr_action)
+            koopman_state = f(koopman_state, koopman_action)
 
-    print("Norm between entire path (final episode):", utilities.l2_norm(optimal_states[-1], learned_states[-1]))
-    print(f"Average cost per episode (lqr controller): {np.mean(optimal_costs)}")
-    print(f"Average cost per episode (learned controller): {np.mean(learned_costs)}")
+    print(f"Mean cost per episode over {num_episodes} episode(s) (LQR controller): {np.mean(lqr_costs)}")
+    print(f"Mean cost per episode over {num_episodes} episode(s) (Koopman controller): {np.mean(koopman_costs)}\n")
+
+    print(f"Initial state of final episode (LQR controller): {lqr_states[-1,:,0]}")
+    print(f"Final state of final episode (LQR controller): {lqr_states[-1,:,-1]}\n")
+
+    print(f"Initial state of final episode (Koopman controller): {koopman_states[-1,:,0]}")
+    print(f"Final state of final episode (Koopman controller): {koopman_states[-1,:,-1]}\n")
+
+    print(f"Reference state: {w_r[:,0]}\n")
+
+    print(f"Difference between final state of final episode and reference state (LQR controller): {np.abs(lqr_states[-1,:,-1] - w_r[:,0])}")
+    print(f"Norm between final state of final episode and reference state (LQR controller): {utilities.l2_norm(lqr_states[-1,:,-1], w_r[:,0])}\n")
+
+    print(f"Difference between final state of final episode and reference state (Koopman controller): {np.abs(koopman_states[-1,:,-1] - w_r[:,0])}")
+    print(f"Norm between final state of final episode and reference state (Koopman controller): {utilities.l2_norm(koopman_states[-1,:,-1], w_r[:,0])}")
 
     fig, axs = plt.subplots(2)
     fig.suptitle('Dynamics Over Time')
@@ -227,9 +251,8 @@ def watch_agent():
     labels = []
     for i in range(state_dim):
         labels.append(f"x_{i}")
-    for i in range(state_dim):
-        axs[0].plot(optimal_states[-1,:,i], label=labels[i])
-        axs[1].plot(learned_states[-1,:,i], label=labels[i])
+        axs[0].plot(lqr_states[-1,i], label=labels[i])
+        axs[1].plot(koopman_states[-1,i], label=labels[i])
     lines_labels = [axs[0].get_legend_handles_labels()]
     lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
     fig.legend(lines, labels)
@@ -241,20 +264,31 @@ def watch_agent():
     ax.set_xlim(-1.0, 1.0)
     ax.set_ylim(-1.0, 1.0)
     ax.set_zlim(0.0, 1.0)
-    ax.plot3D(learned_states[-1,:,0], learned_states[-1,:,1], learned_states[-1,:,2], 'gray')
+    ax.plot3D(lqr_states[-1,0], lqr_states[-1,1], lqr_states[-1,2], 'gray')
+    plt.title("LQR Controller in Environment (3D)")
     plt.show()
 
-    labels = ['optimal', 'learned']
+    ax = plt.axes(projection='3d')
+    ax.set_xlim(-1.0, 1.0)
+    ax.set_ylim(-1.0, 1.0)
+    ax.set_zlim(0.0, 1.0)
+    ax.plot3D(koopman_states[-1,0], koopman_states[-1,1], koopman_states[-1,2], 'gray')
+    plt.title("Koopman Controller in Environment (3D)")
+    plt.show()
 
-    plt.hist(optimal_actions[-1,:,0])
-    plt.hist(learned_actions[-1,:,0])
+    labels = ['LQR controller', 'Koopman controller']
+
+    plt.hist(lqr_actions[-1,0])
+    plt.hist(koopman_actions[-1,0])
     plt.legend(labels)
     plt.show()
 
-    plt.scatter(np.arange(optimal_actions.shape[1]), optimal_actions[-1,:,0], s=5)
-    plt.scatter(np.arange(learned_actions.shape[1]), learned_actions[-1,:,0], s=5)
+    plt.scatter(np.arange(lqr_actions.shape[2]), lqr_actions[-1,0], s=5)
+    plt.scatter(np.arange(koopman_actions.shape[2]), koopman_actions[-1,0], s=5)
+    plt.legend(labels)
     plt.show()
 
-watch_agent()
+print("\nTesting learned policy...\n")
+watch_agent(num_episodes=100, test_steps=int(50.0 / dt))
 
 #%%
