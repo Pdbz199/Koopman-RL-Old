@@ -1,5 +1,5 @@
 #%% Imports
-import matplotlib.pyplot as plt
+from tkinter import W
 import numpy as np
 import torch
 
@@ -7,8 +7,11 @@ seed = 123
 torch.manual_seed(seed)
 np.random.seed(seed)
 
-from control import dare
+from control import care
 from generalized.discrete_koopman_value_iteration_policy import DiscreteKoopmanValueIterationPolicy
+from matplotlib import pyplot as plt
+from scipy.integrate import solve_ivp
+from scipy.special import comb
 
 import sys
 sys.path.append('../')
@@ -17,34 +20,84 @@ sys.path.append('../../')
 import observables
 import utilities
 
-#%% Initialize environment
+#%% System dynamics
+state_dim = 3
 state_dim = 3
 action_dim = 1
 
-A = np.zeros([state_dim, state_dim])
-max_abs_real_eigen_val = 1.0
-step = 0
-while (max_abs_real_eigen_val >= 1.0 or max_abs_real_eigen_val <= 0.7) and (step < 100000):
-    Z = np.random.rand(*A.shape)
-    _,sigma,__ = np.linalg.svd(Z)
-    Z /= np.max(sigma)
-    A = Z.T @ Z
-    W,_ = np.linalg.eig(A)
-    max_eigenvalue = np.max(np.absolute(W, W))
-    max_abs_real_eigen_val = np.max(np.abs(np.real(W)))
-    step += 1
+state_column_shape = [state_dim, 1]
+action_column_shape = [action_dim, 1]
 
-print(f"Maximum eigenvalue: {max_eigenvalue}")
-print("A:\n", A)
-print("A's max absolute real eigenvalue:", max_abs_real_eigen_val)
-B = np.ones([state_dim,action_dim])
+omega = 1.0
+mu = 0.1
+A = -0.1
+lamb = 1
 
-def f(x, u):
-    return A @ x + B @ u
+dt = 0.01
 
-#%% Define cost
+def continuous_f(action=None):
+    """
+        INPUTS:
+        action - action vector. If left as None, then random policy is used
+    """
+
+    def f_u(t, input):
+        """
+            INPUTS:
+            input - state vector
+            t - timestep
+        """
+        x, y, z = input
+
+        x_dot = mu*x - omega*y + A*x*z
+        y_dot = omega*x + mu*y + A*y*z
+        z_dot = -lamb * ( z - np.power(x, 2) - np.power(y, 2) )
+
+        u = action
+        if u is None:
+            u = np.random.choice(all_actions, size=action_column_shape)
+
+        return [ x_dot, y_dot + u, z_dot ]
+
+    return f_u
+
+def f(state, action):
+    """
+        INPUTS:
+        state - state column vector
+        action - action column vector
+
+        OUTPUTS:
+        state column vector pushed forward in time
+    """
+    u = action[:,0]
+
+    soln = solve_ivp(fun=continuous_f(u), t_span=[0, dt], y0=state[:,0], method='RK45')
+    
+    return np.vstack(soln.y[:,-1])
+
+#%%
+state_range = 25.0
+state_minimums = np.ones([state_dim,1]) * -state_range
+state_maximums = np.ones([state_dim,1]) * state_range
+
+action_range = 10.0
+action_minimums = np.ones([action_dim,1]) * -action_range
+action_maximums = np.ones([action_dim,1]) * action_range
+
+state_order = 2
+action_order = 2
+
+step_size = 1.0
+all_actions = np.arange(-action_range, action_range+step_size, step_size)
+all_actions = np.round(all_actions, decimals=2)
+
+gamma = 0.99
+reg_lambda = 1.0
+
+#%% Cost function
 Q = np.eye(state_dim)
-R = 1
+R = 0.001
 w_r = np.array([
     [0.0],
     [0.0],
@@ -57,42 +110,61 @@ def cost(x, u):
     mat = np.vstack(np.diag(x_.T @ Q @ x_)) + np.power(u, 2)*R
     return mat.T
 
-#%% Initialize important vars
-state_range = 50.0
-state_minimums = np.ones([state_dim,1]) * -state_range
-state_maximums = np.ones([state_dim,1]) * state_range
-
-action_range = 50.0
-action_minimums = np.ones([action_dim,1]) * -action_range
-action_maximums = np.ones([action_dim,1]) * action_range
-
-state_order = 2
-action_order = 2
-
-step_size = 0.1
-all_actions = np.arange(-action_range, action_range+step_size, step_size)
-all_actions = np.round(all_actions, decimals=2)
-
+#%% Solve riccati equation
 gamma = 0.99
-reg_lambda = 1.0
+lamb = 1
 
-#%% Optimal policy
-P = dare(A*np.sqrt(gamma), B*np.sqrt(gamma), Q, R)[0]
-C = np.linalg.inv(R + gamma*B.T @ P @ B) @ (gamma*B.T @ P @ A)
-sigma_t = reg_lambda * np.linalg.inv(R + B.T @ P @ B)
+x_bar = 0
+y_bar = 0
+z_bar = 0
+continuous_A = np.array([
+    [mu + A * z_bar, -omega, A * x_bar],
+    [omega, mu + A * z_bar, A * y_bar],
+    [2 * lamb * x_bar, 2 * lamb * y_bar, -lamb]
+])
+continuous_B = np.array([
+    [0],
+    [1],
+    [0]
+])
+W,V = np.linalg.eig(continuous_A)
+print(f"Eigenvalues of continuous A:\n{W}\n")
+print(f"Eigenvectors of continuous A:\n{V}\n")
+
+P = care(continuous_A*np.sqrt(gamma), continuous_B*np.sqrt(gamma), Q, R)[0]
+C = np.linalg.inv(R + gamma*continuous_B.T @ P @ continuous_B) @ (gamma*continuous_B.T @ P @ continuous_A)
+sigma_t = reg_lambda * np.linalg.inv(R + continuous_B.T @ P @ continuous_B)
+
+#%% Default policy functions
+def random_policy(x):
+    return np.random.choice(all_actions, size=action_column_shape)
 
 def lqr_policy(x):
     return np.random.normal(-C @ (x - w_r), sigma_t)
 
-#%% Construct datasets
-num_episodes = 100
-num_steps_per_episode = 200
-N = num_episodes * num_steps_per_episode # Number of datapoints
+#%% Generate data
+num_episodes = 500
+num_steps_per_episode = int(50.0 / dt)
+N = num_episodes*num_steps_per_episode # Number of datapoints
+X = np.zeros([state_dim,N])
+Y = np.zeros([state_dim,N])
+U = np.zeros([action_dim,N])
 
-# Shotgun-based approach
-X = np.random.uniform(state_minimums, state_maximums, [state_dim,N])
-U = np.random.uniform(action_minimums, action_maximums, [action_dim,N])
-Y = f(X, U)
+initial_xs = np.zeros([num_episodes, state_dim])
+for episode in range(num_episodes):
+    x = np.random.random(state_column_shape) * 0.5 * np.random.choice([-1,1], size=state_column_shape)
+    u = np.array([[0]])
+    soln = solve_ivp(fun=continuous_f(u), t_span=[0, 50.0], y0=x[:,0], method='RK45')
+    initial_xs[episode] = soln.y[:,-1]
+
+for episode in range(num_episodes):
+    x = np.vstack(initial_xs[episode])
+    for step in range(num_steps_per_episode):
+        X[:,(episode*num_steps_per_episode)+step] = x[:,0]
+        u = random_policy(x)
+        U[:,(episode*num_steps_per_episode)+step] = u[:,0]
+        x = f(x, u)
+        Y[:,(episode*num_steps_per_episode)+step] = x[:,0]
 
 #%% Estimate Koopman tensor
 tensor = KoopmanTensor(
@@ -104,25 +176,26 @@ tensor = KoopmanTensor(
     regressor='ols'
 )
 
-#%% Compute optimal policy
+#%% Run Algorithm
 policy = DiscreteKoopmanValueIterationPolicy(
     f,
     gamma,
-    reg_lambda,
+    lamb,
     tensor,
     all_actions,
     cost,
-    'lqr-value-iteration.pt'
+    'fluid-flow-value-iteration.pt',
+    dt
 )
 policy.train(
     training_epochs=500,
     batch_size=2**9,
     batch_scale=3,
     epsilon=1e-2,
-    gamma_increment_amount=0.01
+    gamma_increment_amount=0.02
 )
 
-#%% Test
+#%% Test policy in environment
 def watch_agent(num_episodes, step_limit):
     lqr_states = np.zeros([num_episodes,state_dim,step_limit])
     lqr_actions = np.zeros([num_episodes,action_dim,step_limit])
@@ -132,14 +205,15 @@ def watch_agent(num_episodes, step_limit):
     koopman_actions = np.zeros([num_episodes,action_dim,step_limit])
     koopman_costs = np.zeros([num_episodes])
 
-    initial_states = np.random.uniform(
-        state_minimums,
-        state_maximums,
-        [tensor.x_dim, num_episodes]
-    )
+    initial_xs = np.zeros([num_episodes, state_dim])
+    for episode in range(num_episodes):
+        x = np.random.random(state_column_shape) * 0.5 * np.random.choice([-1,1], size=state_column_shape)
+        u = np.array([[0]])
+        soln = solve_ivp(fun=continuous_f(u), t_span=[0, 50.0], y0=x[:,0], method='RK45')
+        initial_xs[episode] = soln.y[:,-1]
 
     for episode in range(num_episodes):
-        state = np.vstack(initial_states[:,episode])
+        state = np.vstack(initial_xs[episode])
 
         lqr_state = state
         koopman_state = state
@@ -209,12 +283,20 @@ def watch_agent(num_episodes, step_limit):
     plt.tight_layout()
     plt.show()
 
-    plt.plot(lqr_states[-1,0], lqr_states[-1,1])
-    plt.title("LQR Controller in Environment (2D)")
+    ax = plt.axes(projection='3d')
+    ax.set_xlim(-1.0, 1.0)
+    ax.set_ylim(-1.0, 1.0)
+    ax.set_zlim(0.0, 1.0)
+    ax.plot3D(lqr_states[-1,0], lqr_states[-1,1], lqr_states[-1,2], 'gray')
+    plt.title("LQR Controller in Environment (3D)")
     plt.show()
 
-    plt.plot(koopman_states[-1,0], koopman_states[-1,1])
-    plt.title("Koopman Controller in Environment (2D)")
+    ax = plt.axes(projection='3d')
+    ax.set_xlim(-1.0, 1.0)
+    ax.set_ylim(-1.0, 1.0)
+    ax.set_zlim(0.0, 1.0)
+    ax.plot3D(koopman_states[-1,0], koopman_states[-1,1], koopman_states[-1,2], 'gray')
+    plt.title("Koopman Controller in Environment (3D)")
     plt.show()
 
     labels = ['LQR controller', 'Koopman controller']
@@ -230,6 +312,6 @@ def watch_agent(num_episodes, step_limit):
     plt.show()
 
 print("\nTesting learned policy...\n")
-watch_agent(num_episodes=100, step_limit=200)
+watch_agent(num_episodes=100, step_limit=int(50.0 / dt))
 
 #%%

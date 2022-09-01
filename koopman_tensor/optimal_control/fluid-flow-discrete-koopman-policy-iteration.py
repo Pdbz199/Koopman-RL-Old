@@ -75,7 +75,7 @@ def f(state, action):
 
 #%% Define cost
 Q = np.eye(state_dim)
-R = 0.0001
+R = 0.001
 w_r = np.array([
     [0.0],
     [0.0],
