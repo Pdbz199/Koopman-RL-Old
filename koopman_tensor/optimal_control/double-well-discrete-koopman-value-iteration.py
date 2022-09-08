@@ -7,7 +7,7 @@ seed = 123
 torch.manual_seed(seed)
 np.random.seed(seed)
 
-from generalized.discrete_koopman_policy_iteration_policy import DiscreteKoopmanPolicyIterationPolicy
+from generalized.discrete_koopman_value_iteration_policy import DiscreteKoopmanValueIterationPolicy
 from scipy.integrate import solve_ivp
 
 import sys
@@ -161,19 +161,23 @@ tensor = KoopmanTensor(
 )
 
 #%% Compute optimal policy
-policy = DiscreteKoopmanPolicyIterationPolicy(
+policy = DiscreteKoopmanValueIterationPolicy(
     f,
     gamma,
     reg_lambda,
     tensor,
-    state_minimums,
-    state_maximums,
     all_actions,
     cost,
-    'double-well-policy-iteration.pt',
-    dt=dt
+    'double-well-value-iteration.pt',
+    dt
 )
-policy.reinforce(num_training_episodes=1000, num_steps_per_episode=int(20.0 / dt))
+policy.train(
+    training_epochs=500,
+    batch_size=2**9,
+    batch_scale=3,
+    epsilon=1e-2,
+    gamma_increment_amount=0.02
+)
 
 #%% Test
 def watch_agent(num_episodes, step_limit):
@@ -209,10 +213,7 @@ def watch_agent(num_episodes, step_limit):
             #     lqr_action = np.array([[-action_range]])
             lqr_actions[episode,:,step] = lqr_action
 
-            # koopman_action = policy.get_action(koopman_state)
-            with torch.no_grad():
-                koopman_u, _ = policy.get_action(koopman_state[:,0])
-            koopman_action = np.array([[koopman_u]])
+            koopman_action = policy.get_action(koopman_state)
             koopman_actions[episode,:,step] = koopman_action
 
             lqr_costs += cost(lqr_state, lqr_action)[0,0]
