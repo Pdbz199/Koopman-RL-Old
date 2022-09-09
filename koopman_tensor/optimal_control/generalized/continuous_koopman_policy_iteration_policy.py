@@ -70,6 +70,70 @@ class ContinuousKoopmanPolicyIterationPolicy:
         self.sigma = torch.exp(self.alpha)
         return torch.distributions.normal.Normal(self.mu, self.sigma, [])
 
+    # def get_action(self, s, num_samples=1):
+    #     """
+    #         Estimate the policy distribution and sample an action, compute its log probability.
+            
+    #         INPUTS:
+    #             s: Input state. Should be a column vector.
+    #         OUTPUTS:
+    #             the selected action and log probability.
+    #     """
+
+    #     action_distribution = self.get_action_distribution(s)
+
+    #     actions = []
+    #     log_probs = []
+    #     for _ in range(num_samples):
+    #         action = action_distribution.sample()
+    #         actions.append(action)
+
+    #         log_prob = action_distribution.log_prob(action)
+    #         log_probs.append(log_prob)
+
+    #     return torch.Tensor(actions), torch.Tensor(log_probs)
+
+    def get_action(self, s):
+        """
+            Estimate the policy and sample an action, compute its log probability
+            @param s: input state (column vector)
+            @return: the selected action and log probability
+        """
+        action_distribution = self.get_action_distribution(s)
+        action = action_distribution.sample()
+        log_prob = action_distribution.log_prob(action)
+
+        return action, log_prob
+
+    def update_w_hat(self):
+        x_batch_indices = np.random.choice(self.dynamics_model.X.shape[1], self.w_hat_batch_size, replace=False)
+        x_batch = self.dynamics_model.X[:, x_batch_indices] # (state_dim, w_hat_batch_size)
+        phi_x_batch = self.dynamics_model.phi(x_batch) # (phi_dim, w_hat_batch_size)
+
+        with torch.no_grad():
+            # pi_response = policy_net.predict(x_batch.T).T # (all_actions.shape[0], w_hat_batch_size)
+            pi_response = np.zeros([self.all_actions.shape[0],self.w_hat_batch_size])
+            for state_index, state in enumerate(x_batch.T):
+                action_distribution = self.get_action_distribution(state.reshape(-1,1))
+                pi_response[:, state_index] = action_distribution.log_prob(torch.tensor(self.all_actions))
+
+        phi_x_prime_batch = self.dynamics_model.K_(np.array([self.all_actions])) @ phi_x_batch # (all_actions.shape[0], phi_dim, w_hat_batch_size)
+        phi_x_prime_batch_prob = np.einsum('upw,uw->upw', phi_x_prime_batch, pi_response) # (all_actions.shape[0], phi_dim, w_hat_batch_size)
+        expectation_term_1 = np.sum(phi_x_prime_batch_prob, axis=0) # (phi_dim, w_hat_batch_size)
+
+        reward_batch_prob = np.einsum('uw,uw->wu', -self.cost(x_batch, np.array([self.all_actions])), pi_response) # (w_hat_batch_size, all_actions.shape[0])
+        expectation_term_2 = np.array([
+            np.sum(reward_batch_prob, axis=1) # (w_hat_batch_size,)
+        ]) # (1, w_hat_batch_size)
+
+        self.w_hat = OLS(
+            (phi_x_batch - (self.gamma*expectation_term_1)).T,
+            expectation_term_2.T
+        )
+
+    def Q(self, x, u):
+        return (-self.cost(x, u) + self.gamma*self.w_hat.T @ self.dynamics_model.phi_f(x, u))[0,0]
+
     def update_policy_model(self, returns, log_probs):
         """
             Update the weights of the policy network given the training samples.
@@ -88,55 +152,8 @@ class ContinuousKoopmanPolicyIterationPolicy:
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
-
-    def get_action(self, s, num_samples=1):
-        """
-            Estimate the policy distribution and sample an action, compute its log probability.
-            
-            INPUTS:
-                s: Input state. Should be a 1D array.
-            OUTPUTS:
-                the selected action and log probability.
-        """
-
-        action_distribution = self.get_action_distribution(s)
-
-        actions = []
-        log_probs = []
-        for _ in range(num_samples):
-            actions.append(action_distribution.sample())
-            log_probs.append(action_distribution.log_prob(actions[-1]))
-
-        return torch.Tensor(actions), torch.Tensor(log_probs)
-
-    def update_w_hat(self):
-        x_batch_indices = np.random.choice(self.dynamics_model.X.shape[1], self.w_hat_batch_size, replace=False)
-        x_batch = self.dynamics_model.X[:, x_batch_indices] # (state_dim, w_hat_batch_size)
-        phi_x_batch = self.dynamics_model.phi(x_batch) # (phi_dim, w_hat_batch_size)
-
-        with torch.no_grad():
-            pi_response = self.predict(x_batch.T).T # (all_actions.shape[0], w_hat_batch_size)
-
-        phi_x_prime_batch = self.dynamics_model.K_(np.array([self.all_actions])) @ phi_x_batch # (all_actions.shape[0], phi_dim, w_hat_batch_size)
-        phi_x_prime_batch_prob = np.einsum('upw,uw->upw', phi_x_prime_batch, pi_response.data.numpy()) # (all_actions.shape[0], phi_dim, w_hat_batch_size)
-        expectation_term_1 = np.sum(phi_x_prime_batch_prob, axis=0) # (phi_dim, w_hat_batch_size)
-
-        reward_batch_prob = np.einsum(
-            'uw,uw->wu',
-            -self.cost(x_batch, np.array([self.all_actions])),
-            pi_response.data.numpy()
-        ) # (w_hat_batch_size, all_actions.shape[0])
-        expectation_term_2 = np.array([
-            np.sum(reward_batch_prob, axis=1) # (w_hat_batch_size,)
-        ]) # (1, w_hat_batch_size)
-
-        self.w_hat = OLS(
-            (phi_x_batch - (self.gamma*expectation_term_1)).T,
-            expectation_term_2.T
-        )
-
-    def Q(self, x, u):
-        return (-self.cost(x, u) + self.gamma*self.w_hat.T @ self.dynamics_model.phi_f(x, u))[0,0]
+        
+        self.update_w_hat()
 
     def reinforce(self, num_training_episodes, num_steps_per_episode):
         """
@@ -164,24 +181,18 @@ class ContinuousKoopmanPolicyIterationPolicy:
             for step in range(num_steps_per_episode):
                 states[step] = torch.Tensor(state)[:, 0]
 
-                u, log_prob = self.get_action(state[:, 0])
+                u, log_prob = self.get_action(state)
                 action = np.array([[u]])
                 actions[step] = u
                 log_probs[step] = log_prob
 
-                curr_reward = -self.cost(state, action)[0,0]
-                rewards[step] = curr_reward
-
-                total_reward_episode[episode] += self.gamma**(step * self.dt) * curr_reward
+                rewards[step] = -self.cost(state, action)[0,0]
+                total_reward_episode[episode] += self.gamma**(step * self.dt) * rewards[step]
 
                 state = self.true_dynamics(state, action)
 
             returns = torch.zeros(num_steps_per_episode)
-            # Gt = 0
             for i in range(num_steps_per_episode-1, -1, -1):
-                # Gt = rewards[i] + (self.gamma * Gt) # How do we update this for dt < 1?
-                # returns[i] = Gt
-
                 Q_val = self.Q(
                     np.vstack(states[i]),
                     np.array([[actions[i]]])
@@ -193,6 +204,4 @@ class ContinuousKoopmanPolicyIterationPolicy:
             self.update_policy_model(returns, log_probs)
             if (episode+1) % 250 == 0:
                 print(f"Episode: {episode+1}, discounted total reward: {total_reward_episode[episode]}")
-                torch.save(self.policy_model, self.saved_file_path)
-
-            self.update_w_hat()
+                torch.save(self, self.saved_file_path)
