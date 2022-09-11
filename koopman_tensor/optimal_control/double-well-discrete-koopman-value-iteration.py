@@ -7,6 +7,7 @@ seed = 123
 torch.manual_seed(seed)
 np.random.seed(seed)
 
+from control import care
 from generalized.discrete_koopman_value_iteration_policy import DiscreteKoopmanValueIterationPolicy
 from scipy.integrate import solve_ivp
 
@@ -118,12 +119,21 @@ gamma = 0.99
 reg_lambda = 1.0
 
 #%% Optimal policy
-# P = care(continuous_A*np.sqrt(gamma), continuous_B*np.sqrt(gamma), Q, R)[0]
-# C = np.linalg.inv(R + gamma*continuous_B.T @ P @ continuous_B) @ (gamma*continuous_B.T @ P @ continuous_A)
-# sigma_t = reg_lambda * np.linalg.inv(R + continuous_B.T @ P @ continuous_B)
+continuous_A = np.array([
+    [-8, 0],
+    [0, -2]
+])
+continuous_B = np.array([
+    [1],
+    [1]
+])
 
-# def optimal_policy(x):
-#     return np.random.normal(-C @ (x - w_r), sigma_t)
+P = care(continuous_A*np.sqrt(gamma), continuous_B*np.sqrt(gamma), Q, R)[0]
+C = np.linalg.inv(R + gamma*continuous_B.T @ P @ continuous_B) @ (gamma*continuous_B.T @ P @ continuous_A)
+sigma_t = reg_lambda * np.linalg.inv(R + continuous_B.T @ P @ continuous_B)
+
+def lqr_policy(x):
+    return np.random.normal(-C @ (x - w_r), sigma_t)
 
 #%% Construct datasets
 num_episodes = 500
@@ -206,7 +216,7 @@ def watch_agent(num_episodes, step_limit):
             lqr_states[episode,:,step] = lqr_state[:,0]
             koopman_states[episode,:,step] = koopman_state[:,0]
 
-            lqr_action = random_policy(lqr_state)
+            lqr_action = lqr_policy(lqr_state)
             # if lqr_action[0,0] > action_range:
             #     lqr_action = np.array([[action_range]])
             # elif lqr_action[0,0] < -action_range:
@@ -222,19 +232,19 @@ def watch_agent(num_episodes, step_limit):
             lqr_state = f(lqr_state, lqr_action)
             koopman_state = f(koopman_state, koopman_action)
 
-    print(f"Mean cost per episode over {num_episodes} episode(s) (Random controller): {np.mean(lqr_costs)}")
+    print(f"Mean cost per episode over {num_episodes} episode(s) (LQR controller): {np.mean(lqr_costs)}")
     print(f"Mean cost per episode over {num_episodes} episode(s) (Koopman controller): {np.mean(koopman_costs)}\n")
 
-    print(f"Initial state of final episode (Random controller): {lqr_states[-1,:,0]}")
-    print(f"Final state of final episode (Random controller): {lqr_states[-1,:,-1]}\n")
+    print(f"Initial state of final episode (LQR controller): {lqr_states[-1,:,0]}")
+    print(f"Final state of final episode (LQR controller): {lqr_states[-1,:,-1]}\n")
 
     print(f"Initial state of final episode (Koopman controller): {koopman_states[-1,:,0]}")
     print(f"Final state of final episode (Koopman controller): {koopman_states[-1,:,-1]}\n")
 
     print(f"Reference state: {w_r[:,0]}\n")
 
-    print(f"Difference between final state of final episode and reference state (Random controller): {np.abs(lqr_states[-1,:,-1] - w_r[:,0])}")
-    print(f"Norm between final state of final episode and reference state (Random controller): {utilities.l2_norm(lqr_states[-1,:,-1], w_r[:,0])}\n")
+    print(f"Difference between final state of final episode and reference state (LQR controller): {np.abs(lqr_states[-1,:,-1] - w_r[:,0])}")
+    print(f"Norm between final state of final episode and reference state (LQR controller): {utilities.l2_norm(lqr_states[-1,:,-1], w_r[:,0])}\n")
 
     print(f"Difference between final state of final episode and reference state (Koopman controller): {np.abs(koopman_states[-1,:,-1] - w_r[:,0])}")
     print(f"Norm between final state of final episode and reference state (Koopman controller): {utilities.l2_norm(koopman_states[-1,:,-1], w_r[:,0])}")
@@ -242,7 +252,7 @@ def watch_agent(num_episodes, step_limit):
     fig, axs = plt.subplots(2)
     fig.suptitle('Dynamics Over Time')
 
-    axs[0].set_title('Random Controller')
+    axs[0].set_title('LQR Controller')
     axs[0].set(xlabel='Timestep', ylabel='State value')
 
     axs[1].set_title('Koopman Controller')
@@ -265,7 +275,7 @@ def watch_agent(num_episodes, step_limit):
     ax.set_xlim(-1.0, 1.0)
     ax.set_ylim(-1.0, 1.0)
     ax.plot(lqr_states[-1,0], lqr_states[-1,1], 'gray')
-    plt.title("Random Controller in Environment (3D)")
+    plt.title("LQR Controller in Environment (3D)")
     plt.show()
 
     ax = plt.axes()
@@ -275,7 +285,7 @@ def watch_agent(num_episodes, step_limit):
     plt.title("Koopman Controller in Environment (3D)")
     plt.show()
             
-    labels = ['Random controller', 'Koopman controller']
+    labels = ['LQR controller', 'Koopman controller']
 
     plt.hist(lqr_actions[-1,0])
     plt.hist(koopman_actions[-1,0])
