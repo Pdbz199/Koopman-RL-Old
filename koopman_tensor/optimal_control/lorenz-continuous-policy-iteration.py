@@ -19,6 +19,7 @@ sys.path.append('../')
 from tensor import KoopmanTensor, OLS
 sys.path.append('../../')
 import observables
+import utilities
 
 PATH = './lorenz-continuous-policy.pt'
 
@@ -71,9 +72,9 @@ def continuous_f(action=None):
         """
         x, y, z = input
 
-        x = x - x_e
-        y = y - y_e
-        z = z + z_e
+        # x = x - x_e
+        # y = y - y_e
+        # z = z + z_e
 
         x_dot = sigma * ( y - x )   # sigma*y - sigma*x
         y_dot = ( rho - z ) * x - y # rho*x - x*z - y
@@ -104,9 +105,9 @@ def f(state, action):
 
 #%% Reward function
 w_r = np.array([
-    [0],
-    [0],
-    [0] # 1
+    [x_e],
+    [y_e],
+    [z_e]
 ])
 Q_ = np.eye(state_dim)
 R = 0.0001
@@ -115,8 +116,6 @@ def cost(x, u):
     _x = x - w_r
     mat = np.vstack(np.diag(_x.T @ Q_ @ _x)) + np.power(u, 2)*R
     return mat.T
-def reward(x, u):
-    return -cost(x, u)
 
 #%% Default policy functions
 def zero_policy(x):
@@ -172,7 +171,7 @@ def w_hat_t():
     phi_x_prime_batch_prob = np.einsum('upw,uw->upw', phi_x_prime_batch, pi_response) # (all_actions.shape[0], phi_dim, w_hat_batch_size)
     expectation_term_1 = np.sum(phi_x_prime_batch_prob, axis=0) # (phi_dim, w_hat_batch_size)
 
-    reward_batch_prob = np.einsum('uw,uw->wu', reward(x_batch, np.array([all_actions])), pi_response) # (w_hat_batch_size, all_actions.shape[0])
+    reward_batch_prob = np.einsum('uw,uw->wu', -cost(x_batch, np.array([all_actions])), pi_response) # (w_hat_batch_size, all_actions.shape[0])
     expectation_term_2 = np.array([
         np.sum(reward_batch_prob, axis=1) # (w_hat_batch_size,)
     ]) # (1, w_hat_batch_size)
@@ -185,13 +184,14 @@ def w_hat_t():
     return w_hat
 
 def Q(x, u, w_hat_t):
-    return (reward(x, u) + gamma*w_hat_t.T @ tensor.phi_f(x, u))[0,0]
+    return (-cost(x, u) + gamma*w_hat_t.T @ tensor.phi_f(x, u))[0,0]
 
 #%% Policy function as PyTorch model
 class PolicyNetwork():
     def __init__(self, phi_dim, lr=0.003):
+        self.mu = torch.tensor(0.0, dtype=torch.double, requires_grad=True)
         self.alpha = torch.tensor(0.0, dtype=torch.double, requires_grad=True)
-        self.optimizer = torch.optim.Adam([self.alpha], lr)
+        self.optimizer = torch.optim.Adam([self.mu, self.alpha], lr)
 
         self.w_hat = np.zeros([phi_dim,1])
 
@@ -203,7 +203,7 @@ class PolicyNetwork():
         """
         policy_gradient = []
         for i, (log_prob, Gt) in enumerate(zip(log_probs, returns)):
-            policy_gradient.append(-log_prob * gamma**(len(returns)-i) * Gt)
+            policy_gradient.append(-log_prob * gamma**((len(returns)-i) * dt) * Gt)
 
         loss = torch.stack(policy_gradient).sum()
 
@@ -214,9 +214,9 @@ class PolicyNetwork():
         self.w_hat = w_hat_t()
 
     def get_action_distribution(self, s):
-        mu = (self.w_hat.T @ tensor.phi(s))[0,0]
+        # mu = (self.w_hat.T @ tensor.phi(s))[0,0]
         sigma = torch.exp(self.alpha)
-        return torch.distributions.normal.Normal(mu, sigma, [])
+        return torch.distributions.normal.Normal(self.mu, sigma, [])
 
     def sample_action(self, s):
         """
@@ -237,7 +237,7 @@ def reinforce(estimator, n_episode, gamma=1.0):
         @param n_episode: number of episodes
         @param gamma: the discount factor
     """
-    num_steps_per_trajectory = 500
+    num_steps_per_trajectory = 20.0 / dt
     for episode in range(n_episode):
         states = []
         actions = []
@@ -250,13 +250,12 @@ def reinforce(estimator, n_episode, gamma=1.0):
         while len(rewards) < num_steps_per_trajectory:
             u, log_prob = estimator.sample_action(state)
             action = np.array([[u]])
-            next_state = tensor.f(state, action) # tensor.f(state, action) for speed?
-            curr_reward = reward(state, action)[0,0]
+            curr_reward = -cost(state, action)[0,0]
 
             states.append(state)
             actions.append(u)
 
-            total_reward_episode[episode] += gamma**step * curr_reward 
+            total_reward_episode[episode] += gamma**(step * dt) * curr_reward 
             log_probs.append(log_prob)
             rewards.append(curr_reward)
 
@@ -283,10 +282,8 @@ def reinforce(estimator, n_episode, gamma=1.0):
 
                 break
 
-            print(f"step: {step}")
-
             step += 1
-            state = next_state
+            state = f(state, action)
 
 #%%
 # n_state = env.observation_space.shape[0]
@@ -297,7 +294,7 @@ policy_net = PolicyNetwork(phi_dim)
 # policy_net = torch.load(PATH)
 
 #%% Generate new initial xs for learning control
-num_episodes = 2000
+num_episodes = 1000
 # num_episodes = 0
 
 #%% Run REINFORCE
@@ -312,51 +309,71 @@ reinforce(policy_net, num_episodes, gamma)
 # plt.show()
 
 #%% Test policy in environment
-num_episodes = 100
-
-step_limit = 400 # 10000
-def watch_agent():
+def watch_agent(num_episodes, step_limit):
     states = np.zeros([num_episodes,state_dim,step_limit])
     actions = np.zeros([num_episodes,action_dim,step_limit])
-    costs = torch.zeros([num_episodes])
+    costs = np.zeros([num_episodes])
+
     for episode in range(num_episodes):
         state = initial_x + (np.random.rand(*state_column_shape) * 5 * np.random.choice([-1,1], size=state_column_shape))
 
-        states[episode,:,0] = state[:,0]
         cumulative_cost = 0
-        step = 0
-        while step < step_limit:
+
+        for step in range(step_limit):
+            # Append state to list of states
+            states[episode,:,step] = state[:,0]
+
+            # Koopman action 
             with torch.no_grad():
                 action, _ = policy_net.sample_action(state)
-                action = np.array([[action]])
-            #     action = lqr_policy(state)
+            action = np.array([[action]])
+
+            # LQR action
+            # action = lqr_policy(state)
             # if action[0,0] > action_range[1]:
             #     action = np.array([[action_range[1]]])
             # if action[0,0] < action_range[0]:
             #     action = np.array([[action_range[0]]])
-            state = tensor.f(state, action)
-            states[episode,:,step] = state[:,0]
+
+            # Append action to list of actions
             actions[episode,:,step] = action
+
+            # Add cost to accumulator
             cumulative_cost += cost(state, action)[0,0]
-            step += 1
-            if step == step_limit:
-                costs[episode] = cumulative_cost
-                # print(f"Total cost for episode {episode}:", cumulative_cost)
-    print(f"Mean cost per episode over {num_episodes} episodes:", torch.mean(costs))
-    print("Initial state of final episode:", states[-1,:,0])
-    print("Final state of final episode:", states[-1,:,-1])
-    print("Difference between final state of final episode and reference state:", np.abs(states[-1,:,-1] - w_r[:,0]))
+
+            # Update state
+            state = f(state, action)
+
+        costs[episode] = cumulative_cost 
+
+    print(f"Mean cost per episode over {num_episodes} episode(s) (Koopman controller): {np.mean(costs)}\n")
+
+    print(f"Initial state of final episode (Koopman controller): {states[-1,:,0]}")
+    print(f"Final state of final episode (Koopman controller): {states[-1,:,-1]}\n")
+
+    print(f"Reference state: {w_r[:,0]}\n")
+
+    print(f"Difference between final state of final episode and reference state (Koopman controller): {np.abs(states[-1,:,-1] - w_r[:,0])}")
+    print(f"Norm between final state of final episode and reference state (Koopman controller): {utilities.l2_norm(states[-1,:,-1], w_r[:,0])}")
 
     ax = plt.axes(projection='3d')
-    ax.set_xlim(-1.0, 1.0)
-    ax.set_ylim(-1.0, 1.0)
-    ax.set_zlim(0.0, 1.0)
+    ax.set_xlim(-20.0, 20.0)
+    ax.set_ylim(-50.0, 50.0)
+    ax.set_zlim(0.0, 50.0)
     ax.plot3D(states[-1,0], states[-1,1], states[-1,2], 'gray')
     plt.show()
 
-    plt.scatter(np.arange(actions.shape[2]), actions[-1,0], s=10)
+    labels = ['Koopman controller']
+
+    plt.hist(actions[-1,0])
+    plt.legend(labels)
     plt.show()
+
+    plt.scatter(np.arange(actions.shape[2]), actions[-1,0], s=5)
+    plt.legend(labels)
+    plt.show()
+
 print("Testing learned policy...")
-watch_agent()
+watch_agent(num_episodes=100, step_limit=int(50.0 / dt))
 
 #%%
