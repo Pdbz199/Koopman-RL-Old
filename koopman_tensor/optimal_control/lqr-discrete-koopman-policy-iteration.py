@@ -142,7 +142,7 @@ policy = DiscreteKoopmanPolicyIterationPolicy(
     cost,
     'lqr-policy-iteration.pt'
 )
-policy.reinforce(num_training_episodes=1000, num_steps_per_episode=200)
+policy.reinforce(num_training_episodes=5000, num_steps_per_episode=200)
 
 #%% Test
 def watch_agent(num_episodes, test_steps):

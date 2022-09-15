@@ -236,7 +236,8 @@ def Q(x, u, w_hat_t):
 class PolicyNetwork():
     def __init__(self, input_dim, lr=0.003):
         self.alpha = torch.zeros([1,input_dim], requires_grad=True)
-        self.beta = torch.zeros([1,input_dim], requires_grad=True)
+        # self.beta = torch.zeros([1,input_dim], requires_grad=True)
+        self.beta = torch.tensor(0.0, dtype=torch.double, requires_grad=True)
         self.optimizer = torch.optim.Adam([self.alpha, self.beta], lr)
 
     def update(self, returns, log_probs):
@@ -256,9 +257,9 @@ class PolicyNetwork():
         self.optimizer.step()
 
     def get_action_distribution(self, s):
-        phi_s = torch.Tensor(s) # torch.Tensor(tensor.phi(s))
+        phi_s = torch.Tensor(tensor.phi(s)) # torch.Tensor(s)
         mu = (self.alpha @ phi_s)[0,0]
-        sigma = torch.exp((self.beta @ phi_s)[0,0])
+        sigma = torch.exp(self.beta) # (self.beta @ phi_s)[0,0]
         return torch.distributions.normal.Normal(mu, sigma, validate_args=False)
 
     def sample_action(self, s):
@@ -338,7 +339,7 @@ def reinforce(estimator, n_episode, gamma=1.0):
 # n_state = env.observation_space.shape[0]
 num_actions = all_actions.shape[0]
 
-policy_net = PolicyNetwork(state_dim) # phi_dim
+policy_net = PolicyNetwork(phi_dim) # state_dim
 
 # policy_net = torch.load(PATH)
 
