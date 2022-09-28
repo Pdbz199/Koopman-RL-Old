@@ -1,10 +1,5 @@
 import numpy as np
 import torch
-import torch.nn as nn
-
-seed = 123
-torch.manual_seed(seed)
-np.random.seed(seed)
 
 import sys
 sys.path.append('../')
@@ -29,6 +24,7 @@ class ContinuousKoopmanPolicyIterationPolicy:
         dt=1.0,
         learning_rate=0.003,
         w_hat_batch_size=2**12,
+        seed=123
     ):
         """
             Constructor for the DiscreteKoopmanPolicyIterationPolicy class.
@@ -37,7 +33,7 @@ class ContinuousKoopmanPolicyIterationPolicy:
                 true_dynamics: The true dynamics of the system.
                 gamma: The discount factor of the system.
                 lamb: The regularization parameter of the policy.
-                dynamics_model: The Koopman tensor of the system.
+                dynamics_model: The trained Koopman tensor for the system.
                 state_minimums: The minimum values of the state. Should be a column vector.
                 state_maximums: The maximum values of the state. Should be a column vector.
                 all_actions: The actions that the policy can take. Should be a single dimensional array.
@@ -47,6 +43,10 @@ class ContinuousKoopmanPolicyIterationPolicy:
                 learning_rate: The learning rate of the policy.
                 w_hat_batch_size: The batch size of the policy.
         """
+
+        self.seed = seed
+        torch.manual_seed(self.seed)
+        np.random.seed(self.seed)
 
         self.true_dynamics = true_dynamics
         self.gamma = gamma
@@ -61,37 +61,18 @@ class ContinuousKoopmanPolicyIterationPolicy:
         self.learning_rate = learning_rate
         self.w_hat_batch_size = w_hat_batch_size
 
-        self.alpha = torch.tensor(0.0, dtype=torch.double, requires_grad=True)
-        self.optimizer = torch.optim.Adam([self.alpha], self.learning_rate)
+        # self.alpha = torch.zeros([1, self.dynamics_model.phi_dim], requires_grad=True)
+        self.alpha = torch.zeros([1, self.dynamics_model.x_dim], requires_grad=True)
+        self.beta = torch.tensor(0.1, requires_grad=True)
+        self.optimizer = torch.optim.Adam([self.alpha, self.beta], self.learning_rate)
         self.w_hat = np.zeros(self.dynamics_model.phi_column_dim)
 
     def get_action_distribution(self, s):
-        self.mu = (self.w_hat.T @ self.dynamics_model.phi(s))[0,0]
-        self.sigma = torch.exp(self.alpha)
-        return torch.distributions.normal.Normal(self.mu, self.sigma, [])
-
-    # def get_action(self, s, num_samples=1):
-    #     """
-    #         Estimate the policy distribution and sample an action, compute its log probability.
-            
-    #         INPUTS:
-    #             s: Input state. Should be a column vector.
-    #         OUTPUTS:
-    #             the selected action and log probability.
-    #     """
-
-    #     action_distribution = self.get_action_distribution(s)
-
-    #     actions = []
-    #     log_probs = []
-    #     for _ in range(num_samples):
-    #         action = action_distribution.sample()
-    #         actions.append(action)
-
-    #         log_prob = action_distribution.log_prob(action)
-    #         log_probs.append(log_prob)
-
-    #     return torch.Tensor(actions), torch.Tensor(log_probs)
+        # phi_s = torch.Tensor(self.dynamics_model.phi(s))
+        phi_s = torch.Tensor(s)
+        mu = (self.alpha @ phi_s)[0,0]
+        sigma = torch.exp(self.beta)
+        return torch.distributions.normal.Normal(mu, sigma, validate_args=False)
 
     def get_action(self, s):
         """
@@ -111,7 +92,6 @@ class ContinuousKoopmanPolicyIterationPolicy:
         phi_x_batch = self.dynamics_model.phi(x_batch) # (phi_dim, w_hat_batch_size)
 
         with torch.no_grad():
-            # pi_response = policy_net.predict(x_batch.T).T # (all_actions.shape[0], w_hat_batch_size)
             pi_response = np.zeros([self.all_actions.shape[0],self.w_hat_batch_size])
             for state_index, state in enumerate(x_batch.T):
                 action_distribution = self.get_action_distribution(state.reshape(-1,1))
@@ -132,7 +112,8 @@ class ContinuousKoopmanPolicyIterationPolicy:
         )
 
     def Q(self, x, u):
-        return (-self.cost(x, u) + self.gamma*self.w_hat.T @ self.dynamics_model.phi_f(x, u))[0,0]
+        V_x_prime = self.gamma*self.w_hat.T @ self.dynamics_model.phi_f(x, u)
+        return (-self.cost(x, u) + V_x_prime)[0,0]
 
     def update_policy_model(self, returns, log_probs):
         """
@@ -147,21 +128,20 @@ class ContinuousKoopmanPolicyIterationPolicy:
         for i, (log_prob, Gt) in enumerate(zip(log_probs, returns)):
             policy_gradient[i] = -log_prob * self.gamma**((len(returns)-i) * self.dt) * Gt
 
-        loss = policy_gradient.sum()
+        # loss = policy_gradient.sum()
+        loss = policy_gradient.mean()
 
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
-        
-        self.update_w_hat()
 
     def reinforce(self, num_training_episodes, num_steps_per_episode):
         """
             REINFORCE algorithm
                 
             INPUTS:
-                num_training_episodes: number of episodes to train for
-                num_steps_per_episode: number of steps per episode
+                num_training_episodes - Number of episodes to train for.
+                num_steps_per_episode - Number of steps per episode.
         """
 
         initial_states = np.random.uniform(
@@ -205,3 +185,5 @@ class ContinuousKoopmanPolicyIterationPolicy:
             if (episode+1) % 250 == 0:
                 print(f"Episode: {episode+1}, discounted total reward: {total_reward_episode[episode]}")
                 torch.save(self, self.saved_file_path)
+
+            self.update_w_hat()

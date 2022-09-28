@@ -74,7 +74,7 @@ y_e = np.sqrt( beta * ( rho - 1 ) )
 z_e = rho - 1
 
 gamma = 0.99
-reg_lambda = 1.0
+reg_lambda = 0.5 # 1.0
 
 def continuous_f(action=None):
     """
@@ -214,10 +214,18 @@ def w_hat_t():
             pi_response[:, state_index] = action_distribution.log_prob(torch.tensor(all_actions))
 
     phi_x_prime_batch = tensor.K_(np.array([all_actions])) @ phi_x_batch # (all_actions.shape[0], phi_dim, w_hat_batch_size)
-    phi_x_prime_batch_prob = np.einsum('upw,uw->upw', phi_x_prime_batch, pi_response) # (all_actions.shape[0], phi_dim, w_hat_batch_size)
+    phi_x_prime_batch_prob = np.einsum(
+        'upw,uw->upw',
+        phi_x_prime_batch,
+        pi_response
+    ) # (all_actions.shape[0], phi_dim, w_hat_batch_size)
     expectation_term_1 = np.sum(phi_x_prime_batch_prob, axis=0) # (phi_dim, w_hat_batch_size)
 
-    reward_batch_prob = np.einsum('uw,uw->wu', -cost(x_batch, np.array([all_actions])), pi_response) # (w_hat_batch_size, all_actions.shape[0])
+    reward_batch_prob = np.einsum(
+        'uw,uw->wu',
+        -cost(x_batch, np.array([all_actions])),
+        pi_response
+    ) # (w_hat_batch_size, all_actions.shape[0])
     expectation_term_2 = np.array([
         np.sum(reward_batch_prob, axis=1) # (w_hat_batch_size,)
     ]) # (1, w_hat_batch_size)
@@ -235,9 +243,9 @@ def Q(x, u, w_hat_t):
 #%% Policy function as PyTorch model
 class PolicyNetwork():
     def __init__(self, input_dim, lr=0.003):
-        self.alpha = torch.zeros([1,input_dim], requires_grad=True)
+        self.alpha = torch.ones([1,input_dim], requires_grad=True)
         # self.beta = torch.zeros([1,input_dim], requires_grad=True)
-        self.beta = torch.tensor(0.0, dtype=torch.double, requires_grad=True)
+        self.beta = torch.tensor(1.0, dtype=torch.double, requires_grad=True)
         self.optimizer = torch.optim.Adam([self.alpha, self.beta], lr)
 
     def update(self, returns, log_probs):
@@ -250,14 +258,15 @@ class PolicyNetwork():
         for i, (log_prob, Gt) in enumerate(zip(log_probs, returns)):
             policy_gradient.append(-log_prob * gamma**((len(returns)-i) * dt) * Gt)
 
-        loss = torch.stack(policy_gradient).sum()
+        # loss = torch.stack(policy_gradient).sum()
+        loss = torch.stack(policy_gradient).mean()
 
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
 
     def get_action_distribution(self, s):
-        phi_s = torch.Tensor(tensor.phi(s)) # torch.Tensor(s)
+        phi_s = torch.Tensor(s) # torch.Tensor(tensor.phi(s))
         mu = (self.alpha @ phi_s)[0,0]
         sigma = torch.exp(self.beta) # (self.beta @ phi_s)[0,0]
         return torch.distributions.normal.Normal(mu, sigma, validate_args=False)
@@ -339,7 +348,7 @@ def reinforce(estimator, n_episode, gamma=1.0):
 # n_state = env.observation_space.shape[0]
 num_actions = all_actions.shape[0]
 
-policy_net = PolicyNetwork(phi_dim) # state_dim
+policy_net = PolicyNetwork(state_dim) # phi_dim
 
 # policy_net = torch.load(PATH)
 
@@ -382,7 +391,7 @@ def watch_agent(num_episodes, test_steps):
         koopman_state = state
 
         for step in range(test_steps):
-            # Append state to list of states
+            # Append new states to running list of states
             lqr_states[episode,:,step] = lqr_state[:,0]
             koopman_states[episode,:,step] = koopman_state[:,0]
 
