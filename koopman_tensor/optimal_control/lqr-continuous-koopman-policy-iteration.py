@@ -42,10 +42,10 @@ def f(x, u):
 Q = np.eye(state_dim)
 R = 1
 w_r = np.array([
-    [0.0],
-    [0.0],
-    [0.0],
-    [0.0]
+    [10.0],
+    [10.0],
+    [10.0],
+    [10.0]
 ])
 def cost(x, u):
     # Assuming that data matrices are passed in for X and U. Columns are snapshots
@@ -56,10 +56,10 @@ def cost(x, u):
 
 #%% Initialize important vars
 state_range = 25.0
-state_minimums = np.ones([state_dim,1]) * -state_range
-state_maximums = np.ones([state_dim,1]) * state_range
+state_minimums = np.ones([state_dim,1]) * -state_range+10
+state_maximums = np.ones([state_dim,1]) * state_range+10
 
-action_range = 25.0
+action_range = 75.0
 action_minimums = np.ones([action_dim,1]) * -action_range
 action_maximums = np.ones([action_dim,1]) * action_range
 

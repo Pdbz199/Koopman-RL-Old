@@ -4,6 +4,8 @@ import torch
 import sys
 sys.path.append('../')
 from tensor import KoopmanTensor, OLS
+sys.path.append('../../')
+import observables
 
 class ContinuousKoopmanPolicyIterationPolicy:
     """
@@ -62,14 +64,15 @@ class ContinuousKoopmanPolicyIterationPolicy:
         self.w_hat_batch_size = w_hat_batch_size
 
         # self.alpha = torch.zeros([1, self.dynamics_model.phi_dim], requires_grad=True)
-        self.alpha = torch.zeros([1, self.dynamics_model.x_dim], requires_grad=True)
+        self.alpha = torch.zeros([1, self.dynamics_model.x_dim+1], requires_grad=True)
         self.beta = torch.tensor(0.1, requires_grad=True)
         self.optimizer = torch.optim.Adam([self.alpha, self.beta], self.learning_rate)
         self.w_hat = np.zeros(self.dynamics_model.phi_column_dim)
 
     def get_action_distribution(self, s):
         # phi_s = torch.Tensor(self.dynamics_model.phi(s))
-        phi_s = torch.Tensor(s)
+        phi_s = torch.cat([torch.Tensor(s), torch.tensor([[1]])])
+        # mu = (self.alpha @ (phi_s / torch.linalg.norm(phi_s)))[0,0]
         mu = (self.alpha @ phi_s)[0,0]
         sigma = torch.exp(self.beta)
         return torch.distributions.normal.Normal(mu, sigma, validate_args=False)
