@@ -18,13 +18,12 @@ import observables
 import utilities
 
 #%% Initialize environment
-state_dim = 3
+state_dim = 4
 action_dim = 1
 
 A = np.zeros([state_dim, state_dim])
 max_abs_real_eigen_val = 1.0
-step = 0
-while (max_abs_real_eigen_val >= 1.0 or max_abs_real_eigen_val <= 0.7) and (step < 100000):
+while max_abs_real_eigen_val >= 1.0 or max_abs_real_eigen_val <= 0.7:
     Z = np.random.rand(*A.shape)
     _,sigma,__ = np.linalg.svd(Z)
     Z /= np.max(sigma)
@@ -32,7 +31,6 @@ while (max_abs_real_eigen_val >= 1.0 or max_abs_real_eigen_val <= 0.7) and (step
     W,_ = np.linalg.eig(A)
     max_eigenvalue = np.max(np.absolute(W, W))
     max_abs_real_eigen_val = np.max(np.abs(np.real(W)))
-    step += 1
 
 print(f"Maximum eigenvalue: {max_eigenvalue}")
 print("A:\n", A)
@@ -48,6 +46,7 @@ R = 1
 w_r = np.array([
     [0.0],
     [0.0],
+    [0.0],
     [0.0]
 ])
 def cost(x, u):
@@ -58,11 +57,11 @@ def cost(x, u):
     return mat.T
 
 #%% Initialize important vars
-state_range = 50.0
+state_range = 25.0
 state_minimums = np.ones([state_dim,1]) * -state_range
 state_maximums = np.ones([state_dim,1]) * state_range
 
-action_range = 50.0
+action_range = 75.0
 action_minimums = np.ones([action_dim,1]) * -action_range
 action_maximums = np.ones([action_dim,1]) * action_range
 
@@ -115,8 +114,8 @@ policy = DiscreteKoopmanValueIterationPolicy(
     'lqr-value-iteration.pt'
 )
 policy.train(
-    training_epochs=500,
-    batch_size=2**9,
+    training_epochs=10000,
+    batch_size=2**10,
     batch_scale=3,
     epsilon=1e-2,
     gamma_increment_amount=0.01

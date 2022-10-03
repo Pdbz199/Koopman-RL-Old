@@ -4,8 +4,8 @@ import torch
 import sys
 sys.path.append('../')
 from tensor import KoopmanTensor, OLS
-sys.path.append('../../')
-import observables
+# sys.path.append('../../')
+# import observables
 
 class ContinuousKoopmanPolicyIterationPolicy:
     """
