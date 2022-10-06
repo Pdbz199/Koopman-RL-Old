@@ -162,6 +162,16 @@ class DiscreteKoopmanValueIterationPolicy:
                 loss.backward()
                 self.optimizer.step()
 
+                phi_x_prime_batch = self.dynamics_model.K_(np.array([self.all_actions])) @ phi_x_batch # (all_actions.shape[0], phi_dim, w_hat_batch_size)
+                phi_x_prime_batch_prob = torch.einsum('upw,uw->upw', torch.Tensor(phi_x_prime_batch), V_x_primes_arr) # (all_actions.shape[0], phi_dim, w_hat_batch_size)
+                expectation_term_2 = torch.sum(phi_x_prime_batch_prob, axis=0) # (phi_dim, w_hat_batch_size)
+
+                w_hat = torch.lstsq(
+                    (torch.Tensor(phi_x_batch) - (self.gamma*expectation_term_2)).T,
+                    expectation_term_1.T
+                ).solution
+                print(w_hat.shape) # (1024,1)
+
                 # Recompute Bellman error
                 BE = self.discrete_bellman_error(batch_size*batch_scale).data.numpy()
                 bellman_errors = np.append(bellman_errors, BE)
