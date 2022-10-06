@@ -111,10 +111,11 @@ policy = DiscreteKoopmanValueIterationPolicy(
     tensor,
     all_actions,
     cost,
-    'lqr-value-iteration-copy.pt'
+    'lqr-value-iteration-copy.pt',
+    # load_model=True
 )
 policy.train(
-    training_epochs=500,
+    training_epochs=15000,
     batch_size=2**10,
     batch_scale=3,
     epsilon=1e-2,

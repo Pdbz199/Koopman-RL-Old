@@ -1,10 +1,6 @@
 import numpy as np
 import torch
 
-seed = 123
-torch.manual_seed(seed)
-np.random.seed(seed)
-
 import sys
 sys.path.append('../')
 from tensor import KoopmanTensor
@@ -24,8 +20,14 @@ class DiscreteKoopmanValueIterationPolicy:
         cost,
         saved_file_path,
         dt=1.0,
-        learning_rate=0.003
+        learning_rate=0.003,
+        seed=123,
+        load_model=False
     ):
+        self.seed = seed
+        torch.manual_seed(self.seed)
+        np.random.seed(self.seed)
+
         self.true_dynamics = true_dynamics
         self.gamma = gamma
         self.lamb = lamb
@@ -36,7 +38,11 @@ class DiscreteKoopmanValueIterationPolicy:
         self.dt = dt
         self.learning_rate = learning_rate
 
-        self.policy_model_weights = torch.zeros([1, self.dynamics_model.phi_dim], requires_grad=True)
+        if load_model:
+            self.policy_model_weights = torch.load(self.saved_file_path)
+        else:
+            self.policy_model_weights = torch.zeros([1, self.dynamics_model.phi_dim], requires_grad=True)
+
         self.optimizer = torch.optim.Adam([self.policy_model_weights], self.learning_rate)
 
     def inner_pi_us(self, us, xs):

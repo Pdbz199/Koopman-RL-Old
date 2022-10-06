@@ -2,10 +2,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-seed = 123
-torch.manual_seed(seed)
-np.random.seed(seed)
-
 import sys
 sys.path.append('../')
 from tensor import KoopmanTensor, OLS
@@ -29,6 +25,8 @@ class DiscreteKoopmanPolicyIterationPolicy:
         dt=1.0,
         learning_rate=0.003,
         w_hat_batch_size=2**12,
+        seed=123,
+        load_model=False
     ):
         """
             Constructor for the DiscreteKoopmanPolicyIterationPolicy class.
@@ -48,6 +46,10 @@ class DiscreteKoopmanPolicyIterationPolicy:
                 w_hat_batch_size: The batch size of the policy.
         """
 
+        self.seed = seed
+        torch.manual_seed(self.seed)
+        np.random.seed(self.seed)
+
         self.true_dynamics = true_dynamics
         self.gamma = gamma
         self.lamb = lamb
@@ -57,14 +59,25 @@ class DiscreteKoopmanPolicyIterationPolicy:
         self.all_actions = all_actions
         self.cost = cost
         self.saved_file_path = saved_file_path
+        split_path = self.saved_file_path.split('.')
+        if len(split_path) == 1:
+            self.saved_file_path_w_hat = split_path[0] + '-w_hat.pt'
+        else:
+            self.saved_file_path_w_hat = split_path[0] + '-w_hat.' + split_path[1]
         self.dt = dt
         self.learning_rate = learning_rate
         self.w_hat_batch_size = w_hat_batch_size
 
-        self.policy_model = nn.Sequential(
-            nn.Linear(self.dynamics_model.x_dim, self.all_actions.shape[0]),
-            nn.Softmax(dim=-1)
-        )
+        if load_model:
+            self.policy_model = torch.load(self.saved_file_path)
+            self.w_hat = torch.load(self.saved_file_path_w_hat).numpy()
+        else:
+            self.policy_model = nn.Sequential(
+                nn.Linear(self.dynamics_model.x_dim, self.all_actions.shape[0]),
+                nn.Softmax(dim=-1)
+            )
+            self.w_hat = np.zeros(self.dynamics_model.phi_column_dim)
+
         self.optimizer = torch.optim.Adam(self.policy_model.parameters(), self.learning_rate)
         self.w_hat = np.zeros(self.dynamics_model.phi_column_dim)
         
@@ -206,5 +219,6 @@ class DiscreteKoopmanPolicyIterationPolicy:
             if (episode+1) % 250 == 0:
                 print(f"Episode: {episode+1}, discounted total reward: {total_reward_episode[episode]}")
                 torch.save(self.policy_model, self.saved_file_path)
+                torch.save(torch.Tensor(self.w_hat), self.saved_file_path_w_hat)
 
             self.update_w_hat()

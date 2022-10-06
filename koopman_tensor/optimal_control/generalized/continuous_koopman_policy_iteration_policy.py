@@ -26,7 +26,8 @@ class ContinuousKoopmanPolicyIterationPolicy:
         dt=1.0,
         learning_rate=0.003,
         w_hat_batch_size=2**12,
-        seed=123
+        seed=123,
+        load_model=False
     ):
         """
             Constructor for the DiscreteKoopmanPolicyIterationPolicy class.
@@ -63,11 +64,17 @@ class ContinuousKoopmanPolicyIterationPolicy:
         self.learning_rate = learning_rate
         self.w_hat_batch_size = w_hat_batch_size
 
-        # self.alpha = torch.zeros([1, self.dynamics_model.phi_dim], requires_grad=True)
-        self.alpha = torch.zeros([1, self.dynamics_model.x_dim+1], requires_grad=True)
-        self.beta = torch.tensor(0.1, requires_grad=True)
+        if load_model:
+            saved_model = torch.load(self.saved_file_path)
+            self.alpha = saved_model.alpha
+            self.beta = saved_model.beta
+            self.w_hat = saved_model.w_hat
+        else:
+            self.alpha = torch.zeros([1, self.dynamics_model.x_dim+1], requires_grad=True)
+            self.beta = torch.tensor(0.1, requires_grad=True)
+            self.w_hat = np.zeros(self.dynamics_model.phi_column_dim)
+
         self.optimizer = torch.optim.Adam([self.alpha, self.beta], self.learning_rate)
-        self.w_hat = np.zeros(self.dynamics_model.phi_column_dim)
 
     def get_action_distribution(self, s):
         # phi_s = torch.Tensor(self.dynamics_model.phi(s))

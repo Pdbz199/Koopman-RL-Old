@@ -25,8 +25,14 @@ class DiscreteKoopmanValueIterationPolicy:
         cost,
         saved_file_path,
         dt=1.0,
-        learning_rate=0.003
+        learning_rate=0.003,
+        seed=123,
+        load_model=False
     ):
+        self.seed = seed
+        torch.manual_seed(self.seed)
+        np.random.seed(self.seed)
+
         self.true_dynamics = true_dynamics
         self.gamma = gamma
         self.lamb = lamb
@@ -37,15 +43,19 @@ class DiscreteKoopmanValueIterationPolicy:
         self.dt = dt
         self.learning_rate = learning_rate
 
-        self.policy_model_weights = torch.zeros([1, self.dynamics_model.phi_dim], requires_grad=True)
-        self.optimizer = torch.optim.Adam([self.policy_model_weights], self.learning_rate)
+        if load_model:
+            self.value_function_weights = torch.load(self.saved_file_path)
+        else:
+            self.value_function_weights = torch.zeros([1, self.dynamics_model.phi_dim], requires_grad=True)
+            
+        self.optimizer = torch.optim.Adam([self.value_function_weights], self.learning_rate)
 
     def inner_pi_us(self, us, xs):
         phi_x_primes = self.dynamics_model.K_(us) @ self.dynamics_model.phi(xs) # us.shape[1] x dim_phi x xs.shape[1]
 
         V_x_primes_arr = torch.zeros([self.all_actions.shape[0], xs.shape[1]])
         for u in range(phi_x_primes.shape[0]):
-            V_x_primes_arr[u] = self.policy_model_weights @ torch.Tensor(phi_x_primes[u]) # (1, xs.shape[1])
+            V_x_primes_arr[u] = self.value_function_weights @ torch.Tensor(phi_x_primes[u]) # (1, xs.shape[1])
 
         inner_pi_us_values = -(torch.Tensor(self.cost(xs, us)) + (self.gamma**self.dt)*V_x_primes_arr) # us.shape[1] x xs.shape[1]
 
@@ -80,7 +90,7 @@ class DiscreteKoopmanValueIterationPolicy:
         # Compute V(x)'s
         V_x_primes_arr = torch.zeros([self.all_actions.shape[0], batch_size])
         for u in range(phi_x_primes.shape[0]):
-            V_x_primes_arr[u] = self.policy_model_weights @ torch.Tensor(phi_x_primes[u])
+            V_x_primes_arr[u] = self.value_function_weights @ torch.Tensor(phi_x_primes[u])
         
         # Get costs
         costs = torch.Tensor(
@@ -92,7 +102,7 @@ class DiscreteKoopmanValueIterationPolicy:
         expectation_u = torch.sum(expectation_us, axis=0).reshape(-1,1) # (batch_size, 1)
 
         # Use model to get V(x) for all phi(x)s
-        V_xs = self.policy_model_weights @ torch.Tensor(phi_xs) # (batch_size, 1)
+        V_xs = self.value_function_weights @ torch.Tensor(phi_xs) # (batch_size, 1)
 
         # Compute squared differences
         squared_differences = torch.pow(V_xs - expectation_u, 2) # 1 x batch_size
@@ -127,7 +137,7 @@ class DiscreteKoopmanValueIterationPolicy:
                 phi_x_batch = self.dynamics_model.phi(x_batch) # dim_phi x batch_size
 
                 # Compute estimate of V(x) given the current model
-                V_xs = self.policy_model_weights @ torch.Tensor(phi_x_batch) # (1, batch_size)
+                # V_xs = self.value_function_weights @ torch.Tensor(phi_x_batch) # (1, batch_size)
 
                 # Get current distribution of actions for each state
                 pis_response = self.pis(x_batch) # (all_actions.shape[0], batch_size)
@@ -137,7 +147,7 @@ class DiscreteKoopmanValueIterationPolicy:
                 phi_x_primes = self.dynamics_model.K_(np.array([self.all_actions])) @ phi_x_batch # all_actions.shape[0] x dim_phi x batch_size
                 V_x_primes_arr = torch.zeros([self.all_actions.shape[0], batch_size])
                 for u in range(phi_x_primes.shape[0]):
-                    V_x_primes_arr[u] = self.policy_model_weights @ torch.Tensor(phi_x_primes[u])
+                    V_x_primes_arr[u] = self.value_function_weights @ torch.Tensor(phi_x_primes[u])
 
                 # Get costs
                 costs = torch.Tensor(
@@ -155,22 +165,23 @@ class DiscreteKoopmanValueIterationPolicy:
 
                 # Equation 2.21 in Overleaf
                 # loss = torch.sum( torch.pow( V_xs - expectation_term_1, 2 ) ) # scalar
-                loss = torch.mean( torch.pow( V_xs - expectation_term_1, 2 ) ) # scalar
+                # loss = torch.mean( torch.pow( V_xs - expectation_term_1, 2 ) ) # scalar
                 
                 # Back propogation
-                self.optimizer.zero_grad()
-                loss.backward()
-                self.optimizer.step()
+                # self.optimizer.zero_grad()
+                # loss.backward()
+                # self.optimizer.step()
 
-                phi_x_prime_batch = self.dynamics_model.K_(np.array([self.all_actions])) @ phi_x_batch # (all_actions.shape[0], phi_dim, w_hat_batch_size)
-                phi_x_prime_batch_prob = torch.einsum('upw,uw->upw', torch.Tensor(phi_x_prime_batch), V_x_primes_arr) # (all_actions.shape[0], phi_dim, w_hat_batch_size)
+                phi_x_prime_batch = torch.Tensor(
+                    self.dynamics_model.K_(np.array([self.all_actions])) @ phi_x_batch
+                ) # (all_actions.shape[0], phi_dim, w_hat_batch_size)
+                phi_x_prime_batch_prob = torch.einsum('upw,uw->upw', phi_x_prime_batch, V_x_primes_arr) # (all_actions.shape[0], phi_dim, w_hat_batch_size)
                 expectation_term_2 = torch.sum(phi_x_prime_batch_prob, axis=0) # (phi_dim, w_hat_batch_size)
 
-                w_hat = torch.lstsq(
+                self.value_function_weights = torch.linalg.lstsq(
                     (torch.Tensor(phi_x_batch) - (self.gamma*expectation_term_2)).T,
                     expectation_term_1.T
-                ).solution
-                print(w_hat.shape) # (1024,1)
+                ).solution.T
 
                 # Recompute Bellman error
                 BE = self.discrete_bellman_error(batch_size*batch_scale).data.numpy()
@@ -180,11 +191,11 @@ class DiscreteKoopmanValueIterationPolicy:
                 # Or, if the bellman error is less than the epsilon, save the model weights
                 if (epoch+1) % 250 == 0:
                     # np.save('double_well_bellman_errors.npy', bellman_errors)
-                    torch.save(self.policy_model_weights, self.saved_file_path)
+                    torch.save(self.value_function_weights, self.saved_file_path)
                     print(f"Bellman error at epoch {epoch+1}: {BE}")
 
                 if BE <= epsilon:
-                    torch.save(self.policy_model_weights, self.saved_file_path)
+                    torch.save(self.value_function_weights, self.saved_file_path)
                     break
 
             if self.gamma == 0.99: break
