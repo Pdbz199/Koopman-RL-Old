@@ -1,4 +1,5 @@
 import numpy as np
+import time
 import torch
 
 seed = 123
@@ -53,7 +54,7 @@ class DiscreteKoopmanValueIterationPolicy:
     def pis(self, xs):
         with torch.no_grad():
             inner_pi_us_response = torch.real(
-                self.inner_pi_us(np.array([self.all_actions]), xs)
+                self.inner_pi_us(np.array([self.all_actions]), xs) #! bottleneck in performance (probably can't do anything)
             ) # all_actions.shape[0] x xs.shape[1]
 
             # Max trick
@@ -73,7 +74,7 @@ class DiscreteKoopmanValueIterationPolicy:
         phi_xs = self.dynamics_model.phi(x_batch) # dim_phi x batch_size
         phi_x_primes = self.dynamics_model.K_(np.array([self.all_actions])) @ phi_xs # all_actions.shape[0] x dim_phi x batch_size
 
-        pis_response = self.pis(x_batch) # all_actions.shape[0] x x_batch_size
+        pis_response = self.pis(x_batch) # all_actions.shape[0] x x_batch_size #! bottleneck in performance (probably can't do anything)
         log_pis = torch.log(pis_response) # all_actions.shape[0] x batch_size
 
         # Compute V(x)'s
