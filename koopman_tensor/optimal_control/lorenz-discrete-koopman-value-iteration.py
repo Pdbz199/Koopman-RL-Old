@@ -1,5 +1,4 @@
 #%% Imports
-from tkinter import W
 import numpy as np
 import torch
 
@@ -19,8 +18,6 @@ from tensor import KoopmanTensor
 sys.path.append('../../')
 import observables
 import utilities
-
-PATH = './lorenz-value-model.pt'
 
 #%% System dynamics
 state_dim = 3
@@ -127,16 +124,16 @@ print("Eigenvalues of continuous A:\n", W)
 print("Eigenvectors of continuous A:\n", V)
 
 #%% Cost function
-w_r = np.array([
-    [x_e],
-    [y_e],
-    [z_e]
-])
 # w_r = np.array([
-#     [-x_e],
-#     [-y_e],
+#     [x_e],
+#     [y_e],
 #     [z_e]
 # ])
+w_r = np.array([
+    [-x_e],
+    [-y_e],
+    [z_e]
+])
 # w_r = np.array([
 #     [0.0],
 #     [0.0],
@@ -216,11 +213,12 @@ policy = DiscreteKoopmanValueIterationPolicy(
     all_actions,
     cost,
     'lorenz-value-iteration.pt',
-    dt
+    dt,
+    # load_model=True
 )
 policy.train(
     training_epochs=500,
-    batch_size=2**9,
+    batch_size=2**10,
     batch_scale=3,
     epsilon=1e-2,
     gamma_increment_amount=0.02
@@ -259,10 +257,10 @@ def watch_agent(num_episodes, step_limit):
             koopman_states[episode,:,step] = koopman_state[:,0]
 
             lqr_action = lqr_policy(lqr_state)
-            # if lqr_action[0,0] > action_range:
-            #     lqr_action = np.array([[action_range]])
-            # elif lqr_action[0,0] < -action_range:
-            #     lqr_action = np.array([[-action_range]])
+            if lqr_action[0,0] > action_range:
+                lqr_action = np.array([[action_range]])
+            elif lqr_action[0,0] < -action_range:
+                lqr_action = np.array([[-action_range]])
             lqr_actions[episode,:,step] = lqr_action
 
             koopman_action = policy.get_action(koopman_state)

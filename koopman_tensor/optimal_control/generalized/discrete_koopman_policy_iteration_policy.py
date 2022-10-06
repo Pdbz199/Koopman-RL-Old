@@ -156,12 +156,12 @@ class DiscreteKoopmanPolicyIterationPolicy:
         ]) # (1, w_hat_batch_size)
 
         self.w_hat = OLS(
-            (phi_x_batch - (self.gamma*expectation_term_1)).T,
+            (phi_x_batch - ((self.gamma**self.dt)*expectation_term_1)).T,
             expectation_term_2.T
         )
 
     def Q(self, x, u):
-        return (-self.cost(x, u) + self.gamma*self.w_hat.T @ self.dynamics_model.phi_f(x, u))[0,0]
+        return (-self.cost(x, u) + (self.gamma**self.dt)*self.w_hat.T @ self.dynamics_model.phi_f(x, u))[0,0]
 
     def reinforce(self, num_training_episodes, num_steps_per_episode):
         """
@@ -197,7 +197,7 @@ class DiscreteKoopmanPolicyIterationPolicy:
                 curr_reward = -self.cost(state, action)[0,0]
                 rewards[step] = curr_reward
 
-                total_reward_episode[episode] += self.gamma**(step * self.dt) * curr_reward
+                total_reward_episode[episode] += self.gamma**(step*self.dt) * curr_reward
 
                 state = self.true_dynamics(state, action)
 

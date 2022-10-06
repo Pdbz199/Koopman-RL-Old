@@ -8,7 +8,7 @@ torch.manual_seed(seed)
 np.random.seed(seed)
 
 from control import dare
-from generalized.value_iteration_policy import DiscreteKoopmanValueIterationPolicy
+from generalized.discrete_koopman_value_iteration_policy import DiscreteKoopmanValueIterationPolicy
 
 import sys
 sys.path.append('../')
@@ -44,10 +44,10 @@ def f(x, u):
 Q = np.eye(state_dim)
 R = 1
 w_r = np.array([
-    [0.0],
-    [0.0],
-    [0.0],
-    [0.0]
+    [10.0],
+    [10.0],
+    [10.0],
+    [10.0]
 ])
 def cost(x, u):
     # Assuming that data matrices are passed in for X and U. Columns are snapshots
@@ -115,7 +115,7 @@ policy = DiscreteKoopmanValueIterationPolicy(
     # load_model=True
 )
 policy.train(
-    training_epochs=15000,
+    training_epochs=500,
     batch_size=2**10,
     batch_scale=3,
     epsilon=1e-2,

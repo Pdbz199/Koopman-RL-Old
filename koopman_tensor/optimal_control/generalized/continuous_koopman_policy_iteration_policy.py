@@ -117,12 +117,12 @@ class ContinuousKoopmanPolicyIterationPolicy:
         ]) # (1, w_hat_batch_size)
 
         self.w_hat = OLS(
-            (phi_x_batch - (self.gamma*expectation_term_1)).T,
+            (phi_x_batch - ((self.gamma**self.dt)*expectation_term_1)).T,
             expectation_term_2.T
         )
 
     def Q(self, x, u):
-        V_x_prime = self.gamma*self.w_hat.T @ self.dynamics_model.phi_f(x, u)
+        V_x_prime = (self.gamma**self.dt)*self.w_hat.T @ self.dynamics_model.phi_f(x, u)
         return (-self.cost(x, u) + V_x_prime)[0,0]
 
     def update_policy_model(self, returns, log_probs):
@@ -177,7 +177,7 @@ class ContinuousKoopmanPolicyIterationPolicy:
                 log_probs[step] = log_prob
 
                 rewards[step] = -self.cost(state, action)[0,0]
-                total_reward_episode[episode] += self.gamma**(step * self.dt) * rewards[step]
+                total_reward_episode[episode] += self.gamma**(step*self.dt) * rewards[step]
 
                 state = self.true_dynamics(state, action)
 

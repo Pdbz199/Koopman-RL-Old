@@ -1,9 +1,9 @@
 #%%
-from binascii import Error
 import numpy as np
 import scipy as sp
 import numba as nb
 
+#%%
 def checkMatrixRank(X, name):
     rank = np.linalg.matrix_rank(X)
     print(f"{name} matrix rank: {rank}")
@@ -33,7 +33,7 @@ def SINDy(Theta, dXdt, lamb=0.05):
     d = dXdt.shape[1]
     Xi = np.linalg.lstsq(Theta, dXdt, rcond=None)[0] # Initial guess: Least-squares
     
-    for k in range(10): #which parameter should we be tuning here for RRR comp
+    for _ in range(10): #which parameter should we be tuning here for RRR comp
         smallinds = np.abs(Xi) < lamb # Find small coefficients
         Xi[smallinds] = 0                          # and threshold
         for ind in range(d):                       # n is state dimension
@@ -142,7 +142,7 @@ class KoopmanTensor:
             self.M = ols(self.kron_matrix.T, self.regression_Y.T, p_inv).T
             self.B = ols(self.Phi_X.T, self.X.T, p_inv)
         else:
-            raise Error("Did not pick a supported regression algorithm.")
+            raise Exception("Did not pick a supported regression algorithm.")
 
         # reshape M into tensor K
         self.K = np.empty([
