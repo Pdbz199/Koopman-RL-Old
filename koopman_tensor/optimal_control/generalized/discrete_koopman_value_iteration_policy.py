@@ -137,7 +137,7 @@ class DiscreteKoopmanValueIterationPolicy:
                 pis_response = self.pis(x_batch) # (all_actions.shape[0], batch_size)
                 log_pis = torch.log(pis_response) # (all_actions.shape[0], batch_size)
 
-                # Compute V(x)'s
+                # Compute V(x')s
                 phi_x_primes = self.dynamics_model.K_(np.array([self.all_actions])) @ phi_x_batch # all_actions.shape[0] x dim_phi x batch_size
                 V_x_primes_arr = torch.zeros([self.all_actions.shape[0], batch_size])
                 for u in range(phi_x_primes.shape[0]):
