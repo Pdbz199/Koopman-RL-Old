@@ -24,7 +24,6 @@ class DiscreteKoopmanValueIterationPolicy:
         cost,
         saved_file_path,
         dt=1.0,
-        learning_rate=0.003,
         seed=123,
         load_model=False
     ):
@@ -40,7 +39,6 @@ class DiscreteKoopmanValueIterationPolicy:
         self.cost = cost
         self.saved_file_path = saved_file_path
         self.dt = dt
-        self.learning_rate = learning_rate
 
         if load_model:
             self.value_function_weights = torch.load(self.saved_file_path)
@@ -85,6 +83,7 @@ class DiscreteKoopmanValueIterationPolicy:
         log_pis = torch.log(pis_response) # all_actions.shape[0] x batch_size
 
         # Compute V(x)'s
+        # print("value function weights:", self.value_function_weights) #! Becomes too huge
         V_x_primes_arr = torch.zeros([self.all_actions.shape[0], batch_size])
         for u in range(phi_x_primes.shape[0]):
             V_x_primes_arr[u] = self.value_function_weights @ torch.Tensor(phi_x_primes[u])
@@ -106,7 +105,7 @@ class DiscreteKoopmanValueIterationPolicy:
         # total = torch.sum(squared_differences) / batch_size # scalar
         total = torch.mean(squared_differences) # scalar
 
-        return total
+        return total # / torch.mean(torch.linalg.norm(torch.Tensor(phi_x_primes), dim=1))
 
     def get_action(self, x, sample_size=None):
         pis_response = self.pis(x)[:,0]
@@ -120,13 +119,20 @@ class DiscreteKoopmanValueIterationPolicy:
         batch_size,
         batch_scale,
         epsilon,
-        gamma_increment_amount=0.02
+        gammas=[],
+        gamma_increment_amount=0.0#0.02
     ):
         bellman_errors = [self.discrete_bellman_error(batch_size*batch_scale).data.numpy()]
         BE = bellman_errors[-1]
         print("Initial Bellman error:", BE)
 
-        while self.gamma <= 0.99:
+        original_gamma = self.gamma
+        step = 0
+        if len(gammas) > 0:
+            self.gamma = gammas[step]
+        gammaIterationCondition = self.gamma <= 0.99
+        while gammaIterationCondition:
+            print("gamma:", self.gamma)
             for epoch in range(training_epochs):
                 # Get random batch of X and Phi_X
                 x_batch_indices = np.random.choice(self.dynamics_model.X.shape[1], batch_size, replace=False)
@@ -178,6 +184,21 @@ class DiscreteKoopmanValueIterationPolicy:
                     torch.save(self.value_function_weights, self.saved_file_path)
                     break
 
+            step += 1
+
+            if len(gammas) == 0 and gamma_increment_amount == 0:
+                gammaIterationCondition = False
+                break
+
             if self.gamma == 0.99: break
-            self.gamma += gamma_increment_amount
+
+            if len(gammas) > 0:
+                self.gamma = gammas[step]
+            else:
+                self.gamma += gamma_increment_amount
+
             if self.gamma > 0.99: self.gamma = 0.99
+
+            gammaIterationCondition = self.gamma <= 0.99
+        
+        self.gamma = original_gamma

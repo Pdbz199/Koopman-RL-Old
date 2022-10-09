@@ -1,4 +1,5 @@
 #%% Imports
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
@@ -7,10 +8,8 @@ torch.manual_seed(seed)
 np.random.seed(seed)
 
 from control import care
-from generalized.discrete_koopman_value_iteration_policy import DiscreteKoopmanValueIterationPolicy
-from matplotlib import pyplot as plt
+from generalized.discrete_koopman_actor_critic_policy import DiscreteKoopmanActorCriticPolicy
 from scipy.integrate import solve_ivp
-from scipy.special import comb
 
 import sys
 sys.path.append('../')
@@ -19,37 +18,13 @@ sys.path.append('../../')
 import observables
 import utilities
 
-#%% System dynamics
+#%% Initialize environment
 state_dim = 3
 action_dim = 1
-
-state_order = 2
-action_order = 2
 
 state_column_shape = [state_dim, 1]
 action_column_shape = [action_dim, 1]
 
-phi_dim = int( comb( state_order+state_dim, state_order ) )
-psi_dim = int( comb( action_order+action_dim, action_order ) )
-
-phi_column_shape = [phi_dim, 1]
-
-state_range = 50.0
-state_minimums = np.ones([state_dim,1]) * -state_range
-state_maximums = np.ones([state_dim,1]) * state_range
-
-action_range = 100.0
-action_minimums = np.ones([action_dim,1]) * -action_range
-action_maximums = np.ones([action_dim,1]) * action_range
-
-state_order = 2
-action_order = 2
-
-step_size = 1.0
-all_actions = np.arange(-action_range, action_range+step_size, step_size)
-all_actions = np.round(all_actions, decimals=2)
-
-#%% Rest of dynamics
 sigma = 10
 rho = 28
 beta = 8/3
@@ -59,6 +34,9 @@ dt = 0.01
 x_e = np.sqrt( beta * ( rho - 1 ) )
 y_e = np.sqrt( beta * ( rho - 1 ) )
 z_e = rho - 1
+
+def random_policy(x):
+    return np.random.choice(all_actions, size=action_column_shape)
 
 def continuous_f(action=None):
     """
@@ -74,9 +52,9 @@ def continuous_f(action=None):
         """
         x, y, z = input
 
-        # Coordinate shifting
-        # x = x + x_e
-        # y = y + y_e
+        # Shift coordinates to attractor
+        # x = x - x_e
+        # y = y - y_e
         # z = z + z_e
 
         x_dot = sigma * ( y - x )   # sigma*y - sigma*x
@@ -119,69 +97,62 @@ continuous_B = np.array([
     [0],
     [0]
 ])
-W,V = np.linalg.eig(continuous_A)
-print("Eigenvalues of continuous A:\n", W)
-print("Eigenvectors of continuous A:\n", V)
 
-#%% Cost function
-w_r = np.array([
-    [x_e],
-    [y_e],
-    [z_e]
-])
-# w_r = np.array([
-#     [-x_e],
-#     [-y_e],
-#     [z_e]
-# ])
+#%% Define cost
+Q = np.eye(state_dim)
+R = 0.001
 # w_r = np.array([
 #     [0.0],
 #     [0.0],
 #     [0.0]
 # ])
-Q = np.eye(state_dim)
-R = 0.001
+w_r = np.array([
+    [x_e],
+    [y_e],
+    [z_e]
+])
 def cost(x, u):
-    # Assuming that data matrices are passed in for X and U. Columns vectors are snapshots
-    # x.T @ Q @ x + u.T @ R @ u
-    _x = x - w_r
-    mat = np.vstack(np.diag(_x.T @ Q @ _x)) + np.power(u, 2)*R
+    # Assuming that data matrices are passed in for X and U. Columns are snapshots
+    # x.T Q x + u.T R u
+    x_ = x - w_r
+    mat = np.vstack(np.diag(x_.T @ Q @ x_)) + np.power(u, 2)*R
     return mat.T
 
-#%% Solve riccati equation
-# gamma = 0.99
-# gamma = 1e-3
-# gamma = 0.4
-gammas = [0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.2, 0.4, 0.6, 0.8, 0.99]
-gamma = gammas[-1]
-reg_lambda = 1
+#%% Initialize important vars
+state_range = 50.0 # 25.0
+state_minimums = np.ones([state_dim,1]) * -state_range
+state_maximums = np.ones([state_dim,1]) * state_range
 
+action_range = 100.0 # 75.0
+action_minimums = np.ones([action_dim,1]) * -action_range
+action_maximums = np.ones([action_dim,1]) * action_range
+
+state_order = 2
+action_order = 2
+
+step_size = 1.0
+all_actions = np.arange(-action_range, action_range+step_size, step_size)
+all_actions = np.round(all_actions, decimals=2)
+
+gamma = 0.99
+reg_lambda = 1.0
+
+#%% LQR policy
 P = care(continuous_A*np.sqrt(gamma), continuous_B*np.sqrt(gamma), Q, R)[0]
 C = np.linalg.inv(R + gamma*continuous_B.T @ P @ continuous_B) @ (gamma*continuous_B.T @ P @ continuous_A)
 sigma_t = reg_lambda * np.linalg.inv(R + continuous_B.T @ P @ continuous_B)
 
-#%% Default policy functions
-def zero_policy(x):
-    return np.zeros(action_column_shape)
-
-def random_policy(x):
-    return np.random.choice(all_actions, size=action_column_shape)
-
 def lqr_policy(x):
     return np.random.normal(-C @ (x - w_r), sigma_t)
 
-#%% Generate data
-num_episodes = 100
-num_steps_per_episode = int(50.0 / dt)
+#%% Construct datasets
+num_episodes = 500
+num_steps_per_episode = 1000
 N = num_episodes*num_steps_per_episode # Number of datapoints
 X = np.zeros([state_dim,N])
 Y = np.zeros([state_dim,N])
 U = np.zeros([action_dim,N])
 
-# initial_x = np.array([[-8], [-8], [27]])
-# initial_x = np.array([[-x_e], [-y_e], [z_e]])
-# initial_x = np.array([[0], [1], [1.05]])
-# initial_x = np.array([[0 + x_e], [1 + y_e], [1.05 + z_e]])
 initial_states = np.random.uniform(
     state_minimums,
     state_maximums,
@@ -189,11 +160,10 @@ initial_states = np.random.uniform(
 )
 
 for episode in range(num_episodes):
-    # x = initial_x + (np.random.rand(*state_column_shape) * 5 * np.random.choice([-1,1], size=state_column_shape))
-    x = np.vstack(initial_states[:, episode])
+    x = np.vstack(initial_states[: ,episode])
     for step in range(num_steps_per_episode):
         X[:,(episode*num_steps_per_episode)+step] = x[:,0]
-        u = random_policy(x)
+        u = np.random.choice(all_actions, size=action_column_shape)
         U[:,(episode*num_steps_per_episode)+step] = u[:,0]
         x = f(x, u)
         Y[:,(episode*num_steps_per_episode)+step] = x[:,0]
@@ -208,35 +178,31 @@ tensor = KoopmanTensor(
     regressor='ols'
 )
 
-#%% Run Algorithm
-policy = DiscreteKoopmanValueIterationPolicy(
+#%% Compute optimal policy
+policy = DiscreteKoopmanActorCriticPolicy(
     f,
     gamma,
-    reg_lambda,
     tensor,
+    state_minimums,
+    state_maximums,
     all_actions,
     cost,
-    'lorenz-value-iteration.pt',
-    dt,
-    # load_model=True
+    'lorenz-actor-critic.pt',
+    dt
 )
-policy.train(
-    training_epochs=500,
-    batch_size=2**10,
-    batch_scale=3,
-    epsilon=1e-2,
-    # gammas=gammas
-    # gamma_increment_amount=0.05
+policy.actor_critic(
+    num_training_episodes=1000,
+    num_steps_per_episode=int(20.0 / dt)
 )
 
-#%% Test policy in environment
-def watch_agent(num_episodes, step_limit):
-    lqr_states = np.zeros([num_episodes,state_dim,step_limit])
-    lqr_actions = np.zeros([num_episodes,action_dim,step_limit])
+#%% Test
+def watch_agent(num_episodes, test_steps):
+    lqr_states = np.zeros([num_episodes,state_dim,test_steps])
+    lqr_actions = np.zeros([num_episodes,action_dim,test_steps])
     lqr_costs = np.zeros([num_episodes])
 
-    koopman_states = np.zeros([num_episodes,state_dim,step_limit])
-    koopman_actions = np.zeros([num_episodes,action_dim,step_limit])
+    koopman_states = np.zeros([num_episodes,state_dim,test_steps])
+    koopman_actions = np.zeros([num_episodes,action_dim,test_steps])
     koopman_costs = np.zeros([num_episodes])
 
     initial_states = np.random.uniform(
@@ -246,39 +212,32 @@ def watch_agent(num_episodes, step_limit):
     )
 
     for episode in range(num_episodes):
-        # state = np.vstack(initial_xs[episode]) # to start with different initial condition, but same policy
-        # state = initial_x + (np.random.rand(*state_column_shape) * 5 * np.random.choice([-1,1], size=state_column_shape))
-        # state = np.array([[-x_e],[-y_e],[z_e]])
         state = np.vstack(initial_states[:, episode])
 
         lqr_state = state
         koopman_state = state
 
-        lqr_cumulative_cost = 0
-        koopman_cumulative_cost = 0
-
-        for step in range(step_limit):
+        for step in range(test_steps):
             lqr_states[episode,:,step] = lqr_state[:,0]
             koopman_states[episode,:,step] = koopman_state[:,0]
 
             lqr_action = lqr_policy(lqr_state)
-            if lqr_action[0,0] > action_range:
-                lqr_action = np.array([[action_range]])
-            elif lqr_action[0,0] < -action_range:
-                lqr_action = np.array([[-action_range]])
-            lqr_actions[episode,:,step] = lqr_action
+            # if lqr_action[0,0] > action_range:
+            #     lqr_action = np.array([[action_range]])
+            # elif lqr_action[0,0] < -action_range:
+            #     lqr_action = np.array([[-action_range]])
+            lqr_actions[episode,:,step] = lqr_action[:,0]
 
-            koopman_action = policy.get_action(koopman_state)
-            koopman_actions[episode,:,step] = koopman_action
+            with torch.no_grad():
+                koopman_u, _ = policy.get_action(koopman_state[:,0])
+            koopman_action = np.array([[koopman_u]])
+            koopman_actions[episode,:,step] = koopman_action[:,0]
 
-            lqr_cumulative_cost += cost(lqr_state, lqr_action)[0,0]
-            koopman_cumulative_cost += cost(koopman_state, lqr_action)[0,0]
+            lqr_costs[episode] += cost(lqr_state, lqr_action)[0,0]
+            koopman_costs[episode] += cost(koopman_state, koopman_action)[0,0]
 
             lqr_state = f(lqr_state, lqr_action)
             koopman_state = f(koopman_state, koopman_action)
-
-        lqr_costs[episode] = lqr_cumulative_cost
-        koopman_costs[episode] = koopman_cumulative_cost
 
     print(f"Mean cost per episode over {num_episodes} episode(s) (LQR controller): {np.mean(lqr_costs)}")
     print(f"Mean cost per episode over {num_episodes} episode(s) (Koopman controller): {np.mean(koopman_costs)}\n")
@@ -309,7 +268,6 @@ def watch_agent(num_episodes, step_limit):
     labels = []
     for i in range(state_dim):
         labels.append(f"x_{i}")
-    for i in range(state_dim):
         axs[0].plot(lqr_states[-1,i], label=labels[i])
         axs[1].plot(koopman_states[-1,i], label=labels[i])
     lines_labels = [axs[0].get_legend_handles_labels()]
@@ -347,6 +305,7 @@ def watch_agent(num_episodes, step_limit):
     plt.legend(labels)
     plt.show()
 
-#%%
 print("\nTesting learned policy...\n")
-watch_agent(num_episodes=100, step_limit=int(50.0 / dt))
+watch_agent(num_episodes=100, test_steps=int(50.0 / dt))
+
+#%%
