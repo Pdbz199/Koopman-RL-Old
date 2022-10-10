@@ -101,6 +101,7 @@ continuous_B = np.array([
 #%% Define cost
 Q = np.eye(state_dim)
 R = 0.001
+# R = 1
 # w_r = np.array([
 #     [0.0],
 #     [0.0],

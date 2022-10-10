@@ -98,18 +98,20 @@ class DiscreteKoopmanActorCriticPolicy:
 
         return self.policy_model(torch.Tensor(s))
 
-    def update_policy_model(self, returns, log_probs):
+    def update_policy_model(self, returns, log_probs, deltas):
         """
             Update the weights of the policy network given the training samples.
             
             INPUTS:
                 returns: return (cumulative rewards) for each step in an episode
                 log_probs: log probability for each step
+                deltas: delta (difference between R - R_bar + v(s') - v(s)) at each step in the path
         """
 
         policy_gradient = torch.zeros(log_probs.shape[0])
         for i, (log_prob, Gt) in enumerate(zip(log_probs, returns)):
-            policy_gradient[i] = -log_prob * self.gamma**((len(returns)-i) * self.dt) * Gt
+            # policy_gradient[i] = -log_prob * self.gamma**((len(returns)-i) * self.dt) * Gt
+            policy_gradient[i] = -log_prob * self.gamma**((len(returns)-i) * self.dt) * deltas[i]
 
         loss = policy_gradient.sum()
 
@@ -166,7 +168,7 @@ class DiscreteKoopmanActorCriticPolicy:
         self,
         num_training_episodes,
         num_steps_per_episode,
-        alpha_R=1
+        R_learning_rate=0.003
     ):
         """
             REINFORCE algorithm
@@ -192,6 +194,7 @@ class DiscreteKoopmanActorCriticPolicy:
             actions = torch.zeros(num_steps_per_episode)
             log_probs = torch.zeros(num_steps_per_episode)
             rewards = torch.zeros(num_steps_per_episode)
+            deltas = torch.zeros(num_steps_per_episode)
 
             state = np.vstack(initial_states[:, episode])
             for step in range(num_steps_per_episode):
@@ -213,10 +216,11 @@ class DiscreteKoopmanActorCriticPolicy:
                 total_reward_episode[episode] += self.gamma**(step*self.dt) * curr_reward
 
                 # Update δ
-                delta = curr_reward - R_bar + (self.w_hat.T @ self.phi(next_state)) - (self.w_hat.T @ self.phi(state))
+                delta = curr_reward - R_bar + (self.gamma**self.dt)*(self.w_hat.T @ self.phi(next_state)) - (self.w_hat.T @ self.phi(state))
+                deltas[step] = torch.Tensor(delta)
 
                 # Update R bar
-                R_bar = R_bar + alpha_R * delta
+                R_bar = R_bar + R_learning_rate * delta
 
                 # Update state for next loop
                 state = next_state
@@ -231,7 +235,7 @@ class DiscreteKoopmanActorCriticPolicy:
 
             returns = (returns - returns.mean()) / (returns.std() + torch.finfo(torch.float64).eps)
 
-            self.update_policy_model(returns, log_probs)
+            self.update_policy_model(returns, log_probs, deltas)
             if (episode+1) % 250 == 0:
                 print(f"Episode: {episode+1}, discounted total reward: {total_reward_episode[episode]}")
                 torch.save(self.policy_model, self.saved_file_path)
