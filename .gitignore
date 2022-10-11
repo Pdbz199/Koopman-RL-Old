@@ -15,3 +15,5 @@ BruntonKoopmanPiNotes.pdf
 cs4789-Cartpole-Solution/
 .DS_Store
 *.pt
+*.ipynb
+*.gif
