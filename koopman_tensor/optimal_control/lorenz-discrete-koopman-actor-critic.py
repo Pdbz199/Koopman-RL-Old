@@ -189,15 +189,19 @@ policy = DiscreteKoopmanActorCriticPolicy(
     all_actions,
     cost,
     'lorenz-actor-critic.pt',
-    dt
+    dt,
+    load_model=True
 )
-policy.actor_critic(
-    num_training_episodes=1000,
-    num_steps_per_episode=int(20.0 / dt)
-)
+# policy.actor_critic(
+#     num_training_episodes=1000,
+#     num_steps_per_episode=int(20.0 / dt)
+# )
 
 #%% Test
 def watch_agent(num_episodes, test_steps):
+    # specifiedEpisode = -1
+    specifiedEpisode = 42
+
     lqr_states = np.zeros([num_episodes,state_dim,test_steps])
     lqr_actions = np.zeros([num_episodes,action_dim,test_steps])
     lqr_costs = np.zeros([num_episodes])
@@ -243,19 +247,19 @@ def watch_agent(num_episodes, test_steps):
     print(f"Mean cost per episode over {num_episodes} episode(s) (LQR controller): {np.mean(lqr_costs)}")
     print(f"Mean cost per episode over {num_episodes} episode(s) (Koopman controller): {np.mean(koopman_costs)}\n")
 
-    print(f"Initial state of final episode (LQR controller): {lqr_states[-1,:,0]}")
-    print(f"Final state of final episode (LQR controller): {lqr_states[-1,:,-1]}\n")
+    print(f"Initial state of final episode (LQR controller): {lqr_states[specifiedEpisode,:,0]}")
+    print(f"Final state of final episode (LQR controller): {lqr_states[specifiedEpisode,:,-1]}\n")
 
-    print(f"Initial state of final episode (Koopman controller): {koopman_states[-1,:,0]}")
-    print(f"Final state of final episode (Koopman controller): {koopman_states[-1,:,-1]}\n")
+    print(f"Initial state of episode #{specifiedEpisode} (Koopman controller): {koopman_states[specifiedEpisode,:,0]}")
+    print(f"Final state of episode #{specifiedEpisode} (Koopman controller): {koopman_states[specifiedEpisode,:,-1]}\n")
 
     print(f"Reference state: {w_r[:,0]}\n")
 
-    print(f"Difference between final state of final episode and reference state (LQR controller): {np.abs(lqr_states[-1,:,-1] - w_r[:,0])}")
-    print(f"Norm between final state of final episode and reference state (LQR controller): {utilities.l2_norm(lqr_states[-1,:,-1], w_r[:,0])}\n")
+    print(f"Difference between final state of episode #{specifiedEpisode} and reference state (LQR controller): {np.abs(lqr_states[specifiedEpisode,:,-1] - w_r[:,0])}")
+    print(f"Norm between final state of episode #{specifiedEpisode} and reference state (LQR controller): {utilities.l2_norm(lqr_states[specifiedEpisode,:,-1], w_r[:,0])}\n")
 
-    print(f"Difference between final state of final episode and reference state (Koopman controller): {np.abs(koopman_states[-1,:,-1] - w_r[:,0])}")
-    print(f"Norm between final state of final episode and reference state (Koopman controller): {utilities.l2_norm(koopman_states[-1,:,-1], w_r[:,0])}")
+    print(f"Difference between final state of episode #{specifiedEpisode} and reference state (Koopman controller): {np.abs(koopman_states[specifiedEpisode,:,-1] - w_r[:,0])}")
+    print(f"Norm between final state of final episode #{specifiedEpisode} and reference state (Koopman controller): {utilities.l2_norm(koopman_states[specifiedEpisode,:,-1], w_r[:,0])}")
 
     fig, axs = plt.subplots(2)
     fig.suptitle('Dynamics Over Time')
@@ -269,8 +273,8 @@ def watch_agent(num_episodes, test_steps):
     labels = []
     for i in range(state_dim):
         labels.append(f"x_{i}")
-        axs[0].plot(lqr_states[-1,i], label=labels[i])
-        axs[1].plot(koopman_states[-1,i], label=labels[i])
+        axs[0].plot(lqr_states[specifiedEpisode,i], label=labels[i])
+        axs[1].plot(koopman_states[specifiedEpisode,i], label=labels[i])
     lines_labels = [axs[0].get_legend_handles_labels()]
     lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
     fig.legend(lines, labels)
@@ -278,31 +282,41 @@ def watch_agent(num_episodes, test_steps):
     plt.tight_layout()
     plt.show()
 
-    ax = plt.axes(projection='3d')
+    fig = plt.figure()
+    ax = fig.add_subplot(1, 2, 1, projection='3d')
     ax.set_xlim(-20.0, 20.0)
     ax.set_ylim(-50.0, 50.0)
     ax.set_zlim(0.0, 50.0)
-    ax.plot3D(lqr_states[-1,0], lqr_states[-1,1], lqr_states[-1,2], 'gray')
-    plt.title("LQR Controller in Environment (3D)")
-    plt.show()
+    ax.plot(
+        lqr_states[specifiedEpisode,0],
+        lqr_states[specifiedEpisode,1],
+        lqr_states[specifiedEpisode,2],
+        'gray'
+    )
+    ax.set_title("LQR Controller in Environment (3D)")
 
-    ax = plt.axes(projection='3d')
+    ax = fig.add_subplot(1, 2, 2, projection='3d')
     ax.set_xlim(-20.0, 20.0)
     ax.set_ylim(-50.0, 50.0)
     ax.set_zlim(0.0, 50.0)
-    ax.plot3D(koopman_states[-1,0], koopman_states[-1,1], koopman_states[-1,2], 'gray')
-    plt.title("Koopman Controller in Environment (3D)")
+    ax.plot(
+        koopman_states[specifiedEpisode,0],
+        koopman_states[specifiedEpisode,1],
+        koopman_states[specifiedEpisode,2],
+        'gray'
+    )
+    ax.set_title("Koopman Controller in Environment (3D)")
     plt.show()
 
     labels = ['LQR controller', 'Koopman controller']
 
-    plt.hist(lqr_actions[-1,0])
-    plt.hist(koopman_actions[-1,0])
+    plt.hist(lqr_actions[specifiedEpisode,0])
+    plt.hist(koopman_actions[specifiedEpisode,0])
     plt.legend(labels)
     plt.show()
 
-    plt.scatter(np.arange(lqr_actions.shape[2]), lqr_actions[-1,0], s=5)
-    plt.scatter(np.arange(koopman_actions.shape[2]), koopman_actions[-1,0], s=5)
+    plt.scatter(np.arange(lqr_actions.shape[2]), lqr_actions[specifiedEpisode,0], s=5)
+    plt.scatter(np.arange(koopman_actions.shape[2]), koopman_actions[specifiedEpisode,0], s=5)
     plt.legend(labels)
     plt.show()
 
