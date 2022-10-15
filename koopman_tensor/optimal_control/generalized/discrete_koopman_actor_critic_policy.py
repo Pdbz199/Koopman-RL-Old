@@ -75,14 +75,31 @@ class DiscreteKoopmanActorCriticPolicy:
                 nn.Linear(self.dynamics_model.x_dim, self.all_actions.shape[0]),
                 nn.Softmax(dim=-1)
             ) # actor model
+
+            # self.policy_model = nn.Sequential(
+            #     nn.Linear(self.dynamics_model.phi_dim, self.all_actions.shape[0]),
+            #     nn.Softmax(dim=-1)
+            # ) # actor model
+
             self.w_hat = np.zeros(self.dynamics_model.phi_column_dim) # critic weights
+
+            # self.critic_model = nn.Sequential(
+            #     nn.Linear(self.dynamics_model.x_dim, 128),
+            #     nn.ReLU(),
+            #     nn.Linear(128, 256),
+            #     nn.ReLU(),
+            #     nn.Linear(256, 1)
+            # )
 
             def init_weights(m):
                 if type(m) == torch.nn.Linear:
                     m.weight.data.fill_(0.0)
+
             self.policy_model.apply(init_weights)
+            # self.critic_model.apply(init_weights)
 
         self.optimizer = torch.optim.Adam(self.policy_model.parameters(), self.learning_rate)
+        # self.critic_optimizer = torch.optim.Adam(self.critic_model.parameters(), self.learning_rate)
 
     def predict(self, s):
         """
@@ -97,22 +114,25 @@ class DiscreteKoopmanActorCriticPolicy:
 
         return self.policy_model(torch.Tensor(s))
 
-    def update_policy_model(self, returns, log_probs, deltas):
+    def update_policy_model(self, log_probs, advantages):
         """
             Update the weights of the policy network given the training samples.
             
             INPUTS:
-                returns: return (cumulative rewards) for each step in an episode
-                log_probs: log probability for each step
-                deltas: delta (difference between R - R_bar + v(s') - v(s)) at each step in the path
+                log_probs: log probability for each step.
+                # deltas: delta (difference between R - R_bar + V(x') - V(x)) at each step in the path
+                advantages: (reward + V(x')) - V(x) for each step in path.
         """
 
         policy_gradient = torch.zeros(log_probs.shape[0])
-        for i, (log_prob, Gt) in enumerate(zip(log_probs, returns)):
-            # policy_gradient[i] = -log_prob * self.gamma**((len(returns)-i) * self.dt) * Gt
-            policy_gradient[i] = -log_prob * self.gamma**((len(returns)-i) * self.dt) * deltas[i]
 
-        loss = policy_gradient.sum()
+        for i, (log_prob, advantage) in enumerate(zip(log_probs, advantages)):
+            # policy_gradient[i] = -log_prob * self.gamma**((len(advantages)-i) * self.dt) * advantage
+            # policy_gradient[i] = -log_prob * (self.gamma**self.dt) * advantage
+            policy_gradient[i] = -log_prob * advantage
+
+        # loss = policy_gradient.sum()
+        loss = policy_gradient.mean()
 
         self.optimizer.zero_grad()
         loss.backward()
@@ -160,8 +180,13 @@ class DiscreteKoopmanActorCriticPolicy:
             expectation_term_2.T
         )
 
-    def Q(self, x, u):
-        return (-self.cost(x, u) + (self.gamma**self.dt)*self.w_hat.T @ self.dynamics_model.phi_f(x, u))[0,0]
+    def compute_returns(self, V_x_prime, rewards):
+        R = V_x_prime
+        returns = []
+        for step in reversed(range(len(rewards))):
+            R = rewards[step] + self.gamma * R
+            returns.insert(0, R)
+        return torch.Tensor(returns)
 
     def actor_critic(
         self,
@@ -178,7 +203,7 @@ class DiscreteKoopmanActorCriticPolicy:
         """
 
         # Initialize R_bar (Average reward)
-        R_bar = 0.0
+        # R_bar = 0.0
 
         # Initialize S
         initial_states = np.random.uniform(
@@ -193,7 +218,9 @@ class DiscreteKoopmanActorCriticPolicy:
             actions = torch.zeros(num_steps_per_episode)
             log_probs = torch.zeros(num_steps_per_episode)
             rewards = torch.zeros(num_steps_per_episode)
-            deltas = torch.zeros(num_steps_per_episode)
+            # deltas = torch.zeros(num_steps_per_episode)
+            # advantages = torch.zeros(num_steps_per_episode)
+            V_xs = torch.zeros(num_steps_per_episode)
 
             state = np.vstack(initial_states[:, episode])
             for step in range(num_steps_per_episode):
@@ -212,32 +239,53 @@ class DiscreteKoopmanActorCriticPolicy:
                 curr_reward = -self.cost(state, action)[0,0]
 
                 rewards[step] = curr_reward
-                total_reward_episode[episode] += self.gamma**(step*self.dt) * curr_reward
+                total_reward_episode[episode] += (self.gamma**(step*self.dt)) * curr_reward
+                # total_reward_episode[episode] += self.gamma**step * curr_reward
 
-                # Update δ
-                delta = curr_reward - R_bar + (self.gamma**self.dt)*(self.w_hat.T @ self.phi(next_state)) - (self.w_hat.T @ self.phi(state))
-                deltas[step] = torch.Tensor(delta)
+                # Compute results of value functions
+                V_x = self.w_hat.T @ self.phi(state)
+                V_xs[step] = torch.Tensor(V_x)
+                # V_x = self.critic_model(torch.Tensor(state[:,0]))
+                # V_xs[step] = V_x
+                # V_x_prime = self.w_hat.T @ self.phi(next_state)
+
+                # Compute δ
+                # delta = (curr_reward - R_bar + (self.gamma**self.dt)*V_x_prime) - V_x
+                # deltas[step] = torch.Tensor(delta)
+
+                # Compute advantage
+                # advantage = (curr_reward + (self.gamma**self.dt)*V_x_prime) - V_x
+                # advantage = curr_reward + self.gamma*V_x_prime - V_x
+                # advantage = returns - V_x
+                # advantages[step] = torch.Tensor(advantage)
 
                 # Update R bar
-                R_bar = R_bar + R_learning_rate * delta
+                # R_bar = R_bar + R_learning_rate * delta
 
                 # Update state for next loop
                 state = next_state
 
-            returns = torch.zeros(num_steps_per_episode)
-            for i in range(num_steps_per_episode-1, -1, -1):
-                Q_val = self.Q(
-                    np.vstack(states[i]),
-                    np.array([[actions[i]]])
-                )
-                returns[i] = Q_val
+            V_x_prime = self.w_hat.T @ self.phi(next_state)
+            # V_x_prime = self.critic_model(torch.Tensor(next_state[:,0]))
+            returns = self.compute_returns(V_x_prime, rewards).detach()
+            advantages = returns - V_xs
 
-            returns = (returns - returns.mean()) / (returns.std() + torch.finfo(torch.float64).eps)
+            # Update actor (and critic)
+            loss = -(log_probs * advantages.detach()).mean()
+            # critic_loss = advantages.pow(2).mean()
 
-            self.update_policy_model(returns, log_probs, deltas)
+            self.optimizer.zero_grad()
+            # self.critic_optimizer.zero_grad()
+            loss.backward()
+            # critic_loss.backward()
+            self.optimizer.step()
+            # self.critic_optimizer.step()
+
+            # Update critic
+            self.update_w_hat()
+
+            # self.update_policy_model(log_probs, advantages.detach())
             if (episode+1) % 250 == 0:
                 print(f"Episode: {episode+1}, discounted total reward: {total_reward_episode[episode]}")
                 torch.save(self.policy_model, self.saved_file_path)
                 torch.save(torch.Tensor(self.w_hat), self.saved_file_path_w_hat)
-
-            self.update_w_hat()

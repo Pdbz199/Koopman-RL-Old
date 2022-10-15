@@ -3,7 +3,7 @@ import torch
 
 import sys
 sys.path.append('../')
-from tensor import KoopmanTensor, OLS
+from tensor import KoopmanTensor, OLS, SINDy
 # sys.path.append('../../')
 # import observables
 
@@ -64,23 +64,29 @@ class ContinuousKoopmanPolicyIterationPolicy:
         self.learning_rate = learning_rate
         self.w_hat_batch_size = w_hat_batch_size
 
+        self.max_phi_norm = torch.linalg.norm(
+            torch.Tensor(np.max(self.dynamics_model.Phi_X, axis=1))
+        )
+        # print(f"Max phi norm: {self.max_phi_norm}")
+
         if load_model:
             saved_model = torch.load(self.saved_file_path)
             self.alpha = saved_model.alpha
             self.beta = saved_model.beta
             self.w_hat = saved_model.w_hat
         else:
-            self.alpha = torch.zeros([1, self.dynamics_model.x_dim+1], requires_grad=True)
+            self.alpha = torch.zeros([1, self.dynamics_model.phi_dim], requires_grad=True)
+            # self.alpha = torch.zeros([1, self.dynamics_model.x_dim+1], requires_grad=True)
             self.beta = torch.tensor(0.1, requires_grad=True)
             self.w_hat = np.zeros(self.dynamics_model.phi_column_dim)
 
         self.optimizer = torch.optim.Adam([self.alpha, self.beta], self.learning_rate)
 
     def get_action_distribution(self, s):
-        # phi_s = torch.Tensor(self.dynamics_model.phi(s))
-        phi_s = torch.cat([torch.Tensor(s), torch.tensor([[1]])])
-        # mu = (self.alpha @ (phi_s / torch.linalg.norm(phi_s)))[0,0]
+        phi_s = torch.Tensor(self.dynamics_model.phi(s))
+        # phi_s = torch.cat([torch.Tensor(s), torch.tensor([[1]])])
         mu = (self.alpha @ phi_s)[0,0]
+        # mu = (self.alpha @ (phi_s / self.max_phi_norm))[0,0]
         sigma = torch.exp(self.beta)
         return torch.distributions.normal.Normal(mu, sigma, validate_args=False)
 

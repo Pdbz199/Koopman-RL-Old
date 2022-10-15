@@ -7,7 +7,7 @@ seed = 123
 np.random.seed(seed)
 
 from control import dare
-from generalized.discrete_koopman_policy_iteration_policy import DiscreteKoopmanPolicyIterationPolicy
+from generalized.discrete_koopman_actor_critic_policy import DiscreteKoopmanActorCriticPolicy
 
 import sys
 sys.path.append('../')
@@ -17,7 +17,7 @@ import observables
 import utilities
 
 #%% Initialize environment
-state_dim = 4
+state_dim = 3
 action_dim = 1
 
 A = np.zeros([state_dim, state_dim])
@@ -43,7 +43,6 @@ R = 1
 w_r = np.array([
     [0.0],
     [0.0],
-    [0.0],
     [0.0]
 ])
 def cost(x, u):
@@ -54,11 +53,14 @@ def cost(x, u):
     return mat.T
 
 #%% Initialize important vars
-state_range = 25.0
+# state_range = 25.0
+state_range = 5.0
 state_minimums = np.ones([state_dim,1]) * -state_range
 state_maximums = np.ones([state_dim,1]) * state_range
 
-action_range = 75.0
+# action_range = 75.0
+action_range = 20.0
+# action_range = 10.0
 action_minimums = np.ones([action_dim,1]) * -action_range
 action_maximums = np.ones([action_dim,1]) * action_range
 
@@ -69,6 +71,7 @@ state_column_shape = [state_dim, 1]
 action_column_shape = [action_dim, 1]
 
 step_size = 0.1
+# step_size = 1.0
 all_actions = np.arange(-action_range, action_range+step_size, step_size)
 all_actions = np.round(all_actions, decimals=2)
 
@@ -131,21 +134,28 @@ tensor = KoopmanTensor(
 )
 
 #%% Compute optimal policy
-policy = DiscreteKoopmanPolicyIterationPolicy(
+policy = DiscreteKoopmanActorCriticPolicy(
     f,
     gamma,
-    reg_lambda,
     tensor,
     state_minimums,
     state_maximums,
     all_actions,
     cost,
-    'lqr-policy-iteration.pt'
+    'lqr-policy-iteration.pt',
+    seed=seed,
+    # learning_rate=0.0001
 )
-policy.reinforce(num_training_episodes=5000, num_steps_per_episode=200)
+policy.actor_critic(
+    num_training_episodes=10000,
+    num_steps_per_episode=200
+)
 
 #%% Test
 def watch_agent(num_episodes, test_steps):
+    # specifiedEpisode = -1
+    specifiedEpisode = 42
+
     lqr_states = np.zeros([num_episodes,state_dim,test_steps])
     lqr_actions = np.zeros([num_episodes,action_dim,test_steps])
     lqr_costs = np.zeros([num_episodes])
@@ -191,19 +201,19 @@ def watch_agent(num_episodes, test_steps):
     print(f"Mean cost per episode over {num_episodes} episode(s) (LQR controller): {np.mean(lqr_costs)}")
     print(f"Mean cost per episode over {num_episodes} episode(s) (Koopman controller): {np.mean(koopman_costs)}\n")
 
-    print(f"Initial state of final episode (LQR controller): {lqr_states[-1,:,0]}")
-    print(f"Final state of final episode (LQR controller): {lqr_states[-1,:,-1]}\n")
+    print(f"Initial state of episode #{specifiedEpisode} (LQR controller): {lqr_states[specifiedEpisode,:,0]}")
+    print(f"Final state of episode #{specifiedEpisode} (LQR controller): {lqr_states[specifiedEpisode,:,-1]}\n")
 
-    print(f"Initial state of final episode (Koopman controller): {koopman_states[-1,:,0]}")
-    print(f"Final state of final episode (Koopman controller): {koopman_states[-1,:,-1]}\n")
+    print(f"Initial state of episode #{specifiedEpisode} (Koopman controller): {koopman_states[specifiedEpisode,:,0]}")
+    print(f"Final state of episode #{specifiedEpisode} (Koopman controller): {koopman_states[specifiedEpisode,:,-1]}\n")
 
     print(f"Reference state: {w_r[:,0]}\n")
 
-    print(f"Difference between final state of final episode and reference state (LQR controller): {np.abs(lqr_states[-1,:,-1] - w_r[:,0])}")
-    print(f"Norm between final state of final episode and reference state (LQR controller): {utilities.l2_norm(lqr_states[-1,:,-1], w_r[:,0])}\n")
+    print(f"Difference between final state of episode #{specifiedEpisode} and reference state (LQR controller): {np.abs(lqr_states[specifiedEpisode,:,-1] - w_r[:,0])}")
+    print(f"Norm between final state of episode #{specifiedEpisode} and reference state (LQR controller): {utilities.l2_norm(lqr_states[specifiedEpisode,:,-1], w_r[:,0])}\n")
 
-    print(f"Difference between final state of final episode and reference state (Koopman controller): {np.abs(koopman_states[-1,:,-1] - w_r[:,0])}")
-    print(f"Norm between final state of final episode and reference state (Koopman controller): {utilities.l2_norm(koopman_states[-1,:,-1], w_r[:,0])}")
+    print(f"Difference between final state of episode #{specifiedEpisode} and reference state (Koopman controller): {np.abs(koopman_states[specifiedEpisode,:,-1] - w_r[:,0])}")
+    print(f"Norm between final state of episode #{specifiedEpisode} and reference state (Koopman controller): {utilities.l2_norm(koopman_states[specifiedEpisode,:,-1], w_r[:,0])}")
 
     fig, axs = plt.subplots(2)
     fig.suptitle('Dynamics Over Time')
@@ -218,8 +228,8 @@ def watch_agent(num_episodes, test_steps):
     for i in range(state_dim):
         labels.append(f"x_{i}")
     for i in range(state_dim):
-        axs[0].plot(lqr_states[-1,i], label=labels[i])
-        axs[1].plot(koopman_states[-1,i], label=labels[i])
+        axs[0].plot(lqr_states[specifiedEpisode,i], label=labels[i])
+        axs[1].plot(koopman_states[specifiedEpisode,i], label=labels[i])
     lines_labels = [axs[0].get_legend_handles_labels()]
     lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
     fig.legend(lines, labels)
@@ -227,18 +237,30 @@ def watch_agent(num_episodes, test_steps):
     plt.tight_layout()
     plt.show()
 
-    labels = ['LQR controller', 'Koopman controller']
-
-    plt.hist(lqr_actions[-1,0])
-    plt.hist(koopman_actions[-1,0])
-    plt.legend(labels)
-    plt.title("Histogram Of Actions (In Final Episode)")
+    plt.plot(lqr_states[specifiedEpisode,0], lqr_states[specifiedEpisode,1])
+    plt.title("LQR Controller in Environment (2D)")
+    plt.xlabel("x_1")
+    plt.ylabel("x_2")
     plt.show()
 
-    plt.scatter(np.arange(lqr_actions.shape[2]), lqr_actions[-1,0], s=5)
-    plt.scatter(np.arange(koopman_actions.shape[2]), koopman_actions[-1,0], s=5)
+    plt.plot(koopman_states[specifiedEpisode,0], koopman_states[specifiedEpisode,1])
+    plt.title("Koopman Controller in Environment (2D)")
+    plt.xlabel("x_1")
+    plt.ylabel("x_2")
+    plt.show()
+
+    labels = ['LQR controller', 'Koopman controller']
+
+    plt.hist(lqr_actions[specifiedEpisode,0])
+    plt.hist(koopman_actions[specifiedEpisode,0])
     plt.legend(labels)
-    plt.title("Scatter Plot of Actions Per Step (In Final Episode)")
+    plt.title(f"Histogram Of Actions (In Episode #{specifiedEpisode})")
+    plt.show()
+
+    plt.scatter(np.arange(lqr_actions.shape[2]), lqr_actions[specifiedEpisode,0], s=5)
+    plt.scatter(np.arange(koopman_actions.shape[2]), koopman_actions[specifiedEpisode,0], s=5)
+    plt.legend(labels)
+    plt.title(f"Scatter Plot of Actions Per Step (In Episode #{specifiedEpisode})")
     plt.show()
 
 print("\nTesting learned policy...\n")

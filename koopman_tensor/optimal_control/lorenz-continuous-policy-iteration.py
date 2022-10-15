@@ -237,6 +237,20 @@ def watch_agent(num_episodes, test_steps):
         [tensor.x_dim, num_episodes]
     )
 
+    # initial_states = np.random.uniform(
+    #     np.array([
+    #         [x_e*0.9],
+    #         [y_e*0.9],
+    #         [z_e*0.9]
+    #     ]),
+    #     np.array([
+    #         [x_e*1.1],
+    #         [y_e*1.1],
+    #         [z_e*1.1]
+    #     ]),
+    #     [tensor.x_dim, num_episodes]
+    # )
+
     for episode in range(num_episodes):
         state = np.vstack(initial_states[:, episode])
 
@@ -334,11 +348,13 @@ def watch_agent(num_episodes, test_steps):
     plt.hist(lqr_actions[specifiedEpisode,0])
     plt.hist(koopman_actions[specifiedEpisode,0])
     plt.legend(labels)
+    plt.title(f"Histogram Of Actions (In Episode #{specifiedEpisode})")
     plt.show()
 
     plt.scatter(np.arange(lqr_actions.shape[2]), lqr_actions[specifiedEpisode,0], s=5)
     plt.scatter(np.arange(koopman_actions.shape[2]), koopman_actions[specifiedEpisode,0], s=5)
     plt.legend(labels)
+    plt.title(f"Scatter Plot of Actions Per Step (In Episode #{specifiedEpisode})")
     plt.show()
 
 print("\nTesting learned policy...\n")
