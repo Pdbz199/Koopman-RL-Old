@@ -17,3 +17,4 @@ cs4789-Cartpole-Solution/
 *.pt
 *.ipynb
 *.gif
+**/tmp/
