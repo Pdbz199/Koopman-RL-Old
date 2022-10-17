@@ -2,21 +2,23 @@ import gym
 import matplotlib.pyplot as plt
 import numpy as np
 import os
+import pybullet_envs
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-
-from torch.distributions import Normal
-
-#%% Set seed for reproducibility
-seed = 123
-np.random.seed(seed)
-torch.manual_seed(seed)
+from torch.distributions import Categorical, Normal
 
 #%% Variables
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# env = gym.make("CartPole-v0").unwrapped
+
+# state_size = env.observation_space.shape[0]
+# action_size = env.action_space.n
+# lr = 0.0001
 state_size = 3
 action_size = 1
+lr = 0.003
 
 #%% Dynamics
 A = np.zeros([state_size, state_size])
@@ -40,7 +42,7 @@ def f(x, u):
 # Q = np.eye(state_size)
 Q = torch.eye(state_size)
 R = 1
-w_r = torch.Tensor([
+w_r = np.array([
     [0.0],
     [0.0],
     [0.0]
@@ -52,29 +54,160 @@ w_r = torch.Tensor([
 #     mat = np.vstack(np.diag(x_.T @ Q @ x_)) + np.power(u, 2)*R
 #     return mat.T
 def cost(x, u):
-    _x = x - w_r
-    return _x.T @ Q @ _x + u * R * u
+    return x.T @ Q @ x + u * R * u
+
+#%% Neural networks
+class Actor(nn.Module):
+    def __init__(self, state_size, action_size):
+        super(Actor, self).__init__()
+        self.state_size = state_size
+        self.action_size = action_size
+        self.linear1 = nn.Linear(self.state_size, 128)
+        self.linear2 = nn.Linear(128, 256)
+        self.linear3 = nn.Linear(256, self.action_size)
+
+    def forward(self, state):
+        output = F.relu(self.linear1(state))
+        output = F.relu(self.linear2(output))
+        output = self.linear3(output)
+        distribution = Categorical(F.softmax(output, dim=-1))
+        return distribution
+
+
+class Critic(nn.Module):
+    def __init__(self, state_size, action_size):
+        super(Critic, self).__init__()
+        self.state_size = state_size
+        self.action_size = action_size
+        self.linear1 = nn.Linear(self.state_size, 128)
+        self.linear2 = nn.Linear(128, 256)
+        self.linear3 = nn.Linear(256, 1)
+
+    def forward(self, state):
+        output = F.relu(self.linear1(state))
+        output = F.relu(self.linear2(output))
+        value = self.linear3(output)
+        return value
+
+
+def compute_returns(next_value, rewards, masks, gamma=0.99):
+    R = next_value
+    returns = []
+    for step in reversed(range(len(rewards))):
+        R = rewards[step] + gamma * R # * masks[step]
+        returns.insert(0, R)
+    return returns
+
+
+def trainIters(actor, critic, num_episodes, num_steps_per_episode):
+    optimizerA = optim.Adam(actor.parameters())
+    optimizerC = optim.Adam(critic.parameters())
+
+    # state_range = 25.0
+    state_range = 5.0
+    state_minimums = np.ones([state_size,1]) * -state_range
+    state_maximums = np.ones([state_size,1]) * state_range
+
+    initial_states = np.random.uniform(
+        state_minimums,
+        state_maximums,
+        [state_size, num_episodes]
+    )
+
+    for episode in range(num_episodes):
+        # state = env.reset()
+        state = np.vstack(initial_states[:,episode])
+        states = [state]
+        log_probs = []
+        values = []
+        rewards = []
+        masks = []
+        entropy = 0
+
+        for step in range(num_steps_per_episode):
+            state_tensor = torch.FloatTensor(state[:,0]).to(device)
+            dist, value = actor(state_tensor), critic(state_tensor)
+
+            u = dist.sample()
+            action = np.array([[u]])
+            log_prob = dist.log_prob(u).unsqueeze(0)
+            entropy += dist.entropy().mean()
+
+            reward = -cost(state_tensor, u)
+
+            state = f(state, action)
+
+            states.append(state)
+            log_probs.append(log_prob)
+            values.append(value)
+            rewards.append(torch.tensor(reward, dtype=torch.float, device=device))
+
+        states = np.array(states)
+
+        print(f"Iteration: {episode+1}, Reward: {np.sum(rewards)}")
+        if (episode+1) % 250 == 0:
+            plt.plot(states.reshape([len(states),state_size]))
+            plt.show()
+
+        next_state = torch.FloatTensor(state[:,0]).to(device)
+        next_value = critic(next_state)
+        returns = compute_returns(next_value, rewards, masks)
+
+        log_probs = torch.cat(log_probs)
+        returns = torch.cat(returns).detach()
+        values = torch.cat(values)
+
+        advantage = returns - values
+
+        actor_loss = -(log_probs * advantage.detach()).mean()
+        critic_loss = advantage.pow(2).mean()
+
+        optimizerA.zero_grad()
+        optimizerC.zero_grad()
+        actor_loss.backward()
+        critic_loss.backward()
+        optimizerA.step()
+        optimizerC.step()
+    # torch.save(actor, 'model/actor.pkl')
+    # torch.save(critic, 'model/critic.pkl')
+    # env.close()
+
+
+# if __name__ == '__main__':
+#     if os.path.exists('model/actor.pkl'):
+#         actor = torch.load('model/actor.pkl')
+#         print('Actor Model loaded')
+#     else:
+#         actor = Actor(state_size, action_size).to(device)
+#     if os.path.exists('model/critic.pkl'):
+#         critic = torch.load('model/critic.pkl')
+#         print('Critic Model loaded')
+#     else:
+#         critic = Critic(state_size, action_size).to(device)
+#     trainIters(actor, critic, num_episodes=2000, num_steps_per_episode=50)
+
 
 """"""""""""""""""""""""""" SOFT ACTOR CRITIC IMPLEMENTATION """""""""""""""""""""""""""
 
+#%%
 class ReplayBuffer():
     def __init__(self, max_size, input_shape, num_actions):
         self.memory_size = max_size
         self.memory_counter = 0
-        self.state_memory = np.zeros([self.memory_size, *input_shape])
-        self.new_state_memory = np.zeros([self.memory_size, *input_shape])
-        self.action_memory = np.zeros([self.memory_size, num_actions])
-        self.reward_memory = np.zeros([self.memory_size])
-        self.terminal_memory = np.zeros(self.memory_size, dtype=bool)
+        self.state_memory = torch.zeros([self.memory_size, *input_shape])
+        self.new_state_memory = torch.zeros([self.memory_size, *input_shape])
+        self.action_memory = torch.zeros([self.memory_size, num_actions])
+        self.reward_memory = torch.zeros([self.memory_size])
+        self.terminal_memory = torch.zeros(self.memory_size, dtype=torch.bool)
 
     def store_transition(self, state, action, reward, state_, done):
         index = self.memory_counter % self.memory_size
 
-        self.state_memory[index] = state
-        self.action_memory[index] = action
-        self.reward_memory[index] = reward
-        self.new_state_memory[index] = state_
-        self.terminal_memory[index] = done
+        self.state_memory[index] = torch.tensor(state)
+        self.new_state_memory[index] = torch.tensor(state_)
+        self.action_memory[index] = torch.tensor(action)
+        self.reward_memory[index] = torch.tensor(reward)
+        self.terminal_memory[index] = torch.tensor(done)
 
         self.memory_counter += 1
 
@@ -91,6 +224,7 @@ class ReplayBuffer():
 
         return states, states_, actions, rewards, dones
 
+#%%
 class CriticNetwork(nn.Module):
     def __init__(self, beta, input_dimensions, num_actions, fc1_dimensions=256, fc2_dimensions=256, name='critic', checkpoint_directory='tmp/sac'):
         super(CriticNetwork, self).__init__()
@@ -203,7 +337,7 @@ class ActorNetwork(nn.Module):
         return mu, sigma
 
     def sample_normal(self, state, reparameterize=True):
-        mu, sigma = self(state)
+        mu, sigma = self.forward(state)
         probabilities = Normal(mu, sigma)
 
         if reparameterize:
@@ -224,21 +358,22 @@ class ActorNetwork(nn.Module):
     def load_checkpoint(self):
         self.load_state_dict(torch.load(self.checkpoint_file))
 
+#%% Agent
 class Agent():
-    def __init__(self, max_action, alpha=0.0003, beta=0.0003, input_dimensions=[8], env=None, gamma=0.99, num_actions=2, max_size=1_000_000, tau=0.005, layer1_size=256, layer2_size=256, batch_size=256, reward_scale=2):
+    def __init__(self, alpha=0.0003, beta=0.0003, input_dimensions=[8], env=None, gamma=0.99, num_actions=2, max_size=1_000_000, tau=0.005, layer1_size=256, layer2_size=256, batch_size=256, reward_scale=2):
         self.gamma = gamma
         self.tau = tau
         self.memory = ReplayBuffer(max_size, input_dimensions, num_actions)
         self.batch_size = batch_size
         self.num_actions = num_actions
 
-        self.actor = ActorNetwork(alpha, input_dimensions, max_action=max_action, num_actions=num_actions)
+        self.actor = ActorNetwork(alpha, input_dimensions, max_action=env.action_space.high, num_actions=num_actions)
         self.critic_1 = CriticNetwork(beta, input_dimensions, num_actions, name='critic_1')
         self.critic_2 = CriticNetwork(beta, input_dimensions, num_actions, name='critic_2')
         self.value = ValueNetwork(beta, input_dimensions)
         self.target_value = ValueNetwork(beta, input_dimensions, name='target_value')
 
-        self.scale = reward_scale
+        self.reward_scale = reward_scale
         self.update_network_parameters(tau=1)
 
     def choose_action(self, observation):
@@ -286,6 +421,7 @@ class Agent():
         if self.memory.memory_counter < self.batch_size:
             return
 
+        #state, action, reward, new_state, done = \
         state, new_state, action, reward, done = \
                 self.memory.sample_buffer(self.batch_size)
 
@@ -301,8 +437,8 @@ class Agent():
 
         actions, log_probs = self.actor.sample_normal(state, reparameterize=False)
         # log_probs = log_probs.view(-1)
-        q1_new_policy = self.critic_1(state, actions)
-        q2_new_policy = self.critic_2(state, actions)
+        q1_new_policy = self.critic_1.forward(state, actions)
+        q2_new_policy = self.critic_2.forward(state, actions)
         critic_value = torch.min(q1_new_policy, q2_new_policy)
         # critic_value = critic_value.view(-1)
 
@@ -314,8 +450,8 @@ class Agent():
 
         actions, log_probs = self.actor.sample_normal(state, reparameterize=True)
         # log_probs = log_probs.view(-1)
-        q1_new_policy = self.critic_1(state, actions)
-        q2_new_policy = self.critic_2(state, actions)
+        q1_new_policy = self.critic_1.forward(state, actions)
+        q2_new_policy = self.critic_2.forward(state, actions)
         critic_value = torch.min(q1_new_policy, q2_new_policy)
         # critic_value = critic_value.view(-1)
 
@@ -325,9 +461,9 @@ class Agent():
         actor_loss.backward(retain_graph=True)
         self.actor.optimizer.step()
 
-        q_hat = self.scale*reward + self.gamma*value_
-        q1_old_policy = self.critic_1(state, action)#.view(-1)
-        q2_old_policy = self.critic_2(state, action)#.view(-1)
+        q_hat = self.reward_scale*reward + self.gamma*value_
+        q1_old_policy = self.critic_1.forward(state, action)#.view(-1)
+        q2_old_policy = self.critic_2.forward(state, action)#.view(-1)
         critic_1_loss = 0.5 * F.mse_loss(q1_old_policy, q_hat)
         critic_2_loss = 0.5 * F.mse_loss(q2_old_policy, q_hat)
         critic_loss = critic_1_loss + critic_2_loss
@@ -348,66 +484,38 @@ def plot_learning_curve(x, scores, figure_file):
     plt.savefig(figure_file)
 
 if __name__ == '__main__':
-    agent = Agent(input_dimensions=[state_size], max_action=25, num_actions=1, batch_size=1)
+    env = gym.make('InvertedPendulumBulletEnv-v0')
+    # env = gym.make('CartPole-v0')
+    # env = gym.make('Pendulum-v1')
+    # env = gym.make('MountainCarContinuous-v0')
+    agent = Agent(input_dimensions=env.observation_space.shape, env=env, num_actions=env.action_space.shape[0])
     num_games = 150
     # num_games = 0
 
-    filename = 'lqr-continuous-sac.png'
+    filename = 'inverted_pendulum.png'
     figure_file = 'plots/' + filename
 
-    # best_score = env.reward_range[0]
-    best_score = -10_000_000
+    best_score = env.reward_range[0]
     score_history = []
     load_checkpoint = False
     # load_checkpoint = True
 
     if load_checkpoint:
         agent.load_models()
-        # env.render(mode='human')
-
-    # state_range = 25.0
-    state_range = 5.0
-    state_minimums = np.ones([state_size,1]) * -state_range
-    state_maximums = np.ones([state_size,1]) * state_range
-
-    initial_states = np.random.uniform(
-        state_minimums,
-        state_maximums,
-        [state_size, num_games]
-    )
+        env.render(mode='human')
 
     for game in range(num_games):
-        # observation = env.reset()
-        observation = initial_states[:,game]
+        observation = env.reset()
         done = False
         score = 0
-        # for step in range(200):
         while not done:
-            action = np.array([[agent.choose_action(observation)]])
-
-            # observation_, reward, done, info = env.step(action)
-
-            observation_ = f(
-                np.vstack(observation),
-                action
-            )[:,0]
-
-            reward = -cost(
-                torch.Tensor(np.vstack(observation)),
-                torch.Tensor(action)
-            )[0,0]
-
+            action = [agent.choose_action(observation)]
+            observation_, reward, done, info = env.step(action)
             score += reward
-
-            done = np.linalg.norm(observation) >= 1000
-
             agent.remember(observation, action, reward, observation_, done)
-
             if not load_checkpoint:
                 agent.learn()
-
             observation = observation_
-
         score_history.append(score)
         avg_score = np.mean(score_history[-100:])
 

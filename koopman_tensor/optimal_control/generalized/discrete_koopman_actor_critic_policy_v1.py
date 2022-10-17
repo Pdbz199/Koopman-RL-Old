@@ -22,7 +22,7 @@ class DiscreteKoopmanActorCriticPolicy:
         cost,
         saved_file_path,
         dt=1.0,
-        learning_rate=0.0003,
+        learning_rate=0.003,
         w_hat_batch_size=2**12,
         seed=123,
         load_model=False
@@ -101,13 +101,66 @@ class DiscreteKoopmanActorCriticPolicy:
         self.optimizer = torch.optim.Adam(self.policy_model.parameters(), self.learning_rate)
         # self.critic_optimizer = torch.optim.Adam(self.critic_model.parameters(), self.learning_rate)
 
+    def predict(self, s):
+        """
+            Compute the action probabilities of state s using the learning model.
+
+            INPUTS:
+                s: input state array
+            
+            OUTPUTS:
+                estimated optimal action
+        """
+
+        return self.policy_model(torch.Tensor(s))
+
+    def update_policy_model(self, log_probs, advantages):
+        """
+            Update the weights of the policy network given the training samples.
+            
+            INPUTS:
+                log_probs: log probability for each step.
+                # deltas: delta (difference between R - R_bar + V(x') - V(x)) at each step in the path
+                advantages: (reward + V(x')) - V(x) for each step in path.
+        """
+
+        policy_gradient = torch.zeros(log_probs.shape[0])
+
+        for i, (log_prob, advantage) in enumerate(zip(log_probs, advantages)):
+            # policy_gradient[i] = -log_prob * self.gamma**((len(advantages)-i) * self.dt) * advantage
+            # policy_gradient[i] = -log_prob * (self.gamma**self.dt) * advantage
+            policy_gradient[i] = -log_prob * advantage
+
+        # loss = policy_gradient.sum()
+        loss = policy_gradient.mean()
+
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+
+    def get_action(self, s, num_samples=1):
+        """
+            Estimate the policy distribution and sample an action, compute its log probability.
+            
+            INPUTS:
+                s: Input state. Should be a 1D array.
+            OUTPUTS:
+                the selected action and log probability.
+        """
+
+        probs = self.predict(s)
+        action_indices = torch.multinomial(probs, num_samples).item()
+        actions = self.all_actions[action_indices].item()
+        log_probs = torch.log(probs[action_indices])
+        return actions, log_probs
+
     def update_w_hat(self):
         x_batch_indices = np.random.choice(self.dynamics_model.X.shape[1], self.w_hat_batch_size, replace=False)
         x_batch = self.dynamics_model.X[:, x_batch_indices] # (state_dim, w_hat_batch_size)
         phi_x_batch = self.dynamics_model.phi(x_batch) # (phi_dim, w_hat_batch_size)
 
         with torch.no_grad():
-            pi_response = self.policy_model(torch.Tensor(x_batch.T)).T # (all_actions.shape[0], w_hat_batch_size)
+            pi_response = self.predict(x_batch.T).T # (all_actions.shape[0], w_hat_batch_size)
 
         phi_x_prime_batch = self.dynamics_model.K_(np.array([self.all_actions])) @ phi_x_batch # (all_actions.shape[0], phi_dim, w_hat_batch_size)
         phi_x_prime_batch_prob = np.einsum('upw,uw->upw', phi_x_prime_batch, pi_response.data.numpy()) # (all_actions.shape[0], phi_dim, w_hat_batch_size)
@@ -127,20 +180,19 @@ class DiscreteKoopmanActorCriticPolicy:
             expectation_term_2.T
         )
 
-    def get_action(self, s):
-        """
-            INPUTS:
-                s - 1D state array    
-        """
-        action_probs = self.policy_model(torch.Tensor(s))
-        action_index = np.random.choice(self.all_actions.shape[0], p=np.squeeze(action_probs.detach().numpy()))
-        action = self.all_actions[action_index]
-        return action
+    def compute_returns(self, V_x_prime, rewards):
+        R = V_x_prime
+        returns = []
+        for step in reversed(range(len(rewards))):
+            R = rewards[step] + self.gamma * R
+            returns.insert(0, R)
+        return torch.Tensor(returns)
 
     def actor_critic(
         self,
         num_training_episodes,
-        num_steps_per_episode
+        num_steps_per_episode,
+        R_learning_rate=0.003
     ):
         """
             REINFORCE algorithm
@@ -162,91 +214,77 @@ class DiscreteKoopmanActorCriticPolicy:
         total_reward_episode = torch.zeros(num_training_episodes)
 
         for episode in range(num_training_episodes):
-            states = []
-            action_probs_history = []
-            critic_value_history = []
-            rewards_history = []
-            running_reward = 0
-            episode_reward = 0
+            states = torch.zeros([num_steps_per_episode, self.dynamics_model.x_dim])
+            actions = torch.zeros(num_steps_per_episode)
+            log_probs = torch.zeros(num_steps_per_episode)
+            rewards = torch.zeros(num_steps_per_episode)
+            # deltas = torch.zeros(num_steps_per_episode)
+            # advantages = torch.zeros(num_steps_per_episode)
+            V_xs = torch.zeros(num_steps_per_episode)
 
             state = np.vstack(initial_states[:, episode])
             for step in range(num_steps_per_episode):
                 # Add newest state to list of previous states
-                states.append(torch.Tensor(state)[:,0])
+                states[step] = torch.Tensor(state)[:, 0]
 
-                # Get action probabilities and action for current state
-                action_probs = self.policy_model(torch.Tensor(state.T))
-                action_index = np.random.choice(self.all_actions.shape[0], p=np.squeeze(action_probs.detach().numpy()))
-                action = self.all_actions[action_index]
-                action_probs_history.append(torch.log(action_probs[:,action_index]))
+                # A ~ π( . | S, θ )
+                u, log_prob = self.get_action(state[:, 0])
+                action = np.array([[u]])
 
-                # Compute V_x
-                V_x = torch.Tensor(self.w_hat.T @ self.phi(np.vstack(state)))
-                critic_value_history.append(V_x)
+                actions[step] = u
+                log_probs[step] = log_prob
 
                 # Take action A, observe S', R
-                next_state = self.true_dynamics(state, np.array([[action]]))
+                next_state = self.true_dynamics(state, action)
                 curr_reward = -self.cost(state, action)[0,0]
 
+                rewards[step] = curr_reward
                 total_reward_episode[episode] += (self.gamma**(step*self.dt)) * curr_reward
                 # total_reward_episode[episode] += self.gamma**step * curr_reward
 
-                rewards_history.append(curr_reward)
-                episode_reward += curr_reward
+                # Compute results of value functions
+                V_x = self.w_hat.T @ self.phi(state)
+                V_xs[step] = torch.Tensor(V_x)
+                # V_x = self.critic_model(torch.Tensor(state[:,0]))
+                # V_xs[step] = V_x
+                # V_x_prime = self.w_hat.T @ self.phi(next_state)
+
+                # Compute δ
+                # delta = (curr_reward - R_bar + (self.gamma**self.dt)*V_x_prime) - V_x
+                # deltas[step] = torch.Tensor(delta)
+
+                # Compute advantage
+                # advantage = (curr_reward + (self.gamma**self.dt)*V_x_prime) - V_x
+                # advantage = curr_reward + self.gamma*V_x_prime - V_x
+                # advantage = returns - V_x
+                # advantages[step] = torch.Tensor(advantage)
+
+                # Update R bar
+                # R_bar = R_bar + R_learning_rate * delta
 
                 # Update state for next loop
                 state = next_state
 
-            # Update running reward to check condition for solving
-            running_reward = 0.05 * episode_reward + (1 - 0.05) * running_reward
+            V_x_prime = self.w_hat.T @ self.phi(next_state)
+            # V_x_prime = self.critic_model(torch.Tensor(next_state[:,0]))
+            returns = self.compute_returns(V_x_prime, rewards).detach()
+            advantages = returns - V_xs
 
-            # Calculate expected value from rewards
-            # - At each timestep what was the total reward received after that timestep
-            # - Rewards in the past are discounted by multiplying them with gamma
-            # - These are the labels for our critic
-            returns = []
-            discounted_sum = 0
-            for r in rewards_history[::-1]:
-                discounted_sum = r + self.gamma * discounted_sum
-                returns.insert(0, discounted_sum)
+            # Update actor (and critic)
+            loss = -(log_probs * advantages.detach()).mean()
+            # critic_loss = advantages.pow(2).mean()
 
-            # Normalize
-            eps = np.finfo(np.float32).eps.item()
-            returns = np.array(returns)
-            returns = (returns - np.mean(returns)) / (np.std(returns) + eps)
-            returns = returns.tolist()
-
-            # Calculating loss values to update our network
-            actor_losses = []
-            critic_losses = []
-            for log_prob, value, ret in zip(action_probs_history, critic_value_history, returns):
-                # At this point in history, the critic estimated that we would get a
-                # total reward = `value` in the future. We took an action with log probability
-                # of `log_prob` and ended up receiving a total reward = `ret`.
-                # The actor must be updated so that it predicts an action that leads to
-                # high rewards (compared to critic's estimate) with high probability.
-                diff = ret - value
-                actor_losses.append(-log_prob * diff)  # actor loss
-
-                # The critic must be updated so that it predicts a better estimate of the future rewards
-                critic_losses.append(torch.pow(ret - value, 2))
-
-            # Compute loss
-            loss_value = sum(actor_losses) + sum(critic_losses)
-
-            # Backpropagation
             self.optimizer.zero_grad()
-            loss_value.backward()
+            # self.critic_optimizer.zero_grad()
+            loss.backward()
+            # critic_loss.backward()
             self.optimizer.step()
+            # self.critic_optimizer.step()
 
-            # OLS for w_hat
+            # Update critic
             self.update_w_hat()
 
-            # Clear the loss and reward history
-            action_probs_history.clear()
-            critic_value_history.clear()
-            rewards_history.clear()
-
+            # self.update_policy_model(log_probs, advantages.detach())
             if (episode+1) % 250 == 0:
                 print(f"Episode: {episode+1}, discounted total reward: {total_reward_episode[episode]}")
                 torch.save(self.policy_model, self.saved_file_path)

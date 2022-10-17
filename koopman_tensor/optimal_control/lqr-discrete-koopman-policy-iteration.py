@@ -5,6 +5,7 @@ import torch
 
 seed = 123
 np.random.seed(seed)
+torch.manual_seed(seed)
 
 from control import dare
 from generalized.discrete_koopman_actor_critic_policy import DiscreteKoopmanActorCriticPolicy
@@ -188,7 +189,7 @@ def watch_agent(num_episodes, test_steps):
             lqr_actions[episode,:,step] = lqr_action[:,0]
 
             with torch.no_grad():
-                koopman_u, _ = policy.get_action(koopman_state[:,0])
+                koopman_u = policy.get_action(koopman_state[:,0])
             koopman_action = np.array([[koopman_u]])
             koopman_actions[episode,:,step] = koopman_action[:,0]
 
