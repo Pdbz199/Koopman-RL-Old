@@ -148,7 +148,7 @@ policy = DiscreteKoopmanActorCriticPolicy(
     # learning_rate=0.0001
 )
 policy.actor_critic(
-    num_training_episodes=10000,
+    num_training_episodes=1000,
     num_steps_per_episode=200
 )
 
