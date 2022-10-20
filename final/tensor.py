@@ -70,7 +70,7 @@ class KoopmanTensor:
         p_inv=True,
         rank=8,
         is_generator=False,
-        dt = 0.01
+        dt=0.01
     ):
         """
             Constructor for the KoopmanTensor class.
@@ -122,12 +122,14 @@ class KoopmanTensor:
         # Make sure data is full rank
         checkMatrixRank(self.Phi_X, "Phi_X")
         checkMatrixRank(self.regression_Y, "dPhi_Y" if is_generator else "Phi_Y")
-        checkMatrixRank(self.Psi_U, "Psi_U\n")
+        checkMatrixRank(self.Psi_U, "Psi_U")
+        print('\n')
 
         # Make sure condition numbers are small
         checkConditionNumber(self.Phi_X, "Phi_X")
         checkConditionNumber(self.regression_Y, "dPhi_Y" if is_generator else "Phi_Y")
-        checkConditionNumber(self.Psi_U, "Psi_U\n")
+        checkConditionNumber(self.Psi_U, "Psi_U")
+        print('\n')
 
         # Build matrix of kronecker products between u_i and x_i for all 0 <= i <= N
         self.kron_matrix = np.empty([

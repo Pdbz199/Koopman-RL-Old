@@ -43,6 +43,9 @@ class ContinuousKoopmanPolicyIterationPolicy:
                 w_hat_batch_size - The batch size of the policy.
                 seed - Random seed for reproducibility.
                 load_model - Boolean indicating whether or not to load a saved model.
+
+            OUTPUTS:
+                Instance of the ContinuousKoopmanPolicyIterationPolicy class.
         """
 
         self.seed = seed
@@ -74,18 +77,28 @@ class ContinuousKoopmanPolicyIterationPolicy:
             self.beta = saved_model.beta
             self.value_function_weights = saved_model.value_function_weights
         else:
-            # self.alpha = torch.zeros([1, self.dynamics_model.phi_dim], requires_grad=True)
-            self.alpha = torch.zeros([1, self.dynamics_model.x_dim+1], requires_grad=True)
+            self.alpha = torch.zeros([1, self.dynamics_model.phi_dim], requires_grad=True)
+            # self.alpha = torch.zeros([1, self.dynamics_model.x_dim+1], requires_grad=True)
             self.beta = torch.tensor(0.1, requires_grad=True)
             self.value_function_weights = np.zeros(self.dynamics_model.phi_column_dim)
 
         self.optimizer = torch.optim.Adam([self.alpha, self.beta], self.learning_rate)
 
     def get_action_distribution(self, x):
-        # phi_x = torch.Tensor(self.dynamics_model.phi(x))
-        phi_x = torch.cat([torch.Tensor(x), torch.tensor([[1]])])
-        mu = (self.alpha @ phi_x)[0,0]
-        # mu = (self.alpha @ (phi_x / self.max_phi_norm))[0,0]
+        """
+            Get the action distribution for a given state.
+
+            INPUTS:
+                x - State column vector.
+
+            OUTPUTS:
+                Normal distribution using state dependent mu and latest sigma.
+        """
+
+        phi_x = torch.Tensor(self.dynamics_model.phi(x))
+        # phi_x = torch.cat([torch.Tensor(x), torch.tensor([[1]])])
+        # mu = (self.alpha @ phi_x)[0,0]
+        mu = (self.alpha @ (phi_x / self.max_phi_norm))[0,0]
         sigma = torch.exp(self.beta)
         return torch.distributions.normal.Normal(mu, sigma, validate_args=False)
 
@@ -137,11 +150,11 @@ class ContinuousKoopmanPolicyIterationPolicy:
 
     def update_policy_model(self, returns, log_probs):
         """
-            Update the weights of the policy network given the training samples.
+            Update the weights of the policy network given the estimated returns and log probabilities.
             
             INPUTS:
-                returns: return (cumulative rewards) for each step in an episode
-                log_probs: log probability for each step
+                returns - Return (cumulative rewards) as given by our estimate of the Q function for each step in an episode.
+                log_probs - Log probability for each step.
         """
 
         policy_gradient = torch.zeros(log_probs.shape[0])

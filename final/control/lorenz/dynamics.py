@@ -19,16 +19,19 @@ psi_dim = int( comb( action_order+action_dim, action_order ) )
 
 phi_column_shape = [phi_dim, 1]
 
-state_minimums = np.array([
-    [-20.0],
-    [-50.0],
-    [0.0]
-])
-state_maximums = np.array([
-    [20.0],
-    [50.0],
-    [50.0]
-])
+state_range = 50.0
+state_minimums = np.ones([state_dim,1]) * -state_range
+state_maximums = np.ones([state_dim,1]) * state_range
+# state_minimums = np.array([
+#     [-20.0],
+#     [-50.0],
+#     [0.0]
+# ])
+# state_maximums = np.array([
+#     [20.0],
+#     [50.0],
+#     [50.0]
+# ])
 
 action_range = 75.0
 # action_range = 100.0 #! results in Bellman error = inf
