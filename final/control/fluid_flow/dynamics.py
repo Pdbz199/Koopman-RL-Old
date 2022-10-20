@@ -1,6 +1,8 @@
 # Imports
 import numpy as np
 
+from scipy.integrate import solve_ivp
+
 # Variables
 state_dim = 3
 action_dim = 1

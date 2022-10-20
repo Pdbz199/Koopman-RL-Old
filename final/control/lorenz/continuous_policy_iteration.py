@@ -3,14 +3,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from cost import Q, R, reference_point, cost
-from dynamics import state_minimums, state_maximums, state_dim, action_minimums, action_maximums, action_dim, state_order, action_order, all_actions, A, B, f
+from dynamics import dt, state_dim, action_dim, state_minimums, state_maximums, all_actions, state_order, action_order, random_policy, f, continuous_A, continuous_B
 
 import sys
 sys.path.append('../../../')
 import final.observables as observables
 from final.tensor import KoopmanTensor
 from final.control.policies.lqr import LQRPolicy
-from final.control.policies.discrete_value_iteration import DiscreteKoopmanValueIterationPolicy
+from final.control.policies.continuous_reinforce import ContinuousKoopmanPolicyIterationPolicy
 
 # Set seed
 seed = 123
@@ -20,15 +20,43 @@ np.random.seed(seed)
 gamma = 0.99
 reg_lambda = 1.0
 
-# Construct datasets
-num_episodes = 100
-num_steps_per_episode = 200
-N = num_episodes * num_steps_per_episode # Number of datapoints
+# LQR Policy
+lqr_policy = LQRPolicy(
+    continuous_A,
+    continuous_B,
+    Q,
+    R,
+    reference_point,
+    gamma,
+    reg_lambda,
+    dt=dt,
+    is_continuous=True,
+    seed=seed
+)
 
-# Shotgun-based approach
-X = np.random.uniform(state_minimums, state_maximums, size=[state_dim, N])
-U = np.random.uniform(action_minimums, action_maximums, size=[action_dim, N])
-Y = f(X, U)
+#%% Generate path-based data
+num_episodes = 500
+num_steps_per_episode = int(25.0 / dt)
+N = num_episodes*num_steps_per_episode # Number of datapoints
+
+X = np.zeros([state_dim,N])
+Y = np.zeros([state_dim,N])
+U = np.zeros([action_dim,N])
+
+initial_states = np.random.uniform(
+    state_minimums,
+    state_maximums,
+    [state_dim, num_episodes]
+)
+
+for episode in range(num_episodes):
+    x = np.vstack(initial_states[:,episode])
+    for step in range(num_steps_per_episode):
+        X[:,(episode*num_steps_per_episode)+step] = x[:,0]
+        u = random_policy()
+        U[:,(episode*num_steps_per_episode)+step] = u[:,0]
+        x = f(x, u)
+        Y[:,(episode*num_steps_per_episode)+step] = x[:,0]
 
 # Estimate Koopman tensor
 tensor = KoopmanTensor(
@@ -40,36 +68,26 @@ tensor = KoopmanTensor(
     regressor='ols'
 )
 
-# LQR Policy
-lqr_policy = LQRPolicy(
-    A,
-    B,
-    Q,
-    R,
-    reference_point,
-    gamma,
-    reg_lambda,
-    seed=seed,
-    is_continuous=False
-)
-
 # Koopman value iteration policy
-koopman_policy = DiscreteKoopmanValueIterationPolicy(
+koopman_policy = ContinuousKoopmanPolicyIterationPolicy(
     f,
     gamma,
     reg_lambda,
     tensor,
+    state_minimums,
+    state_maximums,
     all_actions,
     cost,
-    'saved_models/lqr-discrete-value-iteration-policy.pt',
+    'saved_models/lorenz-continuous-reinforce-policy.pt',
+    dt=dt,
     seed=seed
 )
 
 # Train Koopman policy
-koopman_policy.train(training_epochs=500, batch_size=2**10)
+koopman_policy.train(num_training_episodes=1000, num_steps_per_episode=int(25.0 / dt))
 
 # Test policies
-def watch_agent(num_episodes, step_limit, specifiedEpisode):
+def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
     if specifiedEpisode is None:
         specifiedEpisode = num_episodes-1
 
@@ -107,14 +125,14 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode):
             #     lqr_action = np.array([[-action_range]])
             lqr_actions[episode,step] = lqr_action
 
-            koopman_action = koopman_policy.get_action(koopman_state)
+            koopman_action, _ = koopman_policy.get_action(koopman_state)
             koopman_actions[episode,step] = koopman_action
 
             lqr_cumulative_cost += cost(lqr_state, lqr_action)[0,0]
             koopman_cumulative_cost += cost(koopman_state, koopman_action)[0,0]
 
             lqr_state = f(lqr_state, lqr_action)
-            koopman_state = f(koopman_state, koopman_action)
+            koopman_state = f(koopman_state, np.array([[koopman_action]]))
 
         lqr_costs[episode] = lqr_cumulative_cost
         koopman_costs[episode] = koopman_cumulative_cost
@@ -156,13 +174,34 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode):
     plt.tight_layout()
     plt.show()
 
-    # Plot x_0 vs x_1 for both controller types
-    fig, axes = plt.subplots(2)
-    fig.suptitle(f"Controllers in Environment (2D; Episode #{specifiedEpisode})")
-    axes[0].set_title(f"LQR Controller")
-    axes[0].plot(lqr_states[specifiedEpisode,:,0], lqr_states[specifiedEpisode,:,1])
-    axes[1].set_title("Koopman Controller")
-    axes[1].plot(koopman_states[specifiedEpisode,:,0], koopman_states[specifiedEpisode,:,1])
+    # Plot x_0 vs x_1 vs x_3 for both controller types
+    fig = plt.figure()
+    fig.suptitle(f"Controllers in Environment (3D; Episode #{specifiedEpisode})")
+
+    ax = fig.add_subplot(1, 2, 1, projection='3d')
+    ax.set_title("LQR Controller")
+    ax.set_xlim(-20.0, 20.0)
+    ax.set_ylim(-50.0, 50.0)
+    ax.set_zlim(0.0, 50.0)
+    ax.plot(
+        lqr_states[specifiedEpisode,:,0],
+        lqr_states[specifiedEpisode,:,1],
+        lqr_states[specifiedEpisode,:,2],
+        'gray'
+    )
+
+    ax = fig.add_subplot(1, 2, 2, projection='3d')
+    ax.set_title("Koopman Controller")
+    ax.set_xlim(-20.0, 20.0)
+    ax.set_ylim(-50.0, 50.0)
+    ax.set_zlim(0.0, 50.0)
+    ax.plot(
+        koopman_states[specifiedEpisode,:,0],
+        koopman_states[specifiedEpisode,:,1],
+        koopman_states[specifiedEpisode,:,2],
+        'gray'
+    )
+
     plt.show()
 
     # Labels that will be used for the next two plots
@@ -187,4 +226,4 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode):
     plt.show()
 
 print("\nTesting learned policy...\n")
-watch_agent(num_episodes=100, step_limit=200, specifiedEpisode=42)
+watch_agent(num_episodes=100, step_limit=int(25.0 / dt), specifiedEpisode=42)

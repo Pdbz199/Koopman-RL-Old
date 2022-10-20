@@ -10,7 +10,7 @@ sys.path.append('../../../')
 import final.observables as observables
 from final.tensor import KoopmanTensor
 from final.control.policies.lqr import LQRPolicy
-from final.control.policies.discrete_value_iteration import DiscreteKoopmanValueIterationPolicy
+from final.control.policies.discrete_reinforce import DiscreteKoopmanPolicyIterationPolicy
 
 # Set seed
 seed = 123
@@ -54,19 +54,21 @@ lqr_policy = LQRPolicy(
 )
 
 # Koopman value iteration policy
-koopman_policy = DiscreteKoopmanValueIterationPolicy(
+koopman_policy = DiscreteKoopmanPolicyIterationPolicy(
     f,
     gamma,
     reg_lambda,
     tensor,
+    state_minimums,
+    state_maximums,
     all_actions,
     cost,
-    'saved_models/lqr-discrete-value-iteration-policy.pt',
+    'saved_models/lqr-discrete-reinforce-policy.pt',
     seed=seed
 )
 
 # Train Koopman policy
-koopman_policy.train(training_epochs=500, batch_size=2**10)
+koopman_policy.train(num_training_episodes=1000, num_steps_per_episode=200)
 
 # Test policies
 def watch_agent(num_episodes, step_limit, specifiedEpisode):
@@ -107,14 +109,14 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode):
             #     lqr_action = np.array([[-action_range]])
             lqr_actions[episode,step] = lqr_action
 
-            koopman_action = koopman_policy.get_action(koopman_state)
+            koopman_action, _ = koopman_policy.get_action(koopman_state)
             koopman_actions[episode,step] = koopman_action
 
             lqr_cumulative_cost += cost(lqr_state, lqr_action)[0,0]
             koopman_cumulative_cost += cost(koopman_state, koopman_action)[0,0]
 
             lqr_state = f(lqr_state, lqr_action)
-            koopman_state = f(koopman_state, koopman_action)
+            koopman_state = f(koopman_state, np.array([[koopman_action]]))
 
         lqr_costs[episode] = lqr_cumulative_cost
         koopman_costs[episode] = koopman_cumulative_cost
