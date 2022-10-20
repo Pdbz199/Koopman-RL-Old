@@ -126,13 +126,14 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
             lqr_actions[episode,step] = lqr_action
 
             koopman_action, _ = koopman_policy.get_action(koopman_state)
+            koopman_action = np.array([[koopman_action]])
             koopman_actions[episode,step] = koopman_action
 
             lqr_cumulative_cost += cost(lqr_state, lqr_action)[0,0]
             koopman_cumulative_cost += cost(koopman_state, koopman_action)[0,0]
 
             lqr_state = f(lqr_state, lqr_action)
-            koopman_state = f(koopman_state, np.array([[koopman_action]]))
+            koopman_state = f(koopman_state, koopman_action)
 
         lqr_costs[episode] = lqr_cumulative_cost
         koopman_costs[episode] = koopman_cumulative_cost
