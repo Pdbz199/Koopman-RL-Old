@@ -79,6 +79,7 @@ koopman_policy = ContinuousKoopmanPolicyIterationPolicy(
     all_actions,
     cost,
     'saved_models/lorenz-continuous-reinforce-policy.pt',
+    learning_rate=0.0003,
     dt=dt,
     seed=seed
 )

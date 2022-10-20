@@ -97,8 +97,8 @@ class ContinuousKoopmanPolicyIterationPolicy:
 
         phi_x = torch.Tensor(self.dynamics_model.phi(x))
         # phi_x = torch.cat([torch.Tensor(x), torch.tensor([[1]])])
-        # mu = (self.alpha @ phi_x)[0,0]
-        mu = (self.alpha @ (phi_x / self.max_phi_norm))[0,0]
+        mu = (self.alpha @ phi_x)[0,0]
+        # mu = (self.alpha @ (phi_x / self.max_phi_norm))[0,0]
         sigma = torch.exp(self.beta)
         return torch.distributions.normal.Normal(mu, sigma, validate_args=False)
 
