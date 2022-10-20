@@ -2,9 +2,8 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
-from cost import Q, R, reference_point, cost
-from dynamics import state_dim, action_dim, state_column_shape, dt, continuous_f, random_policy, f, continuous_A, continuous_B, state_order, action_order, all_actions
-from scipy.integrate import solve_ivp
+from cost import cost, R, reference_point, Q
+from dynamics import action_dim, all_actions, action_order, dt, f, state_dim, state_minimums, state_maximums, state_order, random_policy, continuous_A, continuous_B
 
 import sys
 sys.path.append('../../../')
@@ -35,20 +34,20 @@ lqr_policy = LQRPolicy(
     seed=seed
 )
 
-# Generate data
+# Generate datasets
 num_episodes = 500
-num_steps_per_episode = int(50.0 / dt)
+num_steps_per_episode = int(10.0 / dt)
 N = num_episodes*num_steps_per_episode # Number of datapoints
+
 X = np.zeros([state_dim,N])
 Y = np.zeros([state_dim,N])
 U = np.zeros([action_dim,N])
 
-initial_states = np.zeros([num_episodes, state_dim])
-for episode in range(num_episodes):
-    x = np.random.random(state_column_shape) * 0.5 * np.random.choice([-1,1], size=state_column_shape)
-    u = np.array([[0]])
-    soln = solve_ivp(fun=continuous_f(u), t_span=[0, 50.0], y0=x[:,0], method='RK45')
-    initial_states[episode] = soln.y[:,-1]
+initial_states = np.random.uniform(
+    state_minimums,
+    state_maximums,
+    [state_dim, num_episodes]
+).T
 
 for episode in range(num_episodes):
     x = np.vstack(initial_states[episode])
@@ -77,7 +76,7 @@ koopman_policy = DiscreteKoopmanValueIterationPolicy(
     tensor,
     all_actions,
     cost,
-    'saved_models/fluid-flow-discrete-value-iteration-policy.pt',
+    'saved_models/double-well-discrete-value-iteration-policy.pt',
     dt=dt,
     seed=seed
 )
@@ -98,12 +97,11 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
     koopman_actions = np.zeros([num_episodes,step_limit,action_dim])
     koopman_costs = np.zeros([num_episodes])
 
-    initial_states = np.zeros([num_episodes, state_dim])
-    for episode in range(num_episodes):
-        x = np.random.random(state_column_shape) * 0.5 * np.random.choice([-1,1], size=state_column_shape)
-        u = np.array([[0]])
-        soln = solve_ivp(fun=continuous_f(u), t_span=[0, 50.0], y0=x[:,0], method='RK45')
-        initial_states[episode] = soln.y[:,-1]
+    initial_states = np.random.uniform(
+        state_minimums,
+        state_maximums,
+        [tensor.x_dim, num_episodes]
+    ).T
 
     for episode in range(num_episodes):
         state = np.vstack(initial_states[episode])
@@ -174,31 +172,27 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
     plt.tight_layout()
     plt.show()
 
-    # Plot x_0 vs x_1 vs x_3 for both controller types
+    # Plot x_0 vs x_1 for both controller types
     fig = plt.figure()
     fig.suptitle(f"Controllers in Environment (3D; Episode #{specifiedEpisode})")
 
-    ax = fig.add_subplot(1, 2, 1, projection='3d')
+    ax = fig.add_subplot(1, 2, 1)
     ax.set_title("LQR Controller")
     ax.set_xlim(-1.0, 1.0)
     ax.set_ylim(-1.0, 1.0)
-    ax.set_zlim(0.0, 1.0)
     ax.plot(
         lqr_states[specifiedEpisode,:,0],
         lqr_states[specifiedEpisode,:,1],
-        lqr_states[specifiedEpisode,:,2],
         'gray'
     )
 
-    ax = fig.add_subplot(1, 2, 2, projection='3d')
+    ax = fig.add_subplot(1, 2, 2)
     ax.set_title("Koopman Controller")
     ax.set_xlim(-1.0, 1.0)
     ax.set_ylim(-1.0, 1.0)
-    ax.set_zlim(0.0, 1.0)
     ax.plot(
         koopman_states[specifiedEpisode,:,0],
         koopman_states[specifiedEpisode,:,1],
-        koopman_states[specifiedEpisode,:,2],
         'gray'
     )
 

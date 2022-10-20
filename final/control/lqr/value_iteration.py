@@ -2,6 +2,9 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
+from cost import Q, R, reference_point, cost
+from dynamics import state_minimums, state_maximums, state_dim, action_minimums, action_maximums, action_dim, state_order, action_order, all_actions, A, B, f
+
 import sys
 sys.path.append('../../../')
 import final.observables as observables
@@ -14,70 +17,8 @@ seed = 123
 np.random.seed(seed)
 
 # Variables
-state_dim = 3
-action_dim = 1
-
-# state_range = 25.0
-state_range = 5.0
-state_minimums = np.ones([state_dim,1]) * -state_range
-state_maximums = np.ones([state_dim,1]) * state_range
-
-action_range = 75.0
-action_minimums = np.ones([action_dim,1]) * -action_range
-action_maximums = np.ones([action_dim,1]) * action_range
-
-step_size = 0.1
-all_actions = np.arange(-action_range, action_range+step_size, step_size)
-all_actions = np.round(all_actions, decimals=2)
-
 gamma = 0.99
 reg_lambda = 1.0
-
-state_order = 2
-action_order = 2
-
-# Dynamics
-max_eigen_factor = np.random.uniform(0.7, 1)
-print(f"max eigen factor: {max_eigen_factor}")
-Z = np.random.rand(state_dim, state_dim)
-_, sigma, _ = np.linalg.svd(Z)
-Z = Z * np.sqrt(max_eigen_factor) / np.max(sigma)
-A = Z.T @ Z
-W, _ = np.linalg.eig(A)
-max_abs_real_eigen_val = np.max(np.abs(np.real(W)))
-
-print(f"A: {A}")
-print(f"A's max absolute real eigenvalue: {max_abs_real_eigen_val}")
-
-B = np.ones([state_dim, action_dim])
-
-def f(x, u):
-    return A @ x + B @ u
-
-# Define cost/reward
-Q = np.eye(state_dim)
-R = 1
-
-reference_point = np.array([
-    [0.0],
-    [0.0],
-    [0.0]
-])
-
-def cost(x, u):
-    """
-        Assuming that data matrices are passed in for X and U. Columns vectors are snapshots.
-    """
-
-    # x.T Q x + u.T R u
-
-    _x = x - reference_point
-
-    mat = np.vstack(np.diag(_x.T @ Q @ _x)) + np.power(u, 2)*R
-    return mat.T
-
-def reward(x, u):
-    return -cost(x, u)
 
 # Construct datasets
 num_episodes = 100
@@ -108,7 +49,8 @@ lqr_policy = LQRPolicy(
     reference_point,
     gamma,
     reg_lambda,
-    seed=seed
+    seed=seed,
+    is_continuous=False
 )
 
 # Koopman value iteration policy
@@ -127,7 +69,10 @@ koopman_policy = DiscreteKoopmanValueIterationPolicy(
 koopman_policy.train(training_epochs=500, batch_size=2**10)
 
 # Test policies
-def watch_agent(num_episodes, step_limit, specifiedEpisode=-1):
+def watch_agent(num_episodes, step_limit, specifiedEpisode):
+    if specifiedEpisode is None:
+        specifiedEpisode = num_episodes-1
+
     lqr_states = np.zeros([num_episodes,step_limit,state_dim])
     lqr_actions = np.zeros([num_episodes,step_limit,action_dim])
     lqr_costs = np.zeros([num_episodes])
