@@ -18,16 +18,6 @@ def checkConditionNumber(X, name, threshold=200):
         # raise ValueError(f"Condition number of {name} is too large ({cond_num} > {threshold})")
         pass
 
-def gedmd(X, Y, rank=8):
-    U, Sigma, VT = sp.linalg.svd(X, full_matrices=False)
-    U_tilde = U[:, :rank]
-    Sigma_tilde = np.diag(Sigma[:rank])
-    VT_tilde = VT[:rank]
-
-    M_tilde = sp.linalg.solve(Sigma_tilde.T, (U_tilde.T @ Y @ VT_tilde.T).T).T
-    L = M_tilde.T # estimate of Koopman generator
-    return L
-
 #%% (Theta=Psi_X_T, dXdt=dPsi_X_T, lamb=0.05, n=d)
 def SINDy(Theta, dXdt, lamb=0.05):
     d = dXdt.shape[1]
@@ -35,12 +25,12 @@ def SINDy(Theta, dXdt, lamb=0.05):
     
     for _ in range(10): #which parameter should we be tuning here for RRR comp
         smallinds = np.abs(Xi) < lamb # Find small coefficients
-        Xi[smallinds] = 0                          # and threshold
-        for ind in range(d):                       # n is state dimension
+        Xi[smallinds] = 0             # and threshold
+        for ind in range(d):          # n is state dimension
             biginds = smallinds[:, ind] == 0
             # Regress dynamics onto remaining terms to find sparse Xi
             Xi[biginds, ind] = np.linalg.lstsq(Theta[:, biginds], dXdt[:, ind], rcond=None)[0]
-            
+
     L = Xi
     return L
 
@@ -82,6 +72,25 @@ class KoopmanTensor:
         is_generator=False,
         dt = 0.01
     ):
+        """
+            Constructor for the KoopmanTensor class.
+
+            INPUTS:
+                X - States dataset to use for training.
+                Y - Single step forward states dataset to use for training.
+                U - Actions dataset to use for training.
+                phi - Dictionary space for the states.
+                psi - Dictionary space for the actions.
+                regressor - String indicating which regression method to use. The options are 'ols', 'sindy', and 'rrr'.
+                p_inv - Boolean indicating whether or not to use pseudo inverse instead of regular inverse.
+                rank - Rank of the Koopman tensor when applying reduced rank regression.
+                is_generator - Boolean indicating whether or not we should be training a Koopman generator tensor.
+                dt - The time step of the system.
+
+            OUTPUTS:
+                Instance of the KoopmanTensor class.
+        """
+
         self.X = X
         self.Y = Y
         self.U = U
@@ -113,12 +122,12 @@ class KoopmanTensor:
         # Make sure data is full rank
         checkMatrixRank(self.Phi_X, "Phi_X")
         checkMatrixRank(self.regression_Y, "dPhi_Y" if is_generator else "Phi_Y")
-        checkMatrixRank(self.Psi_U, "Psi_U")
+        checkMatrixRank(self.Psi_U, "Psi_U\n")
 
         # Make sure condition numbers are small
         checkConditionNumber(self.Phi_X, "Phi_X")
         checkConditionNumber(self.regression_Y, "dPhi_Y" if is_generator else "Phi_Y")
-        checkConditionNumber(self.Psi_U, "Psi_U")
+        checkConditionNumber(self.Psi_U, "Psi_U\n")
 
         # Build matrix of kronecker products between u_i and x_i for all 0 <= i <= N
         self.kron_matrix = np.empty([
@@ -132,13 +141,14 @@ class KoopmanTensor:
             )
 
         # Solve for M and B
-        if regressor.lower() == 'rrr':
+        lowercaseRegressor = regressor.lower()
+        if lowercaseRegressor == 'rrr':
             self.M = rrr(self.kron_matrix.T, self.regression_Y.T, rank).T
             self.B = rrr(self.Phi_X.T, self.X.T, rank)
-        elif regressor.lower() == 'sindy':
+        elif lowercaseRegressor == 'sindy':
             self.M = SINDy(self.kron_matrix.T, self.regression_Y.T).T
             self.B = SINDy(self.Phi_X.T, self.X.T)
-        elif regressor.lower() == 'ols':
+        elif lowercaseRegressor == 'ols':
             self.M = ols(self.kron_matrix.T, self.regression_Y.T, p_inv).T
             self.B = ols(self.Phi_X.T, self.X.T, p_inv)
         else:
@@ -157,7 +167,15 @@ class KoopmanTensor:
             )
 
     def K_(self, u):
-        ''' Pick out Koopman operator given an action '''
+        """
+            Pick out Koopman operator given an action.
+
+            INPUTS:
+                u - Action for which we want the Koopman operator.
+
+            OUTPUTS:
+                K^u.
+        """
 
         # If array, convert to column vector
         if isinstance(u, int) or isinstance(u, float) or isinstance(u, np.int64) or isinstance(u, np.float64):
@@ -174,24 +192,28 @@ class KoopmanTensor:
 
     def phi_f(self, x, u):
         """
+            Use the Koopman tensor to push forward phi(x) x psi(u) => phi(x').
+
             INPUTS:
-                x - state column vector(s)
-                u - action column vector(s)
+                x - State column vector(s).
+                u - Action column vector(s).
 
             OUTPUTS:
-                phi(x) column vector(s)
+                phi(x') column vector(s).
         """
         
         return self.K_(u) @ self.phi(x)
 
     def f(self, x, u):
         """
+            Use the Koopman tensor as an estimate for the true dynamics f(x, u) => x'.
+
             INPUTS:
-                x - state column vector(s)
-                u - action column vector(s)
+                x - State column vector(s).
+                u - Action column vector(s).
 
             OUTPUTS:
-                x column vector(s)
+                x column vector(s).
         """
 
         return self.B.T @ self.phi_f(x, u)
