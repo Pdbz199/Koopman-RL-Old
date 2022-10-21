@@ -138,7 +138,11 @@ class ContinuousKoopmanPolicyIterationPolicy:
         phi_x_prime_batch_prob = np.einsum('upw,uw->upw', phi_x_prime_batch, pi_response) # (all_actions.shape[0], phi_dim, w_hat_batch_size)
         expectation_term_1 = np.sum(phi_x_prime_batch_prob, axis=0) # (phi_dim, w_hat_batch_size)
 
-        reward_batch_prob = np.einsum('uw,uw->wu', -self.cost(x_batch, np.array([self.all_actions])), pi_response) # (w_hat_batch_size, all_actions.shape[0])
+        reward_batch_prob = np.einsum(
+            'uw,uw->wu',
+            -self.cost(x_batch, np.array([self.all_actions])),
+            pi_response
+        ) # (w_hat_batch_size, all_actions.shape[0])
         expectation_term_2 = np.array([
             np.sum(reward_batch_prob, axis=1) # (w_hat_batch_size,)
         ]) # (1, w_hat_batch_size)
@@ -237,6 +241,6 @@ class ContinuousKoopmanPolicyIterationPolicy:
             self.update_value_function_weights()
 
             # Progress prints
-            if (episode+1) % 250 == 0:
+            if episode == 0 or (episode+1) % 250 == 0:
                 print(f"Episode: {episode+1}, discounted total reward: {total_reward_episode[episode]}")
                 torch.save(self, self.saved_file_path)

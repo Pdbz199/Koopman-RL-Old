@@ -20,6 +20,9 @@ np.random.seed(seed)
 gamma = 0.99
 reg_lambda = 1.0
 
+plot_path = 'plots/continuous_reinforce/'
+plot_file_extension = '.svg'
+
 # LQR Policy
 lqr_policy = LQRPolicy(
     continuous_A,
@@ -79,6 +82,7 @@ koopman_policy = ContinuousKoopmanPolicyIterationPolicy(
     all_actions,
     cost,
     'saved_models/double-well-continuous-reinforce-policy.pt',
+    learning_rate=0.0003,
     dt=dt,
     seed=seed
 )

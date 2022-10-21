@@ -77,6 +77,14 @@ class DiscreteKoopmanPolicyIterationPolicy:
                 nn.Linear(self.dynamics_model.x_dim, self.all_actions.shape[0]),
                 nn.Softmax(dim=-1)
             )
+            # self.policy_model = nn.Sequential(
+            #     nn.Linear(self.dynamics_model.x_dim, 128),
+            #     nn.ReLU(),
+            #     nn.Linear(128, 256),
+            #     nn.ReLU(),
+            #     nn.Linear(256, self.all_actions.shape[0]),
+            #     nn.Softmax(dim=-1)
+            # )
             self.value_function_weights = np.zeros(self.dynamics_model.phi_column_dim)
 
             def init_weights(m):
@@ -224,7 +232,7 @@ class DiscreteKoopmanPolicyIterationPolicy:
             self.update_value_function_weights()
 
             # Progress prints
-            if (episode+1) % 250 == 0:
+            if episode == 0 or (episode+1) % 250 == 0:
                 print(f"Episode: {episode+1}, discounted total reward: {total_reward_episode[episode]}")
                 torch.save(self.policy_model, self.saved_file_path)
                 torch.save(torch.Tensor(self.value_function_weights), self.saved_file_path_value_function_weights)

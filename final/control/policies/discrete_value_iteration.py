@@ -238,7 +238,7 @@ class DiscreteKoopmanValueIterationPolicy:
 
                 # Every so often, print out and save the model weights and the bellman error(s)
                 # Or, if the bellman error is less than the epsilon, save the model weights
-                if (epoch+1) % 250 == 0:
+                if epoch == 0 or (epoch+1) % 250 == 0:
                     # np.save('double_well_bellman_errors.npy', bellman_errors)
                     torch.save(self.value_function_weights, self.saved_file_path)
                     print(f"Bellman error at epoch {epoch+1}: {BE}")

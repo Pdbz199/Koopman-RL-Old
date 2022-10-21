@@ -20,6 +20,9 @@ np.random.seed(seed)
 gamma = 0.99
 reg_lambda = 1.0
 
+plot_path = 'plots/discrete_reinforce/'
+plot_file_extension = '.svg'
+
 # LQR Policy
 lqr_policy = LQRPolicy(
     continuous_A,
