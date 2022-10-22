@@ -20,7 +20,7 @@ np.random.seed(seed)
 gamma = 0.99
 reg_lambda = 1.0
 
-plot_path = 'plots/continuous_reinforce/'
+plot_path = 'output/continuous_reinforce/'
 plot_file_extension = '.svg'
 
 # Construct datasets
@@ -72,7 +72,7 @@ koopman_policy = ContinuousKoopmanPolicyIterationPolicy(
 )
 
 # Train Koopman policy
-koopman_policy.train(num_training_episodes=1000, num_steps_per_episode=200)
+koopman_policy.train(num_training_episodes=2000, num_steps_per_episode=200)
 
 # Test policies
 def watch_agent(num_episodes, step_limit, specifiedEpisode):
@@ -162,17 +162,17 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode):
     fig.legend(lines, labels)
     plt.tight_layout()
     plt.savefig(plot_path + 'states-over-time' + plot_file_extension)
-    plt.show()
+    # plt.show()
 
     # Plot x_0 vs x_1 for both controller types
-    fig, axes = plt.subplots(2)
+    fig, axes = plt.subplots(1, 2)
     fig.suptitle(f"Controllers in Environment (2D; Episode #{specifiedEpisode})")
     axes[0].set_title(f"LQR Controller")
     axes[0].plot(lqr_states[specifiedEpisode,:,0], lqr_states[specifiedEpisode,:,1])
     axes[1].set_title("Koopman Controller")
     axes[1].plot(koopman_states[specifiedEpisode,:,0], koopman_states[specifiedEpisode,:,1])
     plt.savefig(plot_path + 'x0-vs-x1' + plot_file_extension)
-    plt.show()
+    # plt.show()
 
     # Labels that will be used for the next two plots
     labels = ['LQR controller', 'Koopman controller']
@@ -185,7 +185,7 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode):
     plt.hist(koopman_actions[specifiedEpisode,:,0])
     plt.legend(labels)
     plt.savefig(plot_path + 'actions-histogram' + plot_file_extension)
-    plt.show()
+    # plt.show()
 
     # Plot scatter plot of actions over time
     plt.title(f"Scatter Plot of Actions Over Time (Episode #{specifiedEpisode})")
@@ -195,7 +195,7 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode):
     plt.scatter(np.arange(koopman_actions.shape[1]), koopman_actions[specifiedEpisode,:,0], s=5)
     plt.legend(labels)
     plt.savefig(plot_path + 'actions-scatter-plot' + plot_file_extension)
-    plt.show()
+    # plt.show()
 
 print("\nTesting learned policy...\n")
 watch_agent(num_episodes=100, step_limit=200, specifiedEpisode=42)

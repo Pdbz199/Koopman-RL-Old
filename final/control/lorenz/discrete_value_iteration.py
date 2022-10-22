@@ -20,7 +20,7 @@ np.random.seed(seed)
 gamma = 0.99
 reg_lambda = 1.0
 
-plot_path = 'plots/discrete_value_iteration/'
+plot_path = 'output/discrete_value_iteration/'
 plot_file_extension = '.svg'
 
 # LQR Policy
@@ -85,7 +85,7 @@ koopman_policy = DiscreteKoopmanValueIterationPolicy(
 )
 
 # Train Koopman policy
-koopman_policy.train(training_epochs=500, batch_size=2**10)
+koopman_policy.train(training_epochs=2000, batch_size=2**12)
 
 # Test policies
 def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
@@ -174,7 +174,7 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
     fig.legend(lines, labels)
     plt.tight_layout()
     plt.savefig(plot_path + 'states-over-time-2d' + plot_file_extension)
-    plt.show()
+    # plt.show()
 
     # Plot x_0 vs x_1 vs x_2 for both controller types
     fig = plt.figure()
@@ -205,7 +205,7 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
     )
 
     plt.savefig(plot_path + 'states-over-time-3d' + plot_file_extension)
-    plt.show()
+    # plt.show()
 
     # Labels that will be used for the next two plots
     labels = ['LQR controller', 'Koopman controller']
@@ -218,7 +218,7 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
     plt.hist(koopman_actions[specifiedEpisode,:,0])
     plt.legend(labels)
     plt.savefig(plot_path + 'actions-histogram' + plot_file_extension)
-    plt.show()
+    # plt.show()
 
     # Plot scatter plot of actions over time
     plt.title(f"Scatter Plot of Actions Over Time (Episode #{specifiedEpisode})")
@@ -228,7 +228,7 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
     plt.scatter(np.arange(koopman_actions.shape[1]), koopman_actions[specifiedEpisode,:,0], s=5)
     plt.legend(labels)
     plt.savefig(plot_path + 'actions-scatter-plot' + plot_file_extension)
-    plt.show()
+    # plt.show()
 
 print("\nTesting learned policy...\n")
 watch_agent(num_episodes=100, step_limit=int(25.0 / dt), specifiedEpisode=42)

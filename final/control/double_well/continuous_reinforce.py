@@ -20,7 +20,7 @@ np.random.seed(seed)
 gamma = 0.99
 reg_lambda = 1.0
 
-plot_path = 'plots/continuous_reinforce/'
+plot_path = 'output/continuous_reinforce/'
 plot_file_extension = '.svg'
 
 # LQR Policy
@@ -88,7 +88,7 @@ koopman_policy = ContinuousKoopmanPolicyIterationPolicy(
 )
 
 # Train Koopman policy
-koopman_policy.train(num_training_episodes=1000, num_steps_per_episode=int(25.0 / dt))
+koopman_policy.train(num_training_episodes=2000, num_steps_per_episode=int(25.0 / dt))
 
 # Test policies
 def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
@@ -177,7 +177,8 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
     lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
     fig.legend(lines, labels)
     plt.tight_layout()
-    plt.show()
+    plt.savefig(plot_path + 'states-over-time' + plot_file_extension)
+    # plt.show()
 
     # Plot x_0 vs x_1 for both controller types
     fig = plt.figure()
@@ -203,6 +204,7 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
         'gray'
     )
 
+    plt.savefig(plot_path + 'x0-vs-x1' + plot_file_extension)
     plt.show()
 
     # Labels that will be used for the next two plots
@@ -214,7 +216,8 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
     plt.ylabel("Frequency")
     plt.hist(lqr_actions[specifiedEpisode,:,0])
     plt.hist(koopman_actions[specifiedEpisode,:,0])
-    plt.legend(labels)
+    # plt.legend(labels)
+    plt.savefig(plot_path + 'actions-histogram' + plot_file_extension)
     plt.show()
 
     # Plot scatter plot of actions over time
@@ -224,6 +227,7 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
     plt.scatter(np.arange(lqr_actions.shape[1]), lqr_actions[specifiedEpisode,:,0], s=5)
     plt.scatter(np.arange(koopman_actions.shape[1]), koopman_actions[specifiedEpisode,:,0], s=5)
     plt.legend(labels)
+    plt.savefig(plot_path + 'actions-scatter-plot' + plot_file_extension)
     plt.show()
 
 print("\nTesting learned policy...\n")
