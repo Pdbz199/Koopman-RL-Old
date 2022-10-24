@@ -2,14 +2,12 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
-from cost import cost, reference_point
-from dynamics import action_dim, all_actions, action_order, dt, f, state_dim, state_minimums, state_maximums, state_order, random_policy
+from cost import Q, R, reference_point, cost
+from dynamics import dt, state_dim, action_dim, state_minimums, state_maximums, f, continuous_A, continuous_B
 
 import sys
 sys.path.append('../../../')
-import final.observables as observables
-from final.tensor import KoopmanTensor
-from final.control.policies.discrete_value_iteration import DiscreteKoopmanValueIterationPolicy
+from final.control.policies.lqr import LQRPolicy
 
 # Set seed
 seed = 123
@@ -19,60 +17,24 @@ np.random.seed(seed)
 gamma = 0.99
 reg_lambda = 1.0
 
-plot_path = 'output/discrete_value_iteration/'
+plot_path = 'output/lqr/'
 plot_file_extensions = ['.svg', '.png']
 
-# Generate datasets
-num_episodes = 500
-num_steps_per_episode = int(10.0 / dt)
-N = num_episodes*num_steps_per_episode # Number of datapoints
-
-X = np.zeros([state_dim,N])
-Y = np.zeros([state_dim,N])
-U = np.zeros([action_dim,N])
-
-initial_states = np.random.uniform(
-    state_minimums,
-    state_maximums,
-    [state_dim, num_episodes]
-).T
-
-for episode in range(num_episodes):
-    x = np.vstack(initial_states[episode])
-    for step in range(num_steps_per_episode):
-        X[:,(episode*num_steps_per_episode)+step] = x[:,0]
-        u = random_policy()
-        U[:,(episode*num_steps_per_episode)+step] = u[:,0]
-        x = f(x, u)
-        Y[:,(episode*num_steps_per_episode)+step] = x[:,0]
-
-# Estimate Koopman tensor
-tensor = KoopmanTensor(
-    X,
-    Y,
-    U,
-    phi=observables.monomials(state_order),
-    psi=observables.monomials(action_order),
-    regressor='ols'
-)
-
-# Koopman value iteration policy
-koopman_policy = DiscreteKoopmanValueIterationPolicy(
-    f,
+# LQR Policy
+lqr_policy = LQRPolicy(
+    continuous_A,
+    continuous_B,
+    Q,
+    R,
+    reference_point,
     gamma,
     reg_lambda,
-    tensor,
-    all_actions,
-    cost,
-    'saved_models/double-well-discrete-value-iteration-policy.pt',
     dt=dt,
+    is_continuous=True,
     seed=seed
 )
 
-# Train Koopman policy
-koopman_policy.train(training_epochs=2000, batch_size=2**12)
-
-# Test policies
+# Test policy
 def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
     if specifiedEpisode is None:
         specifiedEpisode = num_episodes-1
@@ -84,7 +46,7 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
     initial_states = np.random.uniform(
         state_minimums,
         state_maximums,
-        [tensor.x_dim, num_episodes]
+        [state_dim, num_episodes]
     ).T
 
     for episode in range(num_episodes):
@@ -95,7 +57,11 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
         for step in range(step_limit):
             states[episode,step] = state[:,0]
 
-            action = koopman_policy.get_action(state)
+            action = lqr_policy.get_action(state)
+            # if action[0,0] > action_range:
+            #     action = np.array([[action_range]])
+            # elif action[0,0] < -action_range:
+            #     action = np.array([[-action_range]])
             actions[episode,step] = action
 
             cumulative_cost += cost(state, action)[0,0]
@@ -112,11 +78,11 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
     print(f"Reference state: {reference_point[:,0]}\n")
 
     print(f"Difference between final state of episode #{specifiedEpisode} and reference state: {np.abs(states[specifiedEpisode,-1] - reference_point[:,0])}")
-    print(f"Norm between final state of episode #{specifiedEpisode} and reference state: {np.linalg.norm(states[specifiedEpisode,-1] - reference_point[:,0])}")
+    print(f"Norm between final state of episode #{specifiedEpisode} and reference state: {np.linalg.norm(states[specifiedEpisode,-1] - reference_point[:,0])}\n")
 
-    # Plot dynamics over time for all state dimensions
+    # Plot dynamics over time for all state dimensions for both controllers
     plt.title("Dynamics Over Time")
-    plt.xlabel("Timestep")
+    plt.xlabel("Timestamp")
     plt.ylabel("State value")
 
     # Create and assign labels as a function of number of dimensions of state
@@ -132,9 +98,9 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
     plt.clf()
 
     # Plot x_0 vs x_1
-    plt.suptitle(f"Controllers in Environment (2D; Episode #{specifiedEpisode})")
+    plt.title(f"Controllers in Environment (2D; Episode #{specifiedEpisode})")
     plt.xlim(state_minimums[0,0], state_maximums[0,0])
-    plt.ylim(state_minimums[1,0], state_maximums[1,0])
+    plt.ylim(state_minimums[0,0], state_maximums[0,0])
     plt.plot(
         states[specifiedEpisode,:,0],
         states[specifiedEpisode,:,1],
