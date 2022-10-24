@@ -21,7 +21,7 @@ gamma = 0.99
 reg_lambda = 1.0
 
 plot_path = 'output/discrete_reinforce/'
-plot_file_extension = '.svg'
+plot_file_extensions = ['.svg', '.png']
 
 # LQR Policy
 lqr_policy = LQRPolicy(
@@ -176,7 +176,8 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
     lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
     fig.legend(lines, labels)
     plt.tight_layout()
-    plt.savefig(plot_path + 'states-over-time-2d' + plot_file_extension)
+    plt.savefig(plot_path + 'states-over-time-2d' + plot_file_extensions[0])
+    plt.savefig(plot_path + 'states-over-time-2d' + plot_file_extensions[1])
     # plt.show()
 
     # Plot x_0 vs x_1 vs x_2 for both controller types
@@ -207,7 +208,8 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
         'gray'
     )
 
-    plt.savefig(plot_path + 'states-over-time-3d' + plot_file_extension)
+    plt.savefig(plot_path + 'states-over-time-3d' + plot_file_extensions[0])
+    plt.savefig(plot_path + 'states-over-time-3d' + plot_file_extensions[1])
     # plt.show()
 
     # Labels that will be used for the next two plots
@@ -220,7 +222,8 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
     plt.hist(lqr_actions[specifiedEpisode,:,0])
     plt.hist(koopman_actions[specifiedEpisode,:,0])
     plt.legend(labels)
-    plt.savefig(plot_path + 'actions-histogram' + plot_file_extension)
+    plt.savefig(plot_path + 'actions-histogram' + plot_file_extensions[0])
+    plt.savefig(plot_path + 'actions-histogram' + plot_file_extensions[1])
     # plt.show()
 
     # Plot scatter plot of actions over time
@@ -230,7 +233,8 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
     plt.scatter(np.arange(lqr_actions.shape[1]), lqr_actions[specifiedEpisode,:,0], s=5)
     plt.scatter(np.arange(koopman_actions.shape[1]), koopman_actions[specifiedEpisode,:,0], s=5)
     plt.legend(labels)
-    plt.savefig(plot_path + 'actions-scatter-plot' + plot_file_extension)
+    plt.savefig(plot_path + 'actions-scatter-plot' + plot_file_extensions[0])
+    plt.savefig(plot_path + 'actions-scatter-plot' + plot_file_extensions[1])
     # plt.show()
 
 print("\nTesting learned policy...\n")

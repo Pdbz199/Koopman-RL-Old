@@ -20,3 +20,5 @@ cs4789-Cartpole-Solution/
 **/tmp/
 *.svg
 *.txt
+*.sh
+*.zip
