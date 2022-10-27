@@ -2,8 +2,11 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
-from cost import Q, R, reference_point, cost
-from dynamics import dt, state_dim, action_dim, state_minimums, state_maximums, all_actions, state_order, action_order, random_policy, f, continuous_A, continuous_B
+seed = 123
+np.random.seed(seed)
+
+from cost import reference_point, cost
+from dynamics import dt, state_dim, action_dim, state_minimums, state_maximums, all_actions, state_order, action_order, random_policy, f
 
 import sys
 sys.path.append('../../../')
@@ -11,16 +14,12 @@ import final.observables as observables
 from final.tensor import KoopmanTensor
 from final.control.policies.continuous_reinforce import ContinuousKoopmanPolicyIterationPolicy
 
-# Set seed
-seed = 123
-np.random.seed(seed)
-
 # Variables
 gamma = 0.99
 reg_lambda = 1.0
 
 plot_path = 'output/continuous_reinforce/'
-plot_file_extensions = ['.svg', '/png']
+plot_file_extensions = ['svg', 'png']
 
 #%% Generate path-based data
 num_episodes = 500
@@ -130,8 +129,8 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
         plt.plot(states[specifiedEpisode,:,i], label=labels[i])
     plt.legend(labels)
     plt.tight_layout()
-    plt.savefig(plot_path + 'states-over-time-2d' + plot_file_extensions[0])
-    plt.savefig(plot_path + 'states-over-time-2d' + plot_file_extensions[1])
+    plt.savefig(plot_path + 'states-over-time-2d.' + plot_file_extensions[0])
+    plt.savefig(plot_path + 'states-over-time-2d.' + plot_file_extensions[1])
     # plt.show()
     plt.clf()
 
@@ -147,8 +146,8 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
         states[specifiedEpisode,:,2],
         'gray'
     )
-    plt.savefig(plot_path + 'states-over-time-3d' + plot_file_extensions[0])
-    plt.savefig(plot_path + 'states-over-time-3d' + plot_file_extensions[1])
+    plt.savefig(plot_path + 'states-over-time-3d.' + plot_file_extensions[0])
+    plt.savefig(plot_path + 'states-over-time-3d.' + plot_file_extensions[1])
     # plt.show()
     plt.clf()
 
@@ -157,8 +156,8 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
     plt.xlabel("Action Value")
     plt.ylabel("Frequency")
     plt.hist(actions[specifiedEpisode,:,0])
-    plt.savefig(plot_path + 'actions-histogram' + plot_file_extensions[0])
-    plt.savefig(plot_path + 'actions-histogram' + plot_file_extensions[1])
+    plt.savefig(plot_path + 'actions-histogram.' + plot_file_extensions[0])
+    plt.savefig(plot_path + 'actions-histogram.' + plot_file_extensions[1])
     # plt.show()
     plt.clf()
 
@@ -167,8 +166,8 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
     plt.xlabel("Step #")
     plt.ylabel("Action Value")
     plt.scatter(np.arange(actions.shape[1]), actions[specifiedEpisode,:,0], s=5)
-    plt.savefig(plot_path + 'actions-scatter-plot' + plot_file_extensions[0])
-    plt.savefig(plot_path + 'actions-scatter-plot' + plot_file_extensions[1])
+    plt.savefig(plot_path + 'actions-scatter-plot.' + plot_file_extensions[0])
+    plt.savefig(plot_path + 'actions-scatter-plot.' + plot_file_extensions[1])
     # plt.show()
     plt.clf()
 

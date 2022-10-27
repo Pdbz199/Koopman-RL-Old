@@ -12,18 +12,18 @@ import sys
 sys.path.append('../../../')
 import final.observables as observables
 from final.tensor import KoopmanTensor
-from final.control.policies.discrete_value_iteration import DiscreteKoopmanValueIterationPolicy
+from final.control.policies.discrete_actor_critic import DiscreteKoopmanPolicyIterationPolicy
 
 # Variables
 gamma = 0.99
 reg_lambda = 1.0
 
-plot_path = 'output/discrete_value_iteration/'
+plot_path = 'output/discrete_actor_critic/'
 plot_file_extensions = ['svg', 'png']
 
 #%% Generate path-based data
 num_episodes = 500
-num_steps_per_episode = int(50.0 / dt)
+num_steps_per_episode = int(25.0 / dt)
 N = num_episodes*num_steps_per_episode # Number of datapoints
 
 X = np.zeros([state_dim,N])
@@ -56,20 +56,22 @@ tensor = KoopmanTensor(
 )
 
 # Koopman value iteration policy
-koopman_policy = DiscreteKoopmanValueIterationPolicy(
+koopman_policy = DiscreteKoopmanPolicyIterationPolicy(
     f,
     gamma,
     reg_lambda,
     tensor,
+    state_minimums,
+    state_maximums,
     all_actions,
     cost,
-    'saved_models/lorenz-discrete-value-iteration-policy.pt',
+    'saved_models/lorenz-discrete-actor-critic-policy.pt',
     dt=dt,
     seed=seed
 )
 
 # Train Koopman policy
-koopman_policy.train(training_epochs=2000, batch_size=2**12)
+koopman_policy.train(num_training_episodes=2000, num_steps_per_episode=int(25.0 / dt))
 
 # Test policies
 def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
@@ -83,7 +85,7 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
     initial_states = np.random.uniform(
         state_minimums,
         state_maximums,
-        [state_dim, num_episodes]
+        [tensor.x_dim, num_episodes]
     ).T
 
     for episode in range(num_episodes):
@@ -94,7 +96,8 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
         for step in range(step_limit):
             states[episode,step] = state[:,0]
 
-            action = koopman_policy.get_action(state)
+            action, _ = koopman_policy.get_action(state)
+            action = np.array([[action]])
             actions[episode,step] = action
 
             cumulative_cost += cost(state, action)[0,0]
@@ -136,7 +139,7 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
     ax.set_xlim(state_minimums[0,0], state_maximums[0,0])
     ax.set_ylim(state_minimums[1,0], state_maximums[1,0])
     ax.set_zlim(state_minimums[2,0], state_maximums[2,0])
-    ax.plot3D(
+    ax.plot(
         states[specifiedEpisode,:,0],
         states[specifiedEpisode,:,1],
         states[specifiedEpisode,:,2],

@@ -2,6 +2,9 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
+seed = 123
+np.random.seed(seed)
+
 from cost import reference_point, cost
 from dynamics import state_minimums, state_maximums, state_dim, action_minimums, action_maximums, action_dim, state_order, action_order, all_actions, f
 
@@ -11,16 +14,12 @@ import final.observables as observables
 from final.tensor import KoopmanTensor
 from final.control.policies.discrete_reinforce import DiscreteKoopmanPolicyIterationPolicy
 
-# Set seed
-seed = 123
-np.random.seed(seed)
-
 # Variables
 gamma = 0.99
 reg_lambda = 1.0
 
 plot_path = 'output/discrete_reinforce/'
-plot_file_extensions = ['.svg', '.png']
+plot_file_extensions = ['svg', 'png']
 
 # Construct datasets
 num_episodes = 100
@@ -93,15 +92,15 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode):
 
         costs[episode] = cumulative_cost
 
-    print(f"Mean cost per episode over {num_episodes} episode(s) (Koopman controller): {np.mean(costs)}\n")
+    print(f"Mean cost per episode over {num_episodes} episode(s): {np.mean(costs)}\n")
 
-    print(f"Initial state of episode #{specifiedEpisode} (Koopman controller): {states[specifiedEpisode,0]}")
-    print(f"Final state of episode #{specifiedEpisode} (Koopman controller): {states[specifiedEpisode,-1]}\n")
+    print(f"Initial state of episode #{specifiedEpisode}: {states[specifiedEpisode,0]}")
+    print(f"Final state of episode #{specifiedEpisode}: {states[specifiedEpisode,-1]}\n")
 
     print(f"Reference state: {reference_point[:,0]}\n")
 
-    print(f"Difference between final state of episode #{specifiedEpisode} and reference state (Koopman controller): {np.abs(states[specifiedEpisode,-1] - reference_point[:,0])}")
-    print(f"Norm between final state of episode #{specifiedEpisode} and reference state (Koopman controller): {np.linalg.norm(states[specifiedEpisode,-1] - reference_point[:,0])}")
+    print(f"Difference between final state of episode #{specifiedEpisode} and reference state: {np.abs(states[specifiedEpisode,-1] - reference_point[:,0])}")
+    print(f"Norm between final state of episode #{specifiedEpisode} and reference state: {np.linalg.norm(states[specifiedEpisode,-1] - reference_point[:,0])}")
 
     # Plot dynamics over time for all state dimensions
     plt.title("Dynamics Over Time")
@@ -115,8 +114,8 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode):
         plt.plot(states[specifiedEpisode,:,i], label=labels[i])
     plt.legend(labels)
     plt.tight_layout()
-    plt.savefig(plot_path + 'states-over-time-2d' + plot_file_extensions[0])
-    plt.savefig(plot_path + 'states-over-time-2d' + plot_file_extensions[1])
+    plt.savefig(plot_path + 'states-over-time-2d.' + plot_file_extensions[0])
+    plt.savefig(plot_path + 'states-over-time-2d.' + plot_file_extensions[1])
     # plt.show()
     plt.clf()
 
@@ -131,8 +130,8 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode):
         states[specifiedEpisode,:,1],
         states[specifiedEpisode,:,2]
     )
-    plt.savefig(plot_path + 'states-over-time-3d' + plot_file_extensions[0])
-    plt.savefig(plot_path + 'states-over-time-3d' + plot_file_extensions[1])
+    plt.savefig(plot_path + 'states-over-time-3d.' + plot_file_extensions[0])
+    plt.savefig(plot_path + 'states-over-time-3d.' + plot_file_extensions[1])
     # plt.show()
     plt.clf()
 
@@ -141,8 +140,8 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode):
     plt.xlabel("Action Value")
     plt.ylabel("Frequency")
     plt.hist(actions[specifiedEpisode,:,0])
-    plt.savefig(plot_path + 'actions-histogram' + plot_file_extensions[0])
-    plt.savefig(plot_path + 'actions-histogram' + plot_file_extensions[1])
+    plt.savefig(plot_path + 'actions-histogram.' + plot_file_extensions[0])
+    plt.savefig(plot_path + 'actions-histogram.' + plot_file_extensions[1])
     # plt.show()
     plt.clf()
 
@@ -151,8 +150,8 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode):
     plt.xlabel("Step #")
     plt.ylabel("Action Value")
     plt.scatter(np.arange(actions.shape[1]), actions[specifiedEpisode,:,0], s=5)
-    plt.savefig(plot_path + 'actions-scatter-plot' + plot_file_extensions[0])
-    plt.savefig(plot_path + 'actions-scatter-plot' + plot_file_extensions[1])
+    plt.savefig(plot_path + 'actions-scatter-plot.' + plot_file_extensions[0])
+    plt.savefig(plot_path + 'actions-scatter-plot.' + plot_file_extensions[1])
     # plt.show()
     plt.clf()
 

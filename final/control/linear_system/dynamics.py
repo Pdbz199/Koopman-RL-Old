@@ -5,8 +5,8 @@ import numpy as np
 state_dim = 3
 action_dim = 1
 
-# state_range = 25.0
-state_range = 5.0
+state_range = 25.0
+# state_range = 5.0
 state_minimums = np.ones([state_dim,1]) * -state_range
 state_maximums = np.ones([state_dim,1]) * state_range
 
