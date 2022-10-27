@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from final.tensor import KoopmanTensor, OLS
+from final.tensor import KoopmanTensor
 
 class DiscreteKoopmanPolicyIterationPolicy:
     """
@@ -137,10 +137,10 @@ class DiscreteKoopmanPolicyIterationPolicy:
             np.sum(reward_batch_prob, axis=1) # (w_hat_batch_size,)
         ]) # (1, w_hat_batch_size)
 
-        self.value_function_weights = OLS(
-            (phi_x_batch - (self.discount_factor*expectation_term_1)).T,
-            expectation_term_2.T
-        )
+        self.value_function_weights = torch.linalg.lstsq(
+            torch.Tensor((phi_x_batch - (self.discount_factor*expectation_term_1)).T),
+            torch.Tensor(expectation_term_2.T)
+        ).solution
 
     def update_policy_model(self, returns, log_probs):
         """
@@ -225,7 +225,8 @@ class DiscreteKoopmanPolicyIterationPolicy:
                 )
                 returns[i] = Q_val
 
-            returns = (returns - returns.mean()) / (returns.std() + torch.finfo(torch.float64).eps)
+            epsilon = torch.finfo(torch.float64).eps
+            returns = (returns - returns.mean()) / (returns.std() + epsilon)
 
             # Update policy model and value function weights
             self.update_policy_model(returns, log_probs)
