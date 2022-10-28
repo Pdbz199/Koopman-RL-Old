@@ -53,7 +53,7 @@ koopman_policy = DiscreteKoopmanPolicyIterationPolicy(
     cost,
     'saved_models/linear-system-discrete-actor-critic-policy.pt',
     seed=seed,
-    learning_rate=0.0005
+    learning_rate=0.0003
 )
 
 # Train Koopman policy

@@ -10,7 +10,7 @@ state_range = 25.0
 state_minimums = np.ones([state_dim,1]) * -state_range
 state_maximums = np.ones([state_dim,1]) * state_range
 
-action_range = 50.0
+action_range = 75.0
 action_minimums = np.ones([action_dim,1]) * -action_range
 action_maximums = np.ones([action_dim,1]) * action_range
 
