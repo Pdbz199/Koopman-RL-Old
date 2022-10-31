@@ -21,5 +21,6 @@ cs4789-Cartpole-Solution/
 *.svg
 *.png
 *.txt
+!lambda-labs-requirements.txt
 *.sh
 *.zip
