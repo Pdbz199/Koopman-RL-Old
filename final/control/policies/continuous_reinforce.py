@@ -126,7 +126,8 @@ class ContinuousKoopmanPolicyIterationPolicy:
 
         x_batch_indices = np.random.choice(self.dynamics_model.X.shape[1], self.w_hat_batch_size, replace=False)
         x_batch = self.dynamics_model.X[:, x_batch_indices] # (state_dim, w_hat_batch_size)
-        phi_x_batch = self.dynamics_model.phi(x_batch) # (phi_dim, w_hat_batch_size)
+        # phi_x_batch = self.dynamics_model.phi(x_batch) # (phi_dim, w_hat_batch_size)
+        phi_x_batch = self.dynamics_model.Phi_X[:, x_batch] # (phi_dim, w_hat_batch_size)
 
         with torch.no_grad():
             pi_response = np.zeros([self.all_actions.shape[0],self.w_hat_batch_size])
@@ -198,11 +199,11 @@ class ContinuousKoopmanPolicyIterationPolicy:
                 num_steps_per_episode - Number of steps per episode.
         """
 
-        initial_states = np.random.uniform(
-            self.state_minimums,
-            self.state_maximums,
-            [self.dynamics_model.x_dim, num_training_episodes]
-        ).T
+        # initial_states = np.random.uniform(
+        #     self.state_minimums,
+        #     self.state_maximums,
+        #     [self.dynamics_model.x_dim, num_training_episodes]
+        # ).T
         total_reward_episode = torch.zeros(num_training_episodes)
 
         for episode in range(num_training_episodes):
@@ -211,7 +212,12 @@ class ContinuousKoopmanPolicyIterationPolicy:
             log_probs = torch.zeros(num_steps_per_episode)
             rewards = torch.zeros(num_steps_per_episode)
 
-            state = np.vstack(initial_states[episode])
+            state = np.random.uniform(
+                self.state_minimums,
+                self.state_maximums,
+                [self.dynamics_model.x_dim, 1]
+            )
+            # state = np.vstack(initial_states[episode])
             for step in range(num_steps_per_episode):
                 states[step] = torch.Tensor(state)[:, 0]
 

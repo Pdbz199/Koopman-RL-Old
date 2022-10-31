@@ -68,7 +68,8 @@ koopman_policy = DiscreteKoopmanPolicyIterationPolicy(
     cost,
     'saved_models/fluid-flow-discrete-actor-critic-policy.pt',
     dt=dt,
-    seed=seed
+    seed=seed,
+    learning_rate=0.0003
 )
 
 # Train Koopman policy
@@ -99,7 +100,7 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
             states[episode,step] = state[:,0]
 
             action, _ = koopman_policy.get_action(state)
-            action = np.array([[action]])
+            action = action.numpy()
             actions[episode,step] = action
 
             cumulative_cost += cost(state, action)[0,0]

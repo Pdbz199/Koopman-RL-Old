@@ -107,7 +107,8 @@ class DiscreteKoopmanValueIterationPolicy:
 
         x_batch_indices = np.random.choice(self.dynamics_model.X.shape[1], batch_size, replace=False)
         x_batch = self.dynamics_model.X[:, x_batch_indices] # X.shape[0] x batch_size
-        phi_xs = self.dynamics_model.phi(x_batch) # dim_phi x batch_size
+        # phi_xs = self.dynamics_model.phi(x_batch) # dim_phi x batch_size
+        phi_xs = self.dynamics_model.Phi_X[:, x_batch_indices] # dim_phi x batch_size
         phi_x_primes = self.dynamics_model.K_(np.array([self.all_actions])) @ phi_xs # all_actions.shape[0] x dim_phi x batch_size
 
         pis_response = self.pis(x_batch) # all_actions.shape[0] x x_batch_size
@@ -159,7 +160,7 @@ class DiscreteKoopmanValueIterationPolicy:
     def train(
         self,
         training_epochs,
-        batch_size=2**9,
+        batch_size=2**12,
         batch_scale=1,
         epsilon=1e-2,
         gammas=[],
@@ -200,7 +201,8 @@ class DiscreteKoopmanValueIterationPolicy:
                 # Get random batch of X and Phi_X
                 x_batch_indices = np.random.choice(self.dynamics_model.X.shape[1], batch_size, replace=False)
                 x_batch = self.dynamics_model.X[:,x_batch_indices] # X.shape[0] x batch_size
-                phi_x_batch = self.dynamics_model.phi(x_batch) # dim_phi x batch_size
+                # phi_x_batch = self.dynamics_model.phi(x_batch) # dim_phi x batch_size
+                phi_x_batch = self.dynamics_model.Phi_X[:,x_batch_indices] # dim_phi x batch_size
 
                 # Get current distribution of actions for each state
                 pis_response = self.pis(x_batch) # (all_actions.shape[0], batch_size)

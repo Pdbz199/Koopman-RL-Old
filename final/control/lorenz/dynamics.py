@@ -19,19 +19,19 @@ psi_dim = int( comb( action_order+action_dim, action_order ) )
 
 phi_column_shape = [phi_dim, 1]
 
-state_range = 50.0
-state_minimums = np.ones([state_dim,1]) * -state_range
-state_maximums = np.ones([state_dim,1]) * state_range
-# state_minimums = np.array([
-#     [-20.0],
-#     [-50.0],
-#     [0.0]
-# ])
-# state_maximums = np.array([
-#     [20.0],
-#     [50.0],
-#     [50.0]
-# ])
+# state_range = 50.0
+# state_minimums = np.ones([state_dim,1]) * -state_range
+# state_maximums = np.ones([state_dim,1]) * state_range
+state_minimums = np.array([
+    [-20.0],
+    [-50.0],
+    [0.0]
+])
+state_maximums = np.array([
+    [20.0],
+    [50.0],
+    [50.0]
+])
 
 action_range = 75.0
 action_minimums = np.ones([action_dim,1]) * -action_range
@@ -40,13 +40,14 @@ action_maximums = np.ones([action_dim,1]) * action_range
 step_size = 1.0
 all_actions = np.arange(-action_range, action_range+step_size, step_size)
 all_actions = np.round(all_actions, decimals=2)
+all_actions = np.array([all_actions])
 
 # Default basic policies
 def zero_policy(x=None):
     return np.zeros(action_column_shape)
 
 def random_policy(x=None):
-    return np.random.choice(all_actions, size=action_column_shape)
+    return np.random.choice(all_actions[0], size=action_column_shape)
 
 # Dynamics
 sigma = 10

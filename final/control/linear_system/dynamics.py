@@ -5,18 +5,21 @@ import numpy as np
 state_dim = 3
 action_dim = 1
 
-state_range = 25.0
-# state_range = 5.0
+# state_range = 25.0
+state_range = 5.0
 state_minimums = np.ones([state_dim,1]) * -state_range
 state_maximums = np.ones([state_dim,1]) * state_range
 
-action_range = 75.0
+# action_range = 75.0
+action_range = 10.0
 action_minimums = np.ones([action_dim,1]) * -action_range
 action_maximums = np.ones([action_dim,1]) * action_range
 
 step_size = 0.1
+# step_size = 1.0
 all_actions = np.arange(-action_range, action_range+step_size, step_size)
 all_actions = np.round(all_actions, decimals=2)
+all_actions = np.array([all_actions])
 
 state_order = 2
 action_order = 2

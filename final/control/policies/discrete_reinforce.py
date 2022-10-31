@@ -73,19 +73,27 @@ class DiscreteKoopmanPolicyIterationPolicy:
             self.policy_model = torch.load(self.saved_file_path)
             self.value_function_weights = torch.load(self.saved_file_path_value_function_weights).numpy()
         else:
-            self.policy_model = nn.Sequential(
-                nn.Linear(self.dynamics_model.x_dim, self.all_actions.shape[0]),
-                nn.Softmax(dim=-1)
-            )
             # self.policy_model = nn.Sequential(
-            #     nn.Linear(self.dynamics_model.x_dim, 128),
-            #     nn.ReLU(),
-            #     nn.Linear(128, 256),
-            #     nn.ReLU(),
-            #     nn.Linear(256, self.all_actions.shape[0]),
+            #     nn.Linear(self.dynamics_model.x_dim, self.all_actions.shape[1]),
             #     nn.Softmax(dim=-1)
             # )
-            self.value_function_weights = np.zeros(self.dynamics_model.phi_column_dim)
+            # self.policy_model = nn.Sequential(
+            #     nn.Linear(self.dynamics_model.x_dim, 256),
+            #     nn.ReLU(),
+            #     nn.Linear(256, 128),
+            #     nn.ReLU(),
+            #     nn.Linear(128, self.all_actions.shape[1]),
+            #     nn.Softmax(dim=-1)
+            # )
+            self.policy_model = nn.Sequential(
+                nn.Linear(self.dynamics_model.x_dim, 512),
+                nn.ReLU(),
+                nn.Linear(512, 256),
+                nn.ReLU(),
+                nn.Linear(256, self.all_actions.shape[1]),
+                nn.Softmax(dim=-1)
+            )
+            self.value_function_weights = torch.zeros(self.dynamics_model.phi_column_dim)
 
             def init_weights(m):
                 if type(m) == torch.nn.Linear:
@@ -93,7 +101,7 @@ class DiscreteKoopmanPolicyIterationPolicy:
         
             self.policy_model.apply(init_weights)
 
-        self.optimizer = torch.optim.Adam(self.policy_model.parameters(), self.learning_rate)
+        self.optimizer = torch.optim.Adam(self.policy_model.parameters(), lr=self.learning_rate)
 
     def get_action(self, x, num_samples=1):
         """
@@ -107,7 +115,7 @@ class DiscreteKoopmanPolicyIterationPolicy:
 
         action_probabilities = self.policy_model(torch.Tensor(x[:,0]))
         action_indices = torch.multinomial(action_probabilities, num_samples).item()
-        actions = self.all_actions[action_indices].item()
+        actions = torch.Tensor(np.vstack(self.all_actions[:,action_indices]))
         log_probs = torch.log(action_probabilities[action_indices])
 
         return actions, log_probs
@@ -117,28 +125,40 @@ class DiscreteKoopmanPolicyIterationPolicy:
             Update the weights for the value function in the dictionary space.
         """
 
+        # Take state sample from dataset
         x_batch_indices = np.random.choice(self.dynamics_model.X.shape[1], self.w_hat_batch_size, replace=False)
         x_batch = self.dynamics_model.X[:, x_batch_indices] # (state_dim, w_hat_batch_size)
-        phi_x_batch = self.dynamics_model.phi(x_batch) # (phi_dim, w_hat_batch_size)
+        phi_x_batch = self.dynamics_model.Phi_X[:, x_batch_indices] # (phi_dim, w_hat_batch_size)
 
+        # Compute policy probabilities for each state in the batch
         with torch.no_grad():
-            pi_response = self.policy_model(torch.Tensor(x_batch.T)).T # (all_actions.shape[0], w_hat_batch_size)
+            pi_response = self.policy_model(torch.Tensor(x_batch.T)).T # (all_actions.shape[1], w_hat_batch_size)
 
-        phi_x_prime_batch = self.dynamics_model.K_(np.array([self.all_actions])) @ phi_x_batch # (all_actions.shape[0], phi_dim, w_hat_batch_size)
-        phi_x_prime_batch_prob = np.einsum('upw,uw->upw', phi_x_prime_batch, pi_response.data.numpy()) # (all_actions.shape[0], phi_dim, w_hat_batch_size)
-        expectation_term_1 = np.sum(phi_x_prime_batch_prob, axis=0) # (phi_dim, w_hat_batch_size)
+        # Compute phi_x_prime for all states in the batch using all actions in the action space
+        K_us = self.dynamics_model.K_(self.all_actions)
+        K_us = torch.Tensor(K_us)
+        phi_x_prime_batch = torch.zeros([self.all_actions.shape[1], self.dynamics_model.phi_dim, self.w_hat_batch_size])
+        for i in range(K_us.shape[0]):
+            phi_x_prime_batch[i] = K_us[i] @ phi_x_batch
+        
+        # Expected phi(x')
+        phi_x_prime_batch_prob = torch.einsum('upw,uw->upw', phi_x_prime_batch, pi_response) # (all_actions.shape[1], phi_dim, w_hat_batch_size)
+        expectation_term_1 = torch.sum(phi_x_prime_batch_prob, axis=0) # (phi_dim, w_hat_batch_size)
 
-        reward_batch_prob = np.einsum(
-            'uw,uw->wu',
-            -self.cost(x_batch, np.array([self.all_actions])),
-            pi_response.data.numpy()
-        ) # (w_hat_batch_size, all_actions.shape[0])
-        expectation_term_2 = np.array([
-            np.sum(reward_batch_prob, axis=1) # (w_hat_batch_size,)
-        ]) # (1, w_hat_batch_size)
+        # Expected reward
+        # rewards = torch.Tensor(-self.cost(x_batch, self.all_actions)) # (all_actions.shape[1], w_hat_batch_size)
+        rewards = np.zeros([self.all_actions.shape[1], self.w_hat_batch_size])
+        for i in range(self.w_hat_batch_size):
+            for j in range(self.all_actions.shape[1]):
+                rewards[j][i] = -self.cost(np.vstack(x_batch[:,i]), np.array([self.all_actions[:,j]]))
+        rewards = torch.Tensor(rewards)
+        reward_batch_prob = (rewards * pi_response).T # (w_hat_batch_size, all_actions.shape[1])
+        reward_batch_prob_sum = torch.sum(reward_batch_prob, axis=1) # (w_hat_batch_size,)
+        expectation_term_2 = reward_batch_prob_sum.reshape([1,reward_batch_prob_sum.shape[0]]) # (1, w_hat_batch_size)
 
+        # Compute w hat using OLS
         self.value_function_weights = torch.linalg.lstsq(
-            torch.Tensor((phi_x_batch - (self.discount_factor*expectation_term_1)).T),
+            (torch.Tensor(phi_x_batch) - (self.discount_factor*expectation_term_1)).T,
             torch.Tensor(expectation_term_2.T)
         ).solution
 
@@ -152,8 +172,8 @@ class DiscreteKoopmanPolicyIterationPolicy:
         """
 
         policy_gradient = torch.zeros(log_probs.shape[0])
-        for i, (log_prob, Gt) in enumerate(zip(log_probs, returns)):
-            policy_gradient[i] = -log_prob * self.gamma**((len(returns)-i) * self.dt) * Gt
+        for i, (log_prob, R_t) in enumerate(zip(log_probs, returns)):
+            policy_gradient[i] = -log_prob * self.gamma**((len(returns)-i) * self.dt) * R_t
 
         loss = policy_gradient.sum()
 
@@ -175,7 +195,7 @@ class DiscreteKoopmanPolicyIterationPolicy:
         
         V_x_prime = self.value_function_weights.T @ self.dynamics_model.phi_f(x, u)
         
-        return (-self.cost(x, u) + self.discount_factor*V_x_prime)[0,0]
+        return (torch.Tensor(-self.cost(x, u)) + self.discount_factor*V_x_prime)[0,0]
 
     def train(self, num_training_episodes, num_steps_per_episode):
         """
@@ -187,11 +207,13 @@ class DiscreteKoopmanPolicyIterationPolicy:
                 num_steps_per_episode - Number of steps per episode.
         """
 
-        initial_states = np.random.uniform(
-            self.state_minimums,
-            self.state_maximums,
-            [self.dynamics_model.x_dim, num_training_episodes]
-        ).T
+        epsilon = torch.finfo(torch.float64).eps
+
+        # initial_states = np.random.uniform(
+        #     self.state_maximums,
+        #     self.state_minimums,
+        #     [self.dynamics_model.x_dim, num_training_episodes]
+        # ).T
         total_reward_episode = torch.zeros(num_training_episodes)
 
         for episode in range(num_training_episodes):
@@ -200,32 +222,41 @@ class DiscreteKoopmanPolicyIterationPolicy:
             log_probs = torch.zeros(num_steps_per_episode)
             rewards = torch.zeros(num_steps_per_episode)
 
-            state = np.vstack(initial_states[episode])
+            state = np.random.uniform(
+                self.state_maximums,
+                self.state_minimums,
+                [self.dynamics_model.x_dim, 1]
+            )
+            # state = np.vstack(initial_states[episode])
             for step in range(num_steps_per_episode):
-                states[step] = torch.Tensor(state)[:, 0]
+                states[step] = torch.Tensor(state[:,0])
 
-                u, log_prob = self.get_action(state)
-                action = np.array([[u]])
-                actions[step] = u
+                action, log_prob = self.get_action(state)
+                actions[step] = action
                 log_probs[step] = log_prob
 
-                curr_reward = -self.cost(state, action)[0,0]
+                curr_reward = -self.cost(state, action.numpy())[0,0]
                 rewards[step] = curr_reward
 
                 total_reward_episode[episode] += self.gamma**(step * self.dt) * curr_reward
 
-                state = self.true_dynamics(state, action)
+                state = self.true_dynamics(state, action.numpy())
 
             # Estimate returns using Q function with latest value function weights
             returns = torch.zeros(num_steps_per_episode)
+            # R = 0
             for i in range(num_steps_per_episode-1, -1, -1):
+                # R = rewards[i] + self.discount_factor*R
+                # returns[i] = R
+
                 Q_val = self.Q(
                     np.vstack(states[i]),
-                    np.array([[actions[i]]])
+                    np.vstack([[actions[i]]])
                 )
                 returns[i] = Q_val
 
-            epsilon = torch.finfo(torch.float64).eps
+                # print(Q_val, R)
+
             returns = (returns - returns.mean()) / (returns.std() + epsilon)
 
             # Update policy model and value function weights

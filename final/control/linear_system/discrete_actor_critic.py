@@ -53,11 +53,11 @@ koopman_policy = DiscreteKoopmanPolicyIterationPolicy(
     cost,
     'saved_models/linear-system-discrete-actor-critic-policy.pt',
     seed=seed,
-    learning_rate=0.0003
+    learning_rate=0.003
 )
 
 # Train Koopman policy
-koopman_policy.train(num_training_episodes=2000, num_steps_per_episode=200)
+koopman_policy.train(num_training_episodes=5000, num_steps_per_episode=200)
 
 # Test policies
 def watch_agent(num_episodes, step_limit, specifiedEpisode):
@@ -83,7 +83,7 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode):
             states[episode,step] = state[:,0]
 
             action, _ = koopman_policy.get_action(state)
-            action = np.array([[action]])
+            action = action.numpy()
             actions[episode,step] = action
 
             cumulative_cost += cost(state, action)[0,0]
