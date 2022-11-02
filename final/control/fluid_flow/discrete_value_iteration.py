@@ -74,6 +74,8 @@ koopman_policy.train(training_epochs=2000, batch_size=2**12)
 
 # Test policies
 def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
+    np.random.seed(seed)
+
     if specifiedEpisode is None:
         specifiedEpisode = num_episodes-1
 
@@ -85,7 +87,7 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
     for episode in range(num_episodes):
         x = np.random.random(state_column_shape) * 0.5 * np.random.choice([-1,1], size=state_column_shape)
         u = np.array([[0]])
-        soln = solve_ivp(fun=continuous_f(u), t_span=[0, 50.0], y0=x[:,0], method='RK45')
+        soln = solve_ivp(fun=continuous_f(u), t_span=[0, 30.0], y0=x[:,0], method='RK45')
         initial_states[episode] = soln.y[:,-1]
 
     for episode in range(num_episodes):

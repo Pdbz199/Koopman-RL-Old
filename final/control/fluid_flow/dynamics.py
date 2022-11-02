@@ -10,7 +10,8 @@ action_dim = 1
 state_column_shape = [state_dim, 1]
 action_column_shape = [action_dim, 1]
 
-state_range = 25.0
+# state_range = 25.0
+state_range = 1.0
 state_minimums = np.ones([state_dim,1]) * -state_range
 state_maximums = np.ones([state_dim,1]) * state_range
 

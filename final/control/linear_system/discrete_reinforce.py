@@ -53,7 +53,7 @@ koopman_policy = DiscreteKoopmanPolicyIterationPolicy(
     cost,
     'saved_models/linear-system-discrete-reinforce-policy.pt',
     seed=seed,
-    learning_rate=0.0003
+    learning_rate=0.003
 )
 
 # Train Koopman policy
@@ -61,6 +61,8 @@ koopman_policy.train(num_training_episodes=2000, num_steps_per_episode=200)
 
 # Test policies
 def watch_agent(num_episodes, step_limit, specifiedEpisode):
+    np.random.seed(seed)
+
     if specifiedEpisode is None:
         specifiedEpisode = num_episodes-1
 

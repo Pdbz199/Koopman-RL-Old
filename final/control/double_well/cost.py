@@ -1,11 +1,12 @@
 # Imports
 import numpy as np
 
-from dynamics import state_dim
+from dynamics import state_dim #, action_dim
 
 # Define cost/reward
 Q = np.eye(state_dim)
 R = 0.001
+# R = np.eye(action_dim) * R
 
 reference_point = np.array([
     [0],
@@ -22,6 +23,7 @@ def cost(x, u):
     _x = x - reference_point
 
     mat = np.vstack(np.diag(_x.T @ Q @ _x)) + np.power(u, 2)*R
+    # mat = np.vstack(np.diag(_x.T @ Q @ _x)) + mat = np.vstack(np.diag(u.T @ R @ u))
     return mat.T
 
 def reward(x, u):

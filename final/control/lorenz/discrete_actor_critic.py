@@ -72,10 +72,12 @@ koopman_policy = DiscreteKoopmanPolicyIterationPolicy(
 )
 
 # Train Koopman policy
-koopman_policy.train(num_training_episodes=2000, num_steps_per_episode=int(5.0 / dt)) # int(25.0 / dt)
+koopman_policy.train(num_training_episodes=2000, num_steps_per_episode=int(25.0 / dt)) # int(25.0 / dt)
 
 # Test policies
 def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
+    np.random.seed(seed)
+
     if specifiedEpisode is None:
         specifiedEpisode = num_episodes-1
 
@@ -98,7 +100,8 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
             states[episode,step] = state[:,0]
 
             action, _ = koopman_policy.get_action(state)
-            action = action.numpy()
+            # action = action.numpy()
+            action = np.array([action])
             actions[episode,step] = action
 
             cumulative_cost += cost(state, action)[0,0]

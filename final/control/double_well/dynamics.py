@@ -24,13 +24,14 @@ action_order = 2
 step_size = 1.0
 all_actions = np.arange(-action_range, action_range+step_size, step_size)
 all_actions = np.round(all_actions, decimals=2)
+all_actions = np.array([all_actions])
 
 # Policy that only returns 0
 def zero_policy(x=None):
     return np.zeros(action_column_shape)
 
 def random_policy(x=None):
-    return np.random.choice(all_actions, size=action_column_shape)
+    return np.random.choice(all_actions[0], size=action_column_shape)
 
 # Dynamics
 dt = 0.01

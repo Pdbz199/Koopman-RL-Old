@@ -24,18 +24,24 @@ plot_file_extensions = ['svg', 'png']
 
 # Generate data
 num_episodes = 500
-num_steps_per_episode = int(50.0 / dt)
+num_steps_per_episode = int(10.0 / dt)
 N = num_episodes*num_steps_per_episode # Number of datapoints
 X = np.zeros([state_dim,N])
 Y = np.zeros([state_dim,N])
 U = np.zeros([action_dim,N])
 
-initial_states = np.zeros([num_episodes, state_dim])
-for episode in range(num_episodes):
-    x = np.random.random(state_column_shape) * 0.5 * np.random.choice([-1,1], size=state_column_shape)
-    u = np.array([[0]])
-    soln = solve_ivp(fun=continuous_f(u), t_span=[0, 50.0], y0=x[:,0], method='RK45')
-    initial_states[episode] = soln.y[:,-1]
+# initial_states = np.zeros([num_episodes, state_dim])
+# for episode in range(num_episodes):
+#     x = np.random.random(state_column_shape) * 0.5 * np.random.choice([-1,1], size=state_column_shape)
+#     u = np.array([[0]])
+#     soln = solve_ivp(fun=continuous_f(u), t_span=[0, 30.0], y0=x[:,0], method='RK45')
+#     initial_states[episode] = soln.y[:,-1]
+
+initial_states = np.random.uniform(
+    state_minimums,
+    state_maximums,
+    [state_dim, num_episodes]
+).T
 
 for episode in range(num_episodes):
     x = np.vstack(initial_states[episode])
@@ -69,7 +75,7 @@ koopman_policy = DiscreteKoopmanPolicyIterationPolicy(
     'saved_models/fluid-flow-discrete-actor-critic-policy.pt',
     dt=dt,
     seed=seed,
-    learning_rate=0.0003
+    learning_rate=0.003
 )
 
 # Train Koopman policy
@@ -77,6 +83,8 @@ koopman_policy.train(num_training_episodes=2000, num_steps_per_episode=int(25.0 
 
 # Test policies
 def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
+    np.random.seed(seed)
+
     if specifiedEpisode is None:
         specifiedEpisode = num_episodes-1
 
@@ -88,7 +96,7 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
     for episode in range(num_episodes):
         x = np.random.random(state_column_shape) * 0.5 * np.random.choice([-1,1], size=state_column_shape)
         u = np.array([[0]])
-        soln = solve_ivp(fun=continuous_f(u), t_span=[0, 50.0], y0=x[:,0], method='RK45')
+        soln = solve_ivp(fun=continuous_f(u), t_span=[0, 30.0], y0=x[:,0], method='RK45')
         initial_states[episode] = soln.y[:,-1]
 
     for episode in range(num_episodes):
@@ -100,7 +108,8 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
             states[episode,step] = state[:,0]
 
             action, _ = koopman_policy.get_action(state)
-            action = action.numpy()
+            # action = action.numpy()
+            action = np.array([action])
             actions[episode,step] = action
 
             cumulative_cost += cost(state, action)[0,0]

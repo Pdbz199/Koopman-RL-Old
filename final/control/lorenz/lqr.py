@@ -35,6 +35,8 @@ lqr_policy = LQRPolicy(
 
 # Test policy
 def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
+    np.random.seed(seed)
+    
     if specifiedEpisode is None:
         specifiedEpisode = num_episodes-1
 

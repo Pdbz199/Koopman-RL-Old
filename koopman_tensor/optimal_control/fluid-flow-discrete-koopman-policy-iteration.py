@@ -76,6 +76,7 @@ def f(state, action):
 #%% Define cost
 Q = np.eye(state_dim)
 R = 0.001
+# R = np.eye(action_dim) * R
 w_r = np.array([
     [0.0],
     [0.0],
@@ -83,9 +84,13 @@ w_r = np.array([
 ])
 def cost(x, u):
     # Assuming that data matrices are passed in for X and U. Columns are snapshots
-    # x.T Q x + u.T R u
-    x_ = x - w_r
-    mat = np.vstack(np.diag(x_.T @ Q @ x_)) + np.power(u, 2)*R
+
+    _x = x - w_r
+
+    # return _x.T @ Q @ _x + u.T @ R @ u
+
+    mat = np.vstack(np.diag(_x.T @ Q @ _x)) + np.power(u, 2)*R
+    # mat = np.vstack(np.diag(_x.T @ Q @ _x)) + np.vstack(np.diag(u.T @ R @ u))
     return mat.T
 
 #%% Initialize important vars
@@ -103,6 +108,7 @@ action_order = 2
 step_size = 1.0
 all_actions = np.arange(-action_range, action_range+step_size, step_size)
 all_actions = np.round(all_actions, decimals=2)
+all_actions = np.array([all_actions])
 
 gamma = 0.99
 reg_lambda = 1.0
@@ -130,7 +136,7 @@ def lqr_policy(x):
 
 #%% Construct datasets
 num_episodes = 500
-num_steps_per_episode = 1000
+num_steps_per_episode = int(10.0 / dt)
 N = num_episodes*num_steps_per_episode # Number of datapoints
 X = np.zeros([state_dim,N])
 Y = np.zeros([state_dim,N])
@@ -140,14 +146,14 @@ initial_xs = np.zeros([num_episodes, state_dim])
 for episode in range(num_episodes):
     x = np.random.random(state_column_shape) * 0.5 * np.random.choice([-1,1], size=state_column_shape)
     u = np.array([[0]])
-    soln = solve_ivp(fun=continuous_f(u), t_span=[0, 50.0], y0=x[:,0], method='RK45')
+    soln = solve_ivp(fun=continuous_f(u), t_span=[0, 30.0], y0=x[:,0], method='RK45')
     initial_xs[episode] = soln.y[:,-1]
 
 for episode in range(num_episodes):
     x = np.vstack(initial_xs[episode])
     for step in range(num_steps_per_episode):
         X[:,(episode*num_steps_per_episode)+step] = x[:,0]
-        u = np.random.choice(all_actions, size=action_column_shape)
+        u = np.random.choice(all_actions[0], size=action_column_shape)
         U[:,(episode*num_steps_per_episode)+step] = u[:,0]
         x = f(x, u)
         Y[:,(episode*num_steps_per_episode)+step] = x[:,0]
@@ -174,12 +180,12 @@ policy = DiscreteKoopmanActorCriticPolicy(
     'fluid-flow-policy-iteration.pt',
     dt=dt
 )
-policy.actor_critic(
+policy.train(
     num_training_episodes=1000,
     num_steps_per_episode=int(20.0 / dt)
 )
 
-#%% Test
+#%% Test agent
 def watch_agent(num_episodes, test_steps):
     # specifiedEpisode = -1
     specifiedEpisode = 42
@@ -194,21 +200,25 @@ def watch_agent(num_episodes, test_steps):
 
     initial_xs = np.zeros([num_episodes, state_dim])
     for episode in range(num_episodes):
-        x = np.random.random(state_column_shape) * 0.5 * np.random.choice([-1,1], size=state_column_shape)
+        x = np.random.random(state_column_shape) * 0.5 * np.random.choice([-1, 1], size=state_column_shape)
         u = np.array([[0]])
-        soln = solve_ivp(fun=continuous_f(u), t_span=[0, 50.0], y0=x[:,0], method='RK45')
+        soln = solve_ivp(fun=continuous_f(u), t_span=[0, 30.0], y0=x[:,0], method='RK45')
         initial_xs[episode] = soln.y[:,-1]
 
     for episode in range(num_episodes):
+        # Get initial state from precomputed states
         state = np.vstack(initial_xs[episode])
         
+        # Split state for LQR and actor-critic controllers
         lqr_state = state
         koopman_state = state
 
         for step in range(test_steps):
+            # Store states
             lqr_states[episode,:,step] = lqr_state[:,0]
             koopman_states[episode,:,step] = koopman_state[:,0]
 
+            # Get action from LQR policy
             lqr_action = lqr_policy(lqr_state)
             # if lqr_action[0,0] > action_range:
             #     lqr_action = np.array([[action_range]])
@@ -216,14 +226,16 @@ def watch_agent(num_episodes, test_steps):
             #     lqr_action = np.array([[-action_range]])
             lqr_actions[episode,:,step] = lqr_action[:,0]
 
+            # Get action from actor-critic policy
             with torch.no_grad():
-                koopman_u, _ = policy.get_action(koopman_state[:,0])
-            koopman_action = np.array([[koopman_u]])
+                koopman_action, _ = policy.get_action(koopman_state)
             koopman_actions[episode,:,step] = koopman_action[:,0]
 
+            # Compute costs
             lqr_costs[episode] += cost(lqr_state, lqr_action)[0,0]
             koopman_costs[episode] += cost(koopman_state, koopman_action)[0,0]
 
+            # Compute next states
             lqr_state = f(lqr_state, lqr_action)
             koopman_state = f(koopman_state, koopman_action)
 
@@ -306,6 +318,4 @@ def watch_agent(num_episodes, test_steps):
     plt.show()
 
 print("\nTesting learned policy...\n")
-watch_agent(num_episodes=100, test_steps=int(50.0 / dt))
-
-#%%
+watch_agent(num_episodes=100, test_steps=int(30.0 / dt))

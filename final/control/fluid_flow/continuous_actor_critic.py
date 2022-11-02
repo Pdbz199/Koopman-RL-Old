@@ -5,52 +5,43 @@ import numpy as np
 seed = 123
 np.random.seed(seed)
 
-from cost import Q, R, reference_point, cost
-from dynamics import state_dim, action_dim, state_column_shape, dt, continuous_f, random_policy, f, continuous_A, continuous_B, state_order, action_order, all_actions, state_minimums, state_maximums
+from cost import reference_point, cost
+from dynamics import state_dim, action_dim, state_column_shape, dt, continuous_f, random_policy, f, state_order, action_order, all_actions, state_minimums, state_maximums
 from scipy.integrate import solve_ivp
 
 import sys
 sys.path.append('../../../')
 import final.observables as observables
 from final.tensor import KoopmanTensor
-from final.control.policies.lqr import LQRPolicy
-from final.control.policies.continuous_reinforce import ContinuousKoopmanPolicyIterationPolicy
+from final.control.policies.continuous_actor_critic import ContinuousKoopmanPolicyIterationPolicy
 
 # Variables
 gamma = 0.99
 reg_lambda = 1.0
 
-plot_path = 'output/continuous_reinforce/'
+plot_path = 'output/continuous_actor_critic/'
 plot_file_extensions = ['svg', 'png']
-
-# LQR Policy
-lqr_policy = LQRPolicy(
-    continuous_A,
-    continuous_B,
-    Q,
-    R,
-    reference_point,
-    gamma,
-    reg_lambda,
-    dt=dt,
-    is_continuous=True,
-    seed=seed
-)
 
 # Generate data
 num_episodes = 500
-num_steps_per_episode = int(50.0 / dt)
+num_steps_per_episode = int(10.0 / dt)
 N = num_episodes*num_steps_per_episode # Number of datapoints
 X = np.zeros([state_dim,N])
 Y = np.zeros([state_dim,N])
 U = np.zeros([action_dim,N])
 
-initial_states = np.zeros([num_episodes, state_dim])
-for episode in range(num_episodes):
-    x = np.random.random(state_column_shape) * 0.5 * np.random.choice([-1,1], size=state_column_shape)
-    u = np.array([[0]])
-    soln = solve_ivp(fun=continuous_f(u), t_span=[0, 50.0], y0=x[:,0], method='RK45')
-    initial_states[episode] = soln.y[:,-1]
+# initial_states = np.zeros([num_episodes, state_dim])
+# for episode in range(num_episodes):
+#     x = np.random.random(state_column_shape) * 0.5 * np.random.choice([-1,1], size=state_column_shape)
+#     u = np.array([[0]])
+#     soln = solve_ivp(fun=continuous_f(u), t_span=[0, 30.0], y0=x[:,0], method='RK45')
+#     initial_states[episode] = soln.y[:,-1]
+
+initial_states = np.random.uniform(
+    state_minimums,
+    state_maximums,
+    [state_dim, num_episodes]
+).T
 
 for episode in range(num_episodes):
     x = np.vstack(initial_states[episode])
@@ -81,10 +72,10 @@ koopman_policy = ContinuousKoopmanPolicyIterationPolicy(
     state_maximums,
     all_actions,
     cost,
-    'saved_models/fluid-flow-continuous-reinforce-policy.pt',
-    learning_rate=0.003,
+    'saved_models/fluid-flow-continuous-actor-critic-policy.pt',
     dt=dt,
-    seed=seed
+    seed=seed,
+    learning_rate=0.0003
 )
 
 # Train Koopman policy
@@ -117,7 +108,7 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
             states[episode,step] = state[:,0]
 
             action, _ = koopman_policy.get_action(state)
-            action = np.array([[action]])
+            action = np.array([action.numpy()])
             actions[episode,step] = action
 
             cumulative_cost += cost(state, action)[0,0]

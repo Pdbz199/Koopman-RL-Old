@@ -73,6 +73,8 @@ koopman_policy.train(training_epochs=2000, batch_size=2**12)
 
 # Test policies
 def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
+    np.random.seed(seed)
+
     if specifiedEpisode is None:
         specifiedEpisode = num_episodes-1
 
@@ -125,8 +127,8 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
         plt.plot(states[specifiedEpisode,:,i], label=labels[i])
     plt.legend(labels)
     plt.tight_layout()
-    plt.savefig(plot_path + 'states-over-time-2d.' + plot_file_extensions[0])
-    plt.savefig(plot_path + 'states-over-time-2d.' + plot_file_extensions[1])
+    for plot_file_extension in plot_file_extensions:
+        plt.savefig(plot_path + 'states-over-time-2d.' + plot_file_extension)
     # plt.show()
     plt.clf()
 
@@ -142,8 +144,8 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
         states[specifiedEpisode,:,2],
         'gray'
     )
-    plt.savefig(plot_path + 'states-over-time-3d.' + plot_file_extensions[0])
-    plt.savefig(plot_path + 'states-over-time-3d.' + plot_file_extensions[1])
+    for plot_file_extension in plot_file_extensions:
+        plt.savefig(plot_path + 'states-over-time-3d.' + plot_file_extension)
     # plt.show()
     plt.clf()
 
@@ -152,8 +154,8 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
     plt.xlabel("Action Value")
     plt.ylabel("Frequency")
     plt.hist(actions[specifiedEpisode,:,0])
-    plt.savefig(plot_path + 'actions-histogram.' + plot_file_extensions[0])
-    plt.savefig(plot_path + 'actions-histogram.' + plot_file_extensions[1])
+    for plot_file_extension in plot_file_extensions:
+        plt.savefig(plot_path + 'actions-histogram.' + plot_file_extension)
     # plt.show()
     plt.clf()
 
@@ -162,8 +164,8 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
     plt.xlabel("Step #")
     plt.ylabel("Action Value")
     plt.scatter(np.arange(actions.shape[1]), actions[specifiedEpisode,:,0], s=5)
-    plt.savefig(plot_path + 'actions-scatter-plot.' + plot_file_extensions[0])
-    plt.savefig(plot_path + 'actions-scatter-plot.' + plot_file_extensions[1])
+    for plot_file_extension in plot_file_extensions:
+        plt.savefig(plot_path + 'actions-scatter-plot.' + plot_file_extension)
     # plt.show()
     plt.clf()
 
