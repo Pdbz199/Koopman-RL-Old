@@ -77,6 +77,7 @@ koopman_policy = ContinuousKoopmanPolicyIterationPolicy(
     seed=seed,
     learning_rate=0.0003
 )
+print(f"\nLearning rate: {koopman_policy.learning_rate}\n")
 
 # Train Koopman policy
 koopman_policy.train(num_training_episodes=2000, num_steps_per_episode=int(25.0 / dt))
