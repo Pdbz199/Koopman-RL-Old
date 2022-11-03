@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 
 from final.tensor import KoopmanTensor
+from torch.distributions.multivariate_normal import MultivariateNormal
 
 class ContinuousKoopmanPolicyIterationPolicy:
     """
@@ -67,12 +68,12 @@ class ContinuousKoopmanPolicyIterationPolicy:
         self.saved_file_path = saved_file_path
         split_path = self.saved_file_path.split('.')
         if len(split_path) == 1:
-            self.saved_file_path_alpha = split_path[0] + '-alpha.pt'
-            self.saved_file_path_beta = split_path[0] + '-beta.pt'
+            self.saved_file_path_mu = split_path[0] + '-mu.pt'
+            self.saved_file_path_log_sigma = split_path[0] + '-log_sigma.pt'
             self.saved_file_path_value_function_weights = split_path[0] + '-value-function-weights.pt'
         else:
-            self.saved_file_path_alpha = split_path[0] + '-alpha.' + split_path[1]
-            self.saved_file_path_beta = split_path[0] + '-beta.' + split_path[1]
+            self.saved_file_path_mu = split_path[0] + '-mu.' + split_path[1]
+            self.saved_file_path_log_sigma = split_path[0] + '-log_sigma.' + split_path[1]
             self.saved_file_path_value_function_weights = split_path[0] + '-value-function-weights.' + split_path[1]
         self.dt = dt
         self.discount_factor = self.gamma**self.dt
@@ -82,57 +83,42 @@ class ContinuousKoopmanPolicyIterationPolicy:
         self.layer_2_dim = layer_2_dim
 
         if load_model:
-            self.policy_model = torch.load(self.saved_file_path)
+            self.alpha = torch.load(self.saved_file_path_mu)
+            self.beta = torch.load(self.saved_file_path_log_sigma)
             self.value_function_weights = torch.load(self.saved_file_path_value_function_weights).numpy()
         else:
-            # self.policy_model = nn.Sequential(
-            #     nn.Linear(self.dynamics_model.x_dim, self.all_actions.shape[1]),
-            #     nn.Softmax(dim=-1)
+            # self.mu = nn.Sequential(
+            #     nn.Linear(self.dynamics_model.x_dim, self.all_actions.shape[0])
             # )
-            # self.policy_model = nn.Sequential(
-            #     nn.Linear(self.dynamics_model.x_dim, self.layer_1_dim),
-            #     nn.ReLU(),
-            #     nn.Linear(self.layer_1_dim, self.layer_2_dim),
-            #     nn.ReLU(),
-            #     nn.Linear(self.layer_2_dim, self.all_actions.shape[1]),
-            #     nn.Softmax(dim=-1)
+            # self.mu = nn.Sequential(
+            #     nn.Linear(self.dynamics_model.phi_dim, self.all_actions.shape[0])
             # )
-
-            # self.value_function_weights = np.zeros(self.dynamics_model.phi_column_dim)
-            # self.value_function_weights = torch.zeros(self.dynamics_model.phi_column_dim)
-            # self.value_function_weights = np.zeros(self.dynamics_model.phi_column_dim)
-            # self.value_function_weights = torch.zeros(self.dynamics_model.phi_column_dim, requires_grad=True)
-            # self.value_function_weights = nn.Sequential(
-            #     nn.Linear(self.dynamics_model.x_dim, 256),
-            #     nn.ReLU(),
-            #     nn.Linear(256, 128),
-            #     nn.ReLU(),
-            #     nn.Linear(128, 1)
+            # self.mu = nn.Sequential(
+            #     nn.Linear(self.dynamics_model.x_dim+1, self.all_actions.shape[0])
             # )
-
-            self.alpha = nn.Sequential(
+            self.mu = nn.Sequential(
+                # nn.Linear(self.dynamics_model.x_dim, self.layer_1_dim),
                 nn.Linear(self.dynamics_model.phi_dim, self.layer_1_dim),
                 nn.ReLU(),
                 nn.Linear(self.layer_1_dim, self.layer_2_dim),
                 nn.ReLU(),
-                nn.Linear(self.layer_2_dim, 1)
+                nn.Linear(self.layer_2_dim, self.all_actions.shape[0])
             )
-            # self.alpha = torch.zeros([1, self.dynamics_model.phi_dim], requires_grad=True)
-            self.beta = torch.tensor(0.1, requires_grad=True)
+
+            # self.log_sigma = torch.ones(self.all_actions.shape[0], requires_grad=True)
+            self.log_sigma = torch.zeros(self.all_actions.shape[0], requires_grad=True)
+
             self.value_function_weights = np.zeros(self.dynamics_model.phi_column_dim)
 
             def init_weights(m):
                 if type(m) == torch.nn.Linear:
                     m.weight.data.fill_(0.0)
         
-            self.alpha.apply(init_weights)
-            # self.policy_model.apply(init_weights)
-            # self.value_function_weights.apply(init_weights)
+            self.mu.apply(init_weights)
 
-        self.mu_optimizer = torch.optim.Adam(self.alpha.parameters(), lr=self.learning_rate)
-        self.sigma_optimizer = torch.optim.Adam([self.beta], lr=self.learning_rate)
-        # self.value_function_optimizer = torch.optim.Adam([self.value_function_weights], lr=self.learning_rate)
-        # self.value_function_optimizer = torch.optim.Adam(self.value_function_weights.parameters(), lr=self.learning_rate)
+        self.policy_optimizer = torch.optim.Adam(list(self.mu.parameters()) + [self.log_sigma], lr=self.learning_rate)
+        # self.mu_optimizer = torch.optim.Adam(self.alpha.parameters(), lr=self.learning_rate)
+        # self.sigma_optimizer = torch.optim.Adam([self.beta], lr=self.learning_rate)
 
     def update_value_function_weights(self):
         """
@@ -151,7 +137,7 @@ class ContinuousKoopmanPolicyIterationPolicy:
             pi_response = np.zeros([self.all_actions.shape[1],self.w_hat_batch_size])
             for state_index, state in enumerate(x_batch.T):
                 action_distribution = self.get_action_distribution(np.vstack(state))
-                pi_response[:, state_index] = action_distribution.log_prob(torch.Tensor(self.all_actions))
+                pi_response[:, state_index] = action_distribution.log_prob(torch.Tensor(self.all_actions.T))
 
         # Compute phi_x_prime for all states in the batch using all actions in the action space
         phi_x_prime_batch = self.dynamics_model.K_(self.all_actions) @ phi_x_batch # (all_actions.shape[1], phi_dim, w_hat_batch_size)
@@ -175,7 +161,7 @@ class ContinuousKoopmanPolicyIterationPolicy:
         self.value_function_weights = torch.linalg.lstsq(
             torch.Tensor((phi_x_batch - ((self.gamma**self.dt)*expectation_term_1)).T),
             torch.Tensor(expectation_term_2.T)
-        ).solution.numpy()
+        ).solution.numpy() # (phi_dim, 1)
 
     def get_action_distribution(self, x):
         """
@@ -188,13 +174,14 @@ class ContinuousKoopmanPolicyIterationPolicy:
                 Normal distribution using state dependent mu and latest sigma.
         """
 
-        phi_x = torch.Tensor(self.dynamics_model.phi(x))
+        phi_x = self.phi(x)
         # phi_x = torch.cat([torch.Tensor(x), torch.tensor([[1]])])
-        # mu = (self.alpha @ phi_x)[0,0]
-        mu = self.alpha(phi_x[:,0])
-        # mu = (self.alpha @ (phi_x / self.max_phi_norm))[0,0]
-        sigma = torch.exp(self.beta)
-        return torch.distributions.normal.Normal(mu, sigma, validate_args=False)
+
+        # mu = self.mu(torch.Tensor(x[:,0]))
+        mu = self.mu(torch.Tensor(phi_x[:,0]))
+        sigma = torch.exp(self.log_sigma)
+
+        return MultivariateNormal(mu, torch.diag(sigma))
 
     def get_action(self, x):
         """
@@ -223,7 +210,7 @@ class ContinuousKoopmanPolicyIterationPolicy:
                 num_steps_per_episode - Number of steps per episode.
         """
 
-        # epsilon = np.finfo(np.float32).eps.item()
+        epsilon = np.finfo(np.float32).eps.item()
         total_reward_episode = torch.zeros(num_training_episodes)
 
         initial_states = np.random.uniform(
@@ -242,10 +229,7 @@ class ContinuousKoopmanPolicyIterationPolicy:
 
             for step in range(num_steps_per_episode):
                 # Compute V_x
-                # V_x = torch.Tensor(self.value_function_weights.T @ self.phi(state))
                 V_x = self.value_function_weights.T @ self.phi(state)
-                # V_x = self.value_function_weights(torch.Tensor(state[:,0]))[0]
-                # critic_values[step] = V_x
                 V_xs[step] = torch.Tensor(V_x)
 
                 # Get action and action probabilities for current state
@@ -280,7 +264,7 @@ class ContinuousKoopmanPolicyIterationPolicy:
 
             # Calculating loss values to update our network(s)
             # advantage = returns - V_xs
-            # actor_loss = -log_probabilities * advantage
+            # actor_loss = -log_probs * advantage
             # critic_loss = torch.pow(advantage, 2)
 
             # Compute loss
@@ -300,19 +284,21 @@ class ContinuousKoopmanPolicyIterationPolicy:
 
             # Compute advantage
             # advantage = returns - critic_values
-            advantage = rewards + V_x_primes - V_xs
+            advantage = (rewards + V_x_primes) - V_xs
 
             # Compute actor and critic losses
             actor_loss = (-log_probs * advantage.detach()).mean()
             # critic_loss = advantage.pow(2).mean()
 
             # Backpropagation
-            self.mu_optimizer.zero_grad()
-            self.sigma_optimizer.zero_grad()
+            # self.mu_optimizer.zero_grad()
+            # self.sigma_optimizer.zero_grad()
+            self.policy_optimizer.zero_grad()
             actor_loss.backward()
             # critic_loss.backward()
-            self.mu_optimizer.step()
-            self.sigma_optimizer.step()
+            # self.mu_optimizer.step()
+            # self.sigma_optimizer.step()
+            self.policy_optimizer.step()
 
             # Update value function weights
             self.update_value_function_weights()
@@ -320,6 +306,6 @@ class ContinuousKoopmanPolicyIterationPolicy:
             # Progress prints
             if episode == 0 or (episode+1) % 250 == 0:
                 print(f"Episode: {episode+1}, discounted total reward: {total_reward_episode[episode]}")
-                torch.save(self.alpha, self.saved_file_path_alpha)
-                torch.save(self.beta, self.saved_file_path_beta)
+                torch.save(self.mu, self.saved_file_path_mu)
+                torch.save(self.log_sigma, self.saved_file_path_log_sigma)
                 torch.save(self.value_function_weights, self.saved_file_path_value_function_weights)
