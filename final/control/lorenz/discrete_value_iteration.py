@@ -23,7 +23,8 @@ plot_file_extensions = ['svg', 'png']
 
 #%% Generate path-based data
 num_episodes = 500
-num_steps_per_episode = int(50.0 / dt)
+num_steps_per_episode = int(25.0 / dt)
+# num_steps_per_episode = int(1.0 / dt)
 N = num_episodes*num_steps_per_episode # Number of datapoints
 
 X = np.zeros([state_dim,N])
@@ -65,9 +66,10 @@ koopman_policy = DiscreteKoopmanValueIterationPolicy(
     cost,
     'saved_models/lorenz-discrete-value-iteration-policy.pt',
     dt=dt,
-    seed=seed
+    seed=seed,
+    learning_rate=0.003,
+    use_ols=False
 )
-print(f"\nLearning rate: {koopman_policy.learning_rate}\n")
 
 # Train Koopman policy
 koopman_policy.train(training_epochs=2000, batch_size=2**12)

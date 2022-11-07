@@ -109,8 +109,6 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
             states[episode,step] = state[:,0]
 
             action, _ = koopman_policy.get_action(state)
-            # action = action.numpy()
-            action = np.array([action])
             actions[episode,step] = action
 
             cumulative_cost += cost(state, action)[0,0]

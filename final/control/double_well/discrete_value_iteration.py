@@ -67,7 +67,6 @@ koopman_policy = DiscreteKoopmanValueIterationPolicy(
     dt=dt,
     seed=seed
 )
-print(f"\nLearning rate: {koopman_policy.learning_rate}\n")
 
 # Train Koopman policy
 koopman_policy.train(training_epochs=2000, batch_size=2**12)
