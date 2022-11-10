@@ -153,7 +153,7 @@ class DiscreteKoopmanPolicyIterationPolicy:
         self.value_function_weights = torch.linalg.lstsq(
             torch.Tensor((phi_x_batch - ((self.gamma**self.dt)*expectation_term_1)).T),
             torch.Tensor(expectation_term_2.T)
-        ).solution.numpy()
+        ).solution.numpy() # (phi_dim, 1)
 
     def get_action(self, x, num_samples=1):
         """

@@ -83,9 +83,9 @@ class ContinuousKoopmanPolicyIterationPolicy:
         self.layer_2_dim = layer_2_dim
 
         if load_model:
-            self.alpha = torch.load(self.saved_file_path_mu)
-            self.beta = torch.load(self.saved_file_path_log_sigma)
-            self.value_function_weights = torch.load(self.saved_file_path_value_function_weights).numpy()
+            self.mu = torch.load(self.saved_file_path_mu)
+            self.log_sigma = torch.load(self.saved_file_path_log_sigma)
+            self.value_function_weights = np.load(self.saved_file_path_value_function_weights)
         else:
             # self.mu = nn.Sequential(
             #     nn.Linear(self.dynamics_model.x_dim, self.all_actions.shape[0])
@@ -97,8 +97,8 @@ class ContinuousKoopmanPolicyIterationPolicy:
             #     nn.Linear(self.dynamics_model.x_dim+1, self.all_actions.shape[0])
             # )
             self.mu = nn.Sequential(
-                # nn.Linear(self.dynamics_model.x_dim, self.layer_1_dim),
-                nn.Linear(self.dynamics_model.phi_dim, self.layer_1_dim),
+                nn.Linear(self.dynamics_model.x_dim, self.layer_1_dim),
+                # nn.Linear(self.dynamics_model.phi_dim, self.layer_1_dim),
                 nn.ReLU(),
                 nn.Linear(self.layer_1_dim, self.layer_2_dim),
                 nn.ReLU(),
@@ -120,6 +120,43 @@ class ContinuousKoopmanPolicyIterationPolicy:
         # self.mu_optimizer = torch.optim.Adam(self.alpha.parameters(), lr=self.learning_rate)
         # self.sigma_optimizer = torch.optim.Adam([self.beta], lr=self.learning_rate)
 
+    def get_action_distribution(self, x):
+        """
+            Get the action distribution for a given state.
+
+            INPUTS:
+                x - State column vector.
+
+            OUTPUTS:
+                Normal distribution using state dependent mu and latest sigma.
+        """
+
+        # phi_x = self.phi(x)
+        # phi_x = torch.cat([torch.Tensor(x), torch.tensor([[1]])])
+
+        mu = self.mu(torch.Tensor(x[:,0]))
+        # mu = self.mu(torch.Tensor(phi_x[:,0]))
+        sigma = torch.exp(self.log_sigma)
+
+        return MultivariateNormal(mu, torch.diag(sigma))
+
+    def get_action(self, x):
+        """
+            Estimate the policy and sample an action, compute its log probability.
+            
+            INPUTS:
+                x - State column vector.
+            
+            OUTPUTS:
+                The selected action and log probability.
+        """
+
+        action_distribution = self.get_action_distribution(x)
+        action = action_distribution.sample()
+        log_prob = action_distribution.log_prob(action)
+
+        return action, log_prob
+
     def update_value_function_weights(self):
         """
             Update the weights for the value function in the dictionary space.
@@ -131,8 +168,6 @@ class ContinuousKoopmanPolicyIterationPolicy:
         phi_x_batch = self.dynamics_model.Phi_X[:, x_batch_indices] # (phi_dim, w_hat_batch_size)
 
         # Compute policy probabilities for each state in the batch
-        # with torch.no_grad():
-        #     pi_response = self.policy_model(torch.Tensor(x_batch.T)).T # (all_actions.shape[1], w_hat_batch_size)
         with torch.no_grad():
             pi_response = np.zeros([self.all_actions.shape[1],self.w_hat_batch_size])
             for state_index, state in enumerate(x_batch.T):
@@ -162,43 +197,6 @@ class ContinuousKoopmanPolicyIterationPolicy:
             torch.Tensor((phi_x_batch - ((self.gamma**self.dt)*expectation_term_1)).T),
             torch.Tensor(expectation_term_2.T)
         ).solution.numpy() # (phi_dim, 1)
-
-    def get_action_distribution(self, x):
-        """
-            Get the action distribution for a given state.
-
-            INPUTS:
-                x - State column vector.
-
-            OUTPUTS:
-                Normal distribution using state dependent mu and latest sigma.
-        """
-
-        phi_x = self.phi(x)
-        # phi_x = torch.cat([torch.Tensor(x), torch.tensor([[1]])])
-
-        # mu = self.mu(torch.Tensor(x[:,0]))
-        mu = self.mu(torch.Tensor(phi_x[:,0]))
-        sigma = torch.exp(self.log_sigma)
-
-        return MultivariateNormal(mu, torch.diag(sigma))
-
-    def get_action(self, x):
-        """
-            Estimate the policy and sample an action, compute its log probability.
-            
-            INPUTS:
-                x - State column vector.
-            
-            OUTPUTS:
-                The selected action and log probability.
-        """
-
-        action_distribution = self.get_action_distribution(x)
-        action = action_distribution.sample()
-        log_prob = action_distribution.log_prob(action)
-
-        return action, log_prob
 
     def train(self, num_training_episodes, num_steps_per_episode):
         """
@@ -284,21 +282,19 @@ class ContinuousKoopmanPolicyIterationPolicy:
 
             # Compute advantage
             # advantage = returns - critic_values
-            advantage = (rewards + V_x_primes) - V_xs
+            advantage = rewards + V_x_primes - V_xs
 
             # Compute actor and critic losses
             actor_loss = (-log_probs * advantage.detach()).mean()
             # critic_loss = advantage.pow(2).mean()
 
             # Backpropagation
-            # self.mu_optimizer.zero_grad()
-            # self.sigma_optimizer.zero_grad()
             self.policy_optimizer.zero_grad()
+            # self.value_function_optimizer.zero_grad()
             actor_loss.backward()
             # critic_loss.backward()
-            # self.mu_optimizer.step()
-            # self.sigma_optimizer.step()
             self.policy_optimizer.step()
+            # self.value_function_optimizer.step()
 
             # Update value function weights
             self.update_value_function_weights()

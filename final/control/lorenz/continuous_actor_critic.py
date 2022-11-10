@@ -70,7 +70,7 @@ koopman_policy = ContinuousKoopmanPolicyIterationPolicy(
     all_actions,
     cost,
     'saved_models/lorenz-continuous-actor-critic-policy.pt',
-    learning_rate=0.003,
+    learning_rate=0.0003,
     dt=dt,
     seed=seed
 )

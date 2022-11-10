@@ -62,7 +62,8 @@ koopman_policy = ContinuousKoopmanPolicyIterationPolicy(
 print(f"\nLearning rate: {koopman_policy.learning_rate}\n")
 
 # Train Koopman policy
-koopman_policy.train(num_training_episodes=5000, num_steps_per_episode=200)
+koopman_policy.train(num_training_episodes=2000, num_steps_per_episode=200)
+# koopman_policy.train(num_training_episodes=0, num_steps_per_episode=200)
 
 # Test policies
 def watch_agent(num_episodes, step_limit, specifiedEpisode):
