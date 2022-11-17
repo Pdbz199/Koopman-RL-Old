@@ -6,7 +6,21 @@ seed = 123
 np.random.seed(seed)
 
 from cost import reference_point, cost
-from dynamics import dt, state_dim, action_dim, state_minimums, state_maximums, all_actions, state_order, action_order, random_policy, f
+from dynamics import (
+    dt,
+    state_dim,
+    action_dim,
+    state_minimums,
+    state_maximums,
+    x_e,
+    y_e,
+    z_e,
+    all_actions,
+    state_order,
+    action_order,
+    random_policy,
+    f
+)
 
 import sys
 sys.path.append('../../../')
@@ -56,6 +70,28 @@ tensor = KoopmanTensor(
 )
 
 # Koopman value iteration policy
+deviation = 2.0
+state_minimums = np.array([
+    [x_e-deviation],
+    [y_e-deviation],
+    [z_e-deviation]
+])
+state_maximums = np.array([
+    [x_e+deviation],
+    [y_e+deviation],
+    [z_e+deviation]
+])
+local_state_minimums = np.array([
+    [x_e-deviation],
+    [y_e-deviation],
+    [z_e-deviation]
+])
+local_state_maximums = np.array([
+    [x_e+deviation],
+    [y_e+deviation],
+    [z_e+deviation]
+])
+
 # all_actions = np.arange(-75, 75+1.0, 1.0)
 # all_actions = np.round(all_actions, decimals=2)
 # all_actions = np.array([all_actions])
@@ -65,19 +101,23 @@ koopman_policy = ContinuousKoopmanPolicyIterationPolicy(
     gamma,
     reg_lambda,
     tensor,
-    state_minimums,
-    state_maximums,
+    # state_minimums,
+    # state_maximums,
+    local_state_minimums,
+    local_state_maximums,
     all_actions,
     cost,
     'saved_models/lorenz-continuous-actor-critic-policy.pt',
-    learning_rate=0.0003,
+    # use_ols=False,
+    learning_rate=0.003,
     dt=dt,
-    seed=seed
+    seed=seed,
+    load_model=True
 )
 print(f"\nLearning rate: {koopman_policy.learning_rate}\n")
 
 # Train Koopman policy
-koopman_policy.train(num_training_episodes=2000, num_steps_per_episode=int(25.0 / dt))
+# koopman_policy.train(num_training_episodes=2000, num_steps_per_episode=int(25.0 / dt))
 
 # Test policies
 def watch_agent(num_episodes, step_limit, specifiedEpisode=None):

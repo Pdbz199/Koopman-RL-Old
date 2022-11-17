@@ -21,6 +21,7 @@ class ContinuousKoopmanPolicyIterationPolicy:
         all_actions,
         cost,
         saved_file_path,
+        use_ols=True,
         dt=1.0,
         learning_rate=0.003,
         w_hat_batch_size=2**12,
@@ -42,6 +43,7 @@ class ContinuousKoopmanPolicyIterationPolicy:
                 all_actions - The actions that the policy can take. Should be a single dimensional array.
                 cost - The cost function of the system. Function must take in states and actions and return scalars.
                 saved_file_path - The path to save the policy model.
+                use_ols - Boolean to indicate whether or not to use OLS in computing new value function weights,
                 dt - The time step of the system.
                 learning_rate - The learning rate of the policy.
                 w_hat_batch_size - The batch size of the policy.
@@ -66,6 +68,7 @@ class ContinuousKoopmanPolicyIterationPolicy:
         self.all_actions = all_actions
         self.cost = cost
         self.saved_file_path = saved_file_path
+        self.use_ols = use_ols
         split_path = self.saved_file_path.split('.')
         if len(split_path) == 1:
             self.saved_file_path_mu = split_path[0] + '-mu.pt'
@@ -85,17 +88,11 @@ class ContinuousKoopmanPolicyIterationPolicy:
         if load_model:
             self.mu = torch.load(self.saved_file_path_mu)
             self.log_sigma = torch.load(self.saved_file_path_log_sigma)
-            self.value_function_weights = np.load(self.saved_file_path_value_function_weights)
+            if self.use_ols:
+                self.value_function_weights = np.load(self.saved_file_path_value_function_weights)
+            else:
+                self.value_function_weights = torch.load(self.saved_file_path_value_function_weights)
         else:
-            # self.mu = nn.Sequential(
-            #     nn.Linear(self.dynamics_model.x_dim, self.all_actions.shape[0])
-            # )
-            # self.mu = nn.Sequential(
-            #     nn.Linear(self.dynamics_model.phi_dim, self.all_actions.shape[0])
-            # )
-            # self.mu = nn.Sequential(
-            #     nn.Linear(self.dynamics_model.x_dim+1, self.all_actions.shape[0])
-            # )
             self.mu = nn.Sequential(
                 nn.Linear(self.dynamics_model.x_dim, self.layer_1_dim),
                 # nn.Linear(self.dynamics_model.phi_dim, self.layer_1_dim),
@@ -107,18 +104,44 @@ class ContinuousKoopmanPolicyIterationPolicy:
 
             # self.log_sigma = torch.ones(self.all_actions.shape[0], requires_grad=True)
             self.log_sigma = torch.zeros(self.all_actions.shape[0], requires_grad=True)
+            # self.log_sigma = nn.Sequential(
+            #     nn.Linear(self.dynamics_model.x_dim, self.layer_1_dim),
+            #     # nn.Linear(self.dynamics_model.phi_dim, self.layer_1_dim),
+            #     nn.ReLU(),
+            #     nn.Linear(self.layer_1_dim, self.layer_2_dim),
+            #     nn.ReLU(),
+            #     nn.Linear(self.layer_2_dim, self.all_actions.shape[0])
+            # )
 
-            self.value_function_weights = np.zeros(self.dynamics_model.phi_column_dim)
+            # self.value_function_weights = np.zeros(self.dynamics_model.phi_column_dim)
+            if self.use_ols:
+                self.value_function_weights = np.zeros([self.dynamics_model.phi_dim, 1])
+            else:
+                # self.value_function_weights = torch.zeros([self.dynamics_model.phi_dim, 1], requires_grad=True)
+                self.value_function_weights = nn.Sequential(
+                    nn.Linear(self.dynamics_model.phi_dim, 1)
+                )
+                # self.value_function_weights = nn.Sequential(
+                #     nn.Linear(self.dynamics_model.phi_dim, self.layer_1_dim),
+                #     nn.ReLU(),
+                #     nn.Linear(self.layer_1_dim, self.layer_2_dim),
+                #     nn.ReLU(),
+                #     nn.Linear(self.layer_2_dim, 1)
+                # )
 
             def init_weights(m):
                 if type(m) == torch.nn.Linear:
                     m.weight.data.fill_(0.0)
         
             self.mu.apply(init_weights)
+            # self.log_sigma.apply(init_weights)
+
+        if not self.use_ols:
+            # self.value_function_optimizer = torch.optim.Adam([self.value_function_weights], lr=self.learning_rate)
+            self.value_function_optimizer = torch.optim.Adam(self.value_function_weights.parameters(), lr=self.learning_rate)
 
         self.policy_optimizer = torch.optim.Adam(list(self.mu.parameters()) + [self.log_sigma], lr=self.learning_rate)
-        # self.mu_optimizer = torch.optim.Adam(self.alpha.parameters(), lr=self.learning_rate)
-        # self.sigma_optimizer = torch.optim.Adam([self.beta], lr=self.learning_rate)
+        # self.policy_optimizer = torch.optim.Adam(list(self.mu.parameters()) + list(self.log_sigma.parameters()), lr=self.learning_rate)
 
     def get_action_distribution(self, x):
         """
@@ -137,6 +160,7 @@ class ContinuousKoopmanPolicyIterationPolicy:
         mu = self.mu(torch.Tensor(x[:,0]))
         # mu = self.mu(torch.Tensor(phi_x[:,0]))
         sigma = torch.exp(self.log_sigma)
+        # sigma = torch.exp(self.log_sigma(torch.Tensor(x[:,0])))
 
         return MultivariateNormal(mu, torch.diag(sigma))
 
@@ -227,7 +251,12 @@ class ContinuousKoopmanPolicyIterationPolicy:
 
             for step in range(num_steps_per_episode):
                 # Compute V_x
-                V_x = self.value_function_weights.T @ self.phi(state)
+                phi_x = self.phi(state)
+                if self.use_ols:
+                    V_x = self.value_function_weights.T @ phi_x
+                else:
+                    # V_x = self.value_function_weights.T @ torch.Tensor(phi_x)
+                    V_x = self.value_function_weights(torch.Tensor(phi_x[:,0]))
                 V_xs[step] = torch.Tensor(V_x)
 
                 # Get action and action probabilities for current state
@@ -236,7 +265,12 @@ class ContinuousKoopmanPolicyIterationPolicy:
                 log_probs[step] = log_prob
 
                 # Compute V_x_prime
-                V_x_prime = self.value_function_weights.T @ self.dynamics_model.phi_f(state, action)
+                phi_x_prime = self.dynamics_model.phi_f(state, action)
+                if self.use_ols:
+                    V_x_prime = self.value_function_weights.T @ phi_x_prime
+                else:
+                    # V_x_prime = self.value_function_weights.T @ torch.Tensor(phi_x_prime)
+                    V_x_prime = self.value_function_weights(torch.Tensor(phi_x_prime[:,0]))
                 V_x_primes[step] = torch.Tensor(V_x_prime)
 
                 # Take action A, observe S', R
@@ -284,20 +318,27 @@ class ContinuousKoopmanPolicyIterationPolicy:
             # advantage = returns - critic_values
             advantage = rewards + V_x_primes - V_xs
 
-            # Compute actor and critic losses
+            # Compute actor loss
             actor_loss = (-log_probs * advantage.detach()).mean()
-            # critic_loss = advantage.pow(2).mean()
 
-            # Backpropagation
+            # Backpropagation for actor
             self.policy_optimizer.zero_grad()
-            # self.value_function_optimizer.zero_grad()
-            actor_loss.backward()
-            # critic_loss.backward()
+            actor_loss.backward() # retain_graph=not self.use_ols
             self.policy_optimizer.step()
-            # self.value_function_optimizer.step()
+
+            # Compute critic loss
+            if not self.use_ols:
+                critic_loss = advantage.pow(2).mean()
+
+            # Backpropogation for critic loss
+            if not self.use_ols:
+                self.value_function_optimizer.zero_grad()
+                critic_loss.backward()
+                self.value_function_optimizer.step()
 
             # Update value function weights
-            self.update_value_function_weights()
+            if self.use_ols:
+                self.update_value_function_weights()
 
             # Progress prints
             if episode == 0 or (episode+1) % 250 == 0:

@@ -61,13 +61,13 @@ def continuous_f(action=None):
         b_x = np.array([
             [4*x - 4*(x**3)],
             [-2*y]
-        ]) + u
+        ])
         sigma_x = np.array([
             [0.7, x],
             [0, 0.5]
         ])
 
-        column_output = b_x + sigma_x * np.random.randn(2,1)
+        column_output = b_x + u + sigma_x @ np.random.randn(2,1)
         x_dot = column_output[0,0]
         y_dot = column_output[1,0]
 
