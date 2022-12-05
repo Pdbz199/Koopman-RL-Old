@@ -79,7 +79,8 @@ class DiscreteKoopmanPolicyIterationPolicy:
 
         if load_model:
             self.policy_model = torch.load(self.saved_file_path)
-            self.value_function_weights = torch.load(self.saved_file_path_value_function_weights).numpy()
+            # self.value_function_weights = torch.load(self.saved_file_path_value_function_weights).numpy()
+            self.value_function_weights = np.load(self.saved_file_path_value_function_weights)
         else:
             # self.policy_model = nn.Sequential(
             #     nn.Linear(self.dynamics_model.x_dim, self.all_actions.shape[1]),

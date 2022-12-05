@@ -1,14 +1,17 @@
 # Imports
 import matplotlib.pyplot as plt
 import numpy as np
+import sys
 
-seed = 123
+try:
+    seed = int(sys.argv[1])
+except:
+    seed = 123
 np.random.seed(seed)
 
 from cost import reference_point, cost
 from dynamics import dt, state_dim, action_dim, state_minimums, state_maximums, all_actions, state_order, action_order, random_policy, f
 
-import sys
 sys.path.append('../../../')
 import final.observables as observables
 from final.tensor import KoopmanTensor
@@ -18,7 +21,7 @@ from final.control.policies.discrete_actor_critic import DiscreteKoopmanPolicyIt
 gamma = 0.99
 reg_lambda = 1.0
 
-plot_path = 'output/discrete_actor_critic/'
+plot_path = f'output/discrete_actor_critic/seed_{seed}/'
 plot_file_extensions = ['svg', 'png']
 
 #%% Generate path-based data
@@ -84,7 +87,7 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
 
     states = np.zeros([num_episodes,step_limit,state_dim])
     actions = np.zeros([num_episodes,step_limit,action_dim])
-    costs = np.zeros([num_episodes])
+    costs = np.zeros([num_episodes,step_limit])
 
     initial_states = np.random.uniform(
         state_minimums,
@@ -95,8 +98,6 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
     for episode in range(num_episodes):
         state = np.vstack(initial_states[episode])
 
-        cumulative_cost = 0
-
         for step in range(step_limit):
             states[episode,step] = state[:,0]
 
@@ -105,13 +106,21 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
             action = np.array([action])
             actions[episode,step] = action
 
-            cumulative_cost += cost(state, action)[0,0]
+            costs[episode,step] = cost(state, action)[0,0]
 
             state = f(state, action)
 
-        costs[episode] = cumulative_cost
+    plt.title("Total Cost Per Episode")
+    plt.xlabel("Episode #")
+    plt.ylabel("Total Cost")
+    plt.plot(costs.sum(1))
+    for plot_file_extension in plot_file_extensions:
+        plt.savefig(plot_path + 'total-cost-per-episode.' + plot_file_extension)
+    # plt.show()
+    plt.clf()
 
-    print(f"Mean cost per episode over {num_episodes} episode(s) (Koopman controller): {np.mean(costs)}\n")
+    print(f"Mean of total costs per episode over {num_episodes} episode(s): {costs.sum(1).mean()}")
+    print(f"Standard deviation of total costs per episode over {num_episodes} episode(s): {costs.sum(1).std()}\n")
 
     print(f"Initial state of episode #{specifiedEpisode} (Koopman controller): {states[specifiedEpisode,0]}")
     print(f"Final state of episode #{specifiedEpisode} (Koopman controller): {states[specifiedEpisode,-1]}\n")

@@ -1,15 +1,18 @@
 # Imports
 import matplotlib.pyplot as plt
 import numpy as np
+import sys
 
-seed = 123
+try:
+    seed = int(sys.argv[1])
+except:
+    seed = 123
 np.random.seed(seed)
 
 from cost import Q, R, reference_point, cost
 from dynamics import dt, state_dim, action_dim, state_minimums, state_maximums, continuous_f, f, continuous_A, continuous_B, state_column_shape
 from scipy.integrate import solve_ivp
 
-import sys
 sys.path.append('../../../')
 from final.control.policies.lqr import LQRPolicy
 
@@ -17,7 +20,7 @@ from final.control.policies.lqr import LQRPolicy
 gamma = 0.99
 reg_lambda = 1.0
 
-plot_path = 'output/lqr/'
+plot_path = f'output/lqr/seed_{seed}/'
 plot_file_extensions = ['svg', 'png']
 
 # LQR Policy
@@ -43,7 +46,7 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
 
     states = np.zeros([num_episodes,step_limit,state_dim])
     actions = np.zeros([num_episodes,step_limit,action_dim])
-    costs = np.zeros([num_episodes])
+    costs = np.zeros([num_episodes,step_limit])
 
     initial_states = np.zeros([num_episodes, state_dim])
     for episode in range(num_episodes):
@@ -55,8 +58,6 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
     for episode in range(num_episodes):
         state = np.vstack(initial_states[episode])
 
-        cumulative_cost = 0
-
         for step in range(step_limit):
             states[episode,step] = state[:,0]
 
@@ -67,13 +68,21 @@ def watch_agent(num_episodes, step_limit, specifiedEpisode=None):
             #     action = np.array([[-action_range]])
             actions[episode,step] = action
 
-            cumulative_cost += cost(state, action)[0,0]
+            costs[episode,step] = cost(state, action)[0,0]
 
             state = f(state, action)
 
-        costs[episode] = cumulative_cost
+    plt.title("Total Cost Per Episode")
+    plt.xlabel("Episode #")
+    plt.ylabel("Total Cost")
+    plt.plot(costs.sum(1))
+    for plot_file_extension in plot_file_extensions:
+        plt.savefig(plot_path + 'total-cost-per-episode.' + plot_file_extension)
+    # plt.show()
+    plt.clf()
 
-    print(f"Mean cost per episode over {num_episodes} episode(s): {np.mean(costs)}\n")
+    print(f"Mean of total costs per episode over {num_episodes} episode(s): {costs.sum(1).mean()}")
+    print(f"Standard deviation of total costs per episode over {num_episodes} episode(s): {costs.sum(1).std()}\n")
 
     print(f"Initial state of episode #{specifiedEpisode}: {states[specifiedEpisode,0]}")
     print(f"Final state of episode #{specifiedEpisode}: {states[specifiedEpisode,-1]}\n")
