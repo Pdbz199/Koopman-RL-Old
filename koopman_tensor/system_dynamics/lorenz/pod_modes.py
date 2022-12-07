@@ -16,14 +16,16 @@ def zero_policy(x=None):
     return np.zeros(action_column_shape)
 
 # Dynamics
-omega = 1.0
-mu = 0.1
-A = -0.1
-lamb = 1
+sigma = 10
+rho = 28
+beta = 8/3
 
 dt = 0.01
 
-# Define the fluid flow system
+x_e = np.sqrt( beta * ( rho - 1 ) )
+y_e = np.sqrt( beta * ( rho - 1 ) )
+z_e = rho - 1
+
 def continuous_f(action=None):
     """
         True, continuous dynamics of the system.
@@ -41,15 +43,19 @@ def continuous_f(action=None):
 
         x, y, z = input
 
-        x_dot = mu*x - omega*y + A*x*z
-        y_dot = omega*x + mu*y + A*y*z
-        z_dot = -lamb * ( z - np.power(x, 2) - np.power(y, 2) )
+        # x = x - x_e
+        # y = y - y_e
+        # z = z + z_e
+
+        x_dot = sigma * ( y - x )   # sigma*y - sigma*x
+        y_dot = ( rho - z ) * x - y # rho*x - x*z - y
+        z_dot = x * y - beta * z    # x*y - beta*z
 
         u = action
         if u is None:
             u = zero_policy()
 
-        return [ x_dot, y_dot + u, z_dot ]
+        return [ x_dot + u, y_dot, z_dot ]
 
     return f_u
 
@@ -120,7 +126,7 @@ plt.plot(mode1, mode2, mode3, lw=0.5)
 plt.xlabel("Mode 1")
 plt.ylabel("Mode 2")
 ax.set_zlabel("Mode 3")
-plt.title("POD Modes of the Fluid Flow")
+plt.title("POD Modes of the Lorenz System")
 
 plt.tight_layout()
 plt.show()
