@@ -2,7 +2,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
-from scipy.integrate import solve_ivp
+from scipy.integrate import odeint
 
 # Variables
 state_dim = 3
@@ -59,38 +59,25 @@ def continuous_f(action=None):
 
     return f_u
 
-def f(state, action):
-    """
-        True, discretized dynamics of the system. Pushes forward from (t) to (t + dt) using a constant action.
-
-        INPUTS:
-            state - State column vector.
-            action - Action column vector.
-
-        OUTPUTS:
-            State column vector pushed forward in time.
-    """
-
-    u = action[:,0]
-
-    soln = solve_ivp(fun=continuous_f(u), t_span=[0, dt], y0=state[:,0], method='RK45')
-    
-    return np.vstack(soln.y[:,-1])
-
 # Set the initial values and time step
 dt = 0.01
 num_timesteps = 100.0
 step_cnt = int(num_timesteps / dt)
 
-# Need one more for the initial values
-states = np.empty((state_dim, step_cnt + 1))
-
 # Set initial state values
-states[:,0] = np.array([0.2, 0.2, 1.0])
+initial_state = np.array([
+    [0.2],
+    [0.2],
+    [1.0]
+])
 
 # Generate path
-for i in range(1, step_cnt):
-    states[:,i] = f(np.vstack(states[:,i-1]), np.array([[0]]))[:,0]
+states = odeint(
+    func=continuous_f(None),
+    y0=initial_state[:,0],
+    t=np.arange(0, num_timesteps, dt),
+    tfirst=True
+).T
 
 # Plot the path
 fig = plt.figure()
