@@ -24,7 +24,7 @@ from dynamics import (
     state_order,
     zero_policy
 )
-from matplotlib.animation import FuncAnimation
+from matplotlib.animation import FFMpegWriter, FuncAnimation
 from scipy.integrate import solve_ivp
 
 sys.path.append('../../../')
@@ -130,3 +130,5 @@ anim = FuncAnimation(
 )
 
 plt.show()
+# FFwriter = FFMpegWriter(fps=fps)
+# anim.save('stabilizing_fluid_flow.mp4', writer=FFwriter)
