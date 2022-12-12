@@ -12,15 +12,13 @@ Xavg = p2['Xavg'] # (89351, 1)
 Xdelta = p2['Xdelta'] # (89351, 1)
 Phi = p2['Phi'] # (89351, 8)
 
-fps = 30
-nSeconds = 5
+fps = 10
+nSeconds = 8
 
-# snapshots = [ np.random.rand(5,5) for _ in range( nSeconds * fps ) ]
 snapshots = []
 for k in range(100, alpha.shape[0], 100):
-    u = Xavg[:,0] + Phi[:,0] * alpha[k,0] + Phi[:,1] * alpha[k,1] + Xdelta[:,0] * alphaS[k,0]
+    u = Xavg[:,0] + Phi[:,0] * alpha[k,0] + Phi[:,1] * alpha[k,1] + Xdelta[:,0] * alpha[k,2]
     snapshots.append(u.reshape(449,199).T)
-    # plt.imshow(u.reshape(449,199).T, cmap='hot', clim=(-1,1))
 
 # First set up the figure, the axis, and the plot element we want to animate
 fig = plt.figure( figsize=(8,8) )
