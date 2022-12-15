@@ -67,7 +67,7 @@ def continuous_f(action=None):
             [0, 0.5]
         ])
 
-        column_output = b_x + u #+ sigma_x @ np.random.randn(2,1)
+        column_output = b_x + u + sigma_x @ np.random.normal(loc=0, scale=1, size=(2,1))
         x_dot = column_output[0,0]
         y_dot = column_output[1,0]
 
@@ -110,8 +110,15 @@ print(f"Eigenvectors of continuous A:\n{V}\n")
 
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
+    from matplotlib.animation import FFMpegWriter, FuncAnimation
+    import sys
+    try:
+        seed = int(sys.argv[1])
+        np.random.seed(seed)
+    except:
+        pass
 
-    num_timesteps = 100.0
+    num_timesteps = 30.0
     num_steps = int(num_timesteps / dt)
 
     initial_states = np.random.uniform(
@@ -141,12 +148,68 @@ if __name__ == '__main__':
     ax.plot(np.arange(num_steps), states[0])
     ax.plot(0, states[0,0], marker="o", color='g', markersize=4)
     ax.plot(states.shape[1]-1, states[0,-1], marker="o", color='r', markersize=4)
-    ax.set_xlim(state_minimums[0,0], state_maximums[0,0])
-    ax.set_ylim(state_minimums[1,0], state_maximums[1,0])
     ax = fig.add_subplot(313)
     ax.plot(np.arange(num_steps), states[1])
     ax.plot(0, states[1,0], marker="o", color='g', markersize=4)
     ax.plot(states.shape[1]-1, states[1,-1], marker="o", color='r', markersize=4)
+    plt.show()
+
+    # fig = plt.figure()
+    # ax = fig.add_subplot(111)
+    # ax.plot(states[0], 4*states[0] - 4*(states[0]**3))
+    # plt.show()
+
+    fig = plt.figure()
+    # ax = fig.add_subplot(111)
+    ax = fig.add_subplot(111, projection='3d')
+    # Plot x,y,V(x)
+    ax.plot(states[0], states[1], (states[0]**2 - 1)**2 + states[1]**2)
+    # Plot phase portrait
+    # xs = np.linspace(-2,2,1000)
+    # ys = np.linspace(-2,2,1000)
+    # XX, YY = np.meshgrid(xs, ys)
+    # ax.contourf(xs, ys, (XX**2 - 1)**2 + YY**2)
+    # Plot potential
+    # ys = 0
+    # ax.plot(xs, (xs**2 - 1)**2 + ys**2)
+    plt.show()
+
+    # PLOT STATES OVER TIME
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    line, = ax.plot([], [], [])
     ax.set_xlim(state_minimums[0,0], state_maximums[0,0])
     ax.set_ylim(state_minimums[1,0], state_maximums[1,0])
+    ax.set_zlim(0, 1)
+    # plt.show()
+
+    # Choose the FPS and the number of seconds to run for
+    fps = 60
+    num_seconds = 30
+
+    # First set up the figure, the axis, and the plot element we want to animate
+    # fig = plt.figure(figsize=(8,4))
+    # plt.axis("off")
+
+    # a = lqr_snapshots[0]
+    # a = koopman_snapshots[0]
+    # im = plt.imshow(a, cmap='hot', clim=(-1,1))
+
+    def animate(i):
+        xs = states[0,:i]
+        ys = states[1,:i]
+        zs = (xs**2 - 1)**2 + ys**2
+        line.set_xdata(xs)
+        line.set_ydata(ys)
+        # line.set_3d_properties(np.arange(states.shape[1])[:i])
+        line.set_3d_properties((xs**2 - 1)**2 + ys**2)
+        return line,
+
+    anim = FuncAnimation(
+        fig,
+        animate,
+        frames = num_seconds * fps,
+        interval = 1000 / fps # in ms
+    )
+    
     plt.show()
