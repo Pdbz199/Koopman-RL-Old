@@ -107,3 +107,46 @@ W, V = np.linalg.eig(continuous_A)
 
 print(f"Eigenvalues of continuous A:\n{W}\n")
 print(f"Eigenvectors of continuous A:\n{V}\n")
+
+if __name__ == '__main__':
+    import matplotlib.pyplot as plt
+
+    num_timesteps = 100.0
+    num_steps = int(num_timesteps / dt)
+
+    initial_states = np.random.uniform(
+        state_minimums,
+        state_maximums,
+        [state_dim, 1]
+    ).T
+    initial_state = initial_states[0]
+
+    states = np.empty((state_dim, num_steps))
+    actions = np.empty((action_dim, num_steps))
+    state = np.vstack(initial_state)
+    for step_num in range(num_steps):
+        states[:,step_num] = state[:,0]
+        action = zero_policy(state)
+        actions[:,step_num] = action[:,0]
+        state = f(state, action)
+
+    fig = plt.figure()
+    ax = fig.add_subplot(311)
+    ax.plot(states[0], states[1])
+    ax.plot(states[0,0], states[1,0], marker="o", color='g', markersize=4)
+    ax.plot(states[0,-1], states[1,-1], marker="o", color='r', markersize=4)
+    ax.set_xlim(state_minimums[0,0], state_maximums[0,0])
+    ax.set_ylim(state_minimums[1,0], state_maximums[1,0])
+    ax = fig.add_subplot(312)
+    ax.plot(np.arange(num_steps), states[0])
+    ax.plot(0, states[0,0], marker="o", color='g', markersize=4)
+    ax.plot(states.shape[1]-1, states[0,-1], marker="o", color='r', markersize=4)
+    ax.set_xlim(state_minimums[0,0], state_maximums[0,0])
+    ax.set_ylim(state_minimums[1,0], state_maximums[1,0])
+    ax = fig.add_subplot(313)
+    ax.plot(np.arange(num_steps), states[1])
+    ax.plot(0, states[1,0], marker="o", color='g', markersize=4)
+    ax.plot(states.shape[1]-1, states[1,-1], marker="o", color='r', markersize=4)
+    ax.set_xlim(state_minimums[0,0], state_maximums[0,0])
+    ax.set_ylim(state_minimums[1,0], state_maximums[1,0])
+    plt.show()

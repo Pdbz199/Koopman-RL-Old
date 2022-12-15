@@ -79,7 +79,7 @@ koopman_policy = DiscreteKoopmanPolicyIterationPolicy(
     state_maximums,
     all_actions,
     cost,
-    'saved_models/fluid-flow-discrete-actor-critic-policy.pt',
+    'saved_models/lorenz-discrete-actor-critic-policy.pt',
     dt=dt,
     seed=seed,
     learning_rate=0.003,
@@ -94,31 +94,30 @@ koopman_policy_2 = DiscreteKoopmanValueIterationPolicy(
     tensor,
     all_actions,
     cost,
-    'saved_models/fluid-flow-discrete-value-iteration-policy.pt',
+    'saved_models/lorenz-discrete-value-iteration-policy.pt',
     dt=dt,
     seed=seed
 )
 
-x = np.random.random(state_column_shape) * 0.5 * np.random.choice([-1,1], size=state_column_shape)
-u = zero_policy(x)
-soln = solve_ivp(fun=continuous_f(u), t_span=[0, 50.0], y0=x[:,0], method='RK45')
-initial_state = soln.y[:,-1]
+# x = np.random.random(state_column_shape) * 0.5 * np.random.choice([-1,1], size=state_column_shape)
+# u = zero_policy(x)
+# soln = solve_ivp(fun=continuous_f(u), t_span=[0, 50.0], y0=x[:,0], method='RK45')
+# initial_state = soln.y[:,-1]
 
 # initial_state = x
 
-# initial_states = np.random.uniform(
-#     state_minimums,
-#     state_maximums,
-#     [state_dim, 1]
-# ).T
-# initial_state = initial_states[0]
+initial_states = np.random.uniform(
+    state_minimums,
+    state_maximums,
+    [state_dim, 1]
+).T
+initial_state = initial_states[0]
 
 state = np.vstack(initial_state)
 koopman_state = state
 koopman_state_2 = state
 lqr_state = state
 
-scale_factor = 150
 num_steps = int(100.0 / dt)
 koopman_alpha = np.empty((num_steps, state_dim))
 koopman_alpha_2 = np.empty((num_steps, state_dim))
@@ -127,9 +126,9 @@ koopman_costs_2 = np.empty((num_steps,1))
 lqr_alpha = np.empty((num_steps, state_dim))
 lqr_costs = np.empty((num_steps,1))
 for step in range(num_steps):
-    koopman_alpha[step] = koopman_state[:,0] * scale_factor
-    koopman_alpha_2[step] = koopman_state_2[:,0] * scale_factor
-    lqr_alpha[step] = lqr_state[:,0] * scale_factor
+    koopman_alpha[step] = koopman_state[:,0]
+    koopman_alpha_2[step] = koopman_state_2[:,0]
+    lqr_alpha[step] = lqr_state[:,0]
 
     if step < 20:
         koopman_action = zero_policy(koopman_state)
@@ -159,28 +158,28 @@ ax = fig.add_subplot(111, projection='3d')
 ax.plot3D(lqr_alpha[:,0], lqr_alpha[:,1], lqr_alpha[:,2])
 ax.plot3D(koopman_alpha[:,0], koopman_alpha[:,1], koopman_alpha[:,2])
 ax.plot3D(koopman_alpha_2[:,0], koopman_alpha_2[:,1], koopman_alpha_2[:,2])
-ax.set_xlim(-1.0 * scale_factor, 1.0 * scale_factor)
-ax.set_ylim(-1.0 * scale_factor, 1.0 * scale_factor)
-ax.set_zlim(0.0, 1.0 * scale_factor)
+ax.set_xlim(state_minimums[0,0], state_maximums[0,0])
+ax.set_ylim(state_minimums[1,0], state_maximums[1,0])
+ax.set_zlim(state_minimums[2,0], state_maximums[2,0])
 plt.legend(label_names)
 plt.show()
 
 fig = plt.figure()
 ax = fig.add_subplot(331, projection='3d')
 ax.plot3D(lqr_alpha[:,0], lqr_alpha[:,1], lqr_alpha[:,2])
-ax.set_xlim(-1.0 * scale_factor, 1.0 * scale_factor)
-ax.set_ylim(-1.0 * scale_factor, 1.0 * scale_factor)
-ax.set_zlim(0.0, 1.0 * scale_factor)
+ax.set_xlim(state_minimums[0,0], state_maximums[0,0])
+ax.set_ylim(state_minimums[1,0], state_maximums[1,0])
+ax.set_zlim(state_minimums[2,0], state_maximums[2,0])
 ax = fig.add_subplot(332, projection='3d')
 ax.plot3D(koopman_alpha[:,0], koopman_alpha[:,1], koopman_alpha[:,2])
-ax.set_xlim(-1.0 * scale_factor, 1.0 * scale_factor)
-ax.set_ylim(-1.0 * scale_factor, 1.0 * scale_factor)
-ax.set_zlim(0.0, 1.0 * scale_factor)
+ax.set_xlim(state_minimums[0,0], state_maximums[0,0])
+ax.set_ylim(state_minimums[1,0], state_maximums[1,0])
+ax.set_zlim(state_minimums[2,0], state_maximums[2,0])
 ax = fig.add_subplot(333, projection='3d')
 ax.plot3D(koopman_alpha_2[:,0], koopman_alpha_2[:,1], koopman_alpha_2[:,2])
-ax.set_xlim(-1.0 * scale_factor, 1.0 * scale_factor)
-ax.set_ylim(-1.0 * scale_factor, 1.0 * scale_factor)
-ax.set_zlim(0.0, 1.0 * scale_factor)
+ax.set_xlim(state_minimums[0,0], state_maximums[0,0])
+ax.set_ylim(state_minimums[1,0], state_maximums[1,0])
+ax.set_zlim(state_minimums[2,0], state_maximums[2,0])
 ax = fig.add_subplot(334)
 ax.plot(lqr_alpha)
 ax = fig.add_subplot(335)
