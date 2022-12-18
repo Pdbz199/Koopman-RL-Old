@@ -62,12 +62,12 @@ def continuous_f(action=None):
             [4*x - 4*(x**3)],
             [-2*y]
         ])
-        sigma_x = np.array([
-            [0.7, x],
-            [0, 0.5]
-        ])
+        # sigma_x = np.array([
+        #     [0.7, x],
+        #     [0, 0.5]
+        # ])
 
-        column_output = b_x + u + sigma_x @ np.random.normal(loc=0, scale=1, size=(2,1))
+        column_output = b_x + u #+ sigma_x @ np.random.normal(loc=0, scale=1, size=(2,1))
         x_dot = column_output[0,0]
         y_dot = column_output[1,0]
 
@@ -78,7 +78,7 @@ def continuous_f(action=None):
 def f(state, action):
     """
         True, discretized dynamics of the system. Pushes forward from (t) to (t + dt) using a constant action.
-
+ 
         INPUTS:
             state - State column vector.
             action - Action column vector.
@@ -88,10 +88,18 @@ def f(state, action):
     """
 
     u = action[:,0]
+    sigma_x = np.array([
+        [0.7, state[0,0]],
+        [0, 0.5]
+    ])
 
-    soln = solve_ivp(fun=continuous_f(u), t_span=[0, dt], y0=state[:,0], method='RK45')
-    
-    return np.vstack(soln.y[:,-1])
+    drift = np.vstack(continuous_f(u)(0, state[:,0])) * dt
+    diffusion = sigma_x @ np.random.normal(loc=0, scale=1, size=(2,1)) * np.sqrt(dt)
+    return drift + diffusion
+
+    # soln = solve_ivp(fun=continuous_f(u), t_span=[0, dt], y0=state[:,0], method='RK45')
+
+    # return np.vstack(soln.y[:,-1])
 
 # Compute continuous A and B for LQR policy
 continuous_A = np.array([
@@ -117,8 +125,12 @@ if __name__ == '__main__':
         np.random.seed(seed)
     except:
         pass
+    sys.path.append('../../../final')
+    import observables
+    from tensor import KoopmanTensor
 
     num_timesteps = 30.0
+    # num_timesteps = 1.0
     num_steps = int(num_timesteps / dt)
 
     initial_states = np.random.uniform(
@@ -136,6 +148,42 @@ if __name__ == '__main__':
         action = zero_policy(state)
         actions[:,step_num] = action[:,0]
         state = f(state, action)
+
+    X = states[:,:-1]
+    Y = np.roll(states, -1, axis=1)[:,:-1]
+    U = actions
+    koopman_tensor = KoopmanTensor(
+        X,
+        Y,
+        U,
+        phi=observables.monomials(state_order),
+        psi=observables.monomials(action_order),
+        regressor='ols',
+        # is_generator=True,
+        # dt=dt
+    )
+    K_0 = koopman_tensor.K_(np.array([[0]]))
+    eigen_values, eigen_vectors = np.linalg.eig(K_0)
+    xs = np.linspace(-2,2,1000)
+    ys = np.linspace(-1,1,1000)
+    XX, YY = np.meshgrid(xs, ys)
+    eigen_function_0 = np.empty((xs.shape[0], ys.shape[0]))
+    eigen_function_1 = np.empty((xs.shape[0], ys.shape[0]))
+    potential = (XX**2 - 1)**2 + YY**2
+    for i in range(xs.shape[0]):
+        for j in range(ys.shape[0]):
+            state = np.array([[xs[i]],[ys[j]]])
+            phi_state = koopman_tensor.phi(state)
+            eigen_function_0[i,j] = (eigen_vectors[:,0] @ phi_state)[0]
+            eigen_function_1[i,j] = (eigen_vectors[:,1] @ phi_state)[0]
+    plt.contourf(XX, YY, potential)
+    plt.xlim(-2,2)
+    plt.ylim(-1,1)
+    plt.show()
+    plt.contour(XX, YY, eigen_function_0)
+    plt.show()
+    plt.contour(XX, YY, eigen_function_1)
+    plt.show()
 
     fig = plt.figure()
     ax = fig.add_subplot(311)
