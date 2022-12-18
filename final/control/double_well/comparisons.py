@@ -79,7 +79,7 @@ koopman_policy = DiscreteKoopmanPolicyIterationPolicy(
     state_maximums,
     all_actions,
     cost,
-    'saved_models/lorenz-discrete-actor-critic-policy.pt',
+    'saved_models/double-well-discrete-actor-critic-policy.pt',
     dt=dt,
     seed=seed,
     learning_rate=0.003,
@@ -94,7 +94,7 @@ koopman_policy_2 = DiscreteKoopmanValueIterationPolicy(
     tensor,
     all_actions,
     cost,
-    'saved_models/lorenz-discrete-value-iteration-policy.pt',
+    'saved_models/double-well-discrete-value-iteration-policy.pt',
     dt=dt,
     seed=seed
 )
@@ -152,47 +152,87 @@ label_names = [
     "Koopman AC",
     "Koopman VI"
 ]
+ts = np.arange(num_steps)
 
 fig = plt.figure()
 ax = fig.add_subplot(111, projection='3d')
-ax.plot3D(lqr_alpha[:,0], lqr_alpha[:,1], lqr_alpha[:,2])
-ax.plot3D(koopman_alpha[:,0], koopman_alpha[:,1], koopman_alpha[:,2])
-ax.plot3D(koopman_alpha_2[:,0], koopman_alpha_2[:,1], koopman_alpha_2[:,2])
+ax.set_title("Controlled Dynamics Over Time")
+ax.plot3D(lqr_alpha[:,0], lqr_alpha[:,1], ts)
+ax.plot3D(koopman_alpha[:,0], koopman_alpha[:,1], ts)
+ax.plot3D(koopman_alpha_2[:,0], koopman_alpha_2[:,1], ts)
 ax.set_xlim(state_minimums[0,0], state_maximums[0,0])
 ax.set_ylim(state_minimums[1,0], state_maximums[1,0])
-ax.set_zlim(state_minimums[2,0], state_maximums[2,0])
+# ax.set_zlim(state_minimums[2,0], state_maximums[2,0])
+ax.set_xlabel("x_0")
+ax.set_ylabel("x_1")
+ax.set_zlabel("timestep")
 plt.legend(label_names)
-plt.show()
+plt.savefig('/Users/prozwood/Desktop/lqr_vs_actor_critic_vs_value_iteration_100_time_units.svg')
+plt.savefig('/Users/prozwood/Desktop/lqr_vs_actor_critic_vs_value_iteration_100_time_units.png')
+# plt.show()
 
 fig = plt.figure()
 ax = fig.add_subplot(331, projection='3d')
-ax.plot3D(lqr_alpha[:,0], lqr_alpha[:,1], lqr_alpha[:,2])
+ax.set_title("LQR")
+ax.set_xlabel("x_0")
+ax.set_ylabel("x_1")
+ax.set_zlabel("timestep")
+ax.plot3D(lqr_alpha[:,0], lqr_alpha[:,1], ts)
 ax.set_xlim(state_minimums[0,0], state_maximums[0,0])
 ax.set_ylim(state_minimums[1,0], state_maximums[1,0])
-ax.set_zlim(state_minimums[2,0], state_maximums[2,0])
+# ax.set_zlim(state_minimums[2,0], state_maximums[2,0])
 ax = fig.add_subplot(332, projection='3d')
-ax.plot3D(koopman_alpha[:,0], koopman_alpha[:,1], koopman_alpha[:,2])
+ax.set_title("Koopman Actor-Critic")
+ax.set_xlabel("x_0")
+ax.set_ylabel("x_1")
+ax.set_zlabel("timestep")
+ax.plot3D(koopman_alpha[:,0], koopman_alpha[:,1], ts)
 ax.set_xlim(state_minimums[0,0], state_maximums[0,0])
 ax.set_ylim(state_minimums[1,0], state_maximums[1,0])
-ax.set_zlim(state_minimums[2,0], state_maximums[2,0])
+# ax.set_zlim(state_minimums[2,0], state_maximums[2,0])
 ax = fig.add_subplot(333, projection='3d')
-ax.plot3D(koopman_alpha_2[:,0], koopman_alpha_2[:,1], koopman_alpha_2[:,2])
+ax.set_title("Koopman Value Iteration")
+ax.set_xlabel("x_0")
+ax.set_ylabel("x_1")
+ax.set_zlabel("timestep")
+ax.plot3D(koopman_alpha_2[:,0], koopman_alpha_2[:,1], ts)
 ax.set_xlim(state_minimums[0,0], state_maximums[0,0])
 ax.set_ylim(state_minimums[1,0], state_maximums[1,0])
-ax.set_zlim(state_minimums[2,0], state_maximums[2,0])
+# ax.set_zlim(state_minimums[2,0], state_maximums[2,0])
 ax = fig.add_subplot(334)
+ax.set_title("X vs Time")
+ax.set_xlabel("timestep")
+ax.set_ylabel("x")
 ax.plot(lqr_alpha)
 ax = fig.add_subplot(335)
+ax.set_title("X vs Time")
+ax.set_xlabel("timestep")
+ax.set_ylabel("x")
 ax.plot(koopman_alpha)
 ax = fig.add_subplot(336)
+ax.set_title("X vs Time")
+ax.set_xlabel("timestep")
+ax.set_ylabel("x")
 ax.plot(koopman_alpha_2)
 ax = fig.add_subplot(337)
+ax.set_title("Cost vs Time")
+ax.set_xlabel("timestep")
+ax.set_ylabel("cost")
 ax.plot(lqr_costs)
 ax = fig.add_subplot(338)
+ax.set_title("Cost vs Time")
+ax.set_xlabel("timestep")
+ax.set_ylabel("cost")
 ax.plot(koopman_costs)
 ax = fig.add_subplot(339)
+ax.set_title("Cost vs Time")
+ax.set_xlabel("timestep")
+ax.set_ylabel("cost")
 ax.plot(koopman_costs_2)
-plt.show()
+plt.tight_layout()
+plt.savefig('/Users/prozwood/Desktop/lqr_vs_actor_critic_vs_value_iteration_100_time_units_individuals.svg')
+plt.savefig('/Users/prozwood/Desktop/lqr_vs_actor_critic_vs_value_iteration_100_time_units_individuals.png')
+# plt.show()
 
 print(f"Average LQR cost: {lqr_costs.mean()}")
 print(f"Average Koopman AC cost: {koopman_costs.mean()}")

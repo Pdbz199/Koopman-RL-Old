@@ -122,9 +122,9 @@ if __name__ == '__main__':
     import sys
     try:
         seed = int(sys.argv[1])
-        np.random.seed(seed)
     except:
-        pass
+        seed = 123
+    np.random.seed(seed)
     sys.path.append('../../../final')
     import observables
     from tensor import KoopmanTensor
@@ -163,26 +163,40 @@ if __name__ == '__main__':
         # dt=dt
     )
     K_0 = koopman_tensor.K_(np.array([[0]]))
-    eigen_values, eigen_vectors = np.linalg.eig(K_0)
-    xs = np.linspace(-2,2,1000)
-    ys = np.linspace(-1,1,1000)
+    P_0 = K_0.T #! Probably not correct way of getting Perron–Frobenius operator
+    k_eigen_values, k_eigen_vectors = np.linalg.eig(K_0)
+    p_eigen_values, p_eigen_vectors = np.linalg.eig(P_0)
+    xs = np.linspace(-2,2,100)
+    ys = np.linspace(-1,1,100)
     XX, YY = np.meshgrid(xs, ys)
-    eigen_function_0 = np.empty((xs.shape[0], ys.shape[0]))
-    eigen_function_1 = np.empty((xs.shape[0], ys.shape[0]))
+    k_eigen_function_0 = np.empty((xs.shape[0], ys.shape[0]))
+    k_eigen_function_1 = np.empty_like(k_eigen_function_0)
+    p_eigen_function_0 = np.empty_like(k_eigen_function_0)
+    p_eigen_function_1 = np.empty_like(k_eigen_function_0)
     potential = (XX**2 - 1)**2 + YY**2
     for i in range(xs.shape[0]):
         for j in range(ys.shape[0]):
             state = np.array([[xs[i]],[ys[j]]])
             phi_state = koopman_tensor.phi(state)
-            eigen_function_0[i,j] = (eigen_vectors[:,0] @ phi_state)[0]
-            eigen_function_1[i,j] = (eigen_vectors[:,1] @ phi_state)[0]
+            k_eigen_function_0[i,j] = (k_eigen_vectors[:,0] @ phi_state)[0]
+            k_eigen_function_1[i,j] = (k_eigen_vectors[:,1] @ phi_state)[0]
+            p_eigen_function_0[i,j] = (p_eigen_vectors[:,0] @ phi_state)[0]
+            p_eigen_function_1[i,j] = (p_eigen_vectors[:,1] @ phi_state)[0]
+    plt.title("Potential Given [x_0,x_1]")
     plt.contourf(XX, YY, potential)
     plt.xlim(-2,2)
     plt.ylim(-1,1)
     plt.show()
-    plt.contour(XX, YY, eigen_function_0)
-    plt.show()
-    plt.contour(XX, YY, eigen_function_1)
+    fig, axs = plt.subplots(nrows=2, ncols=2)
+    axs[0,0].set_title("Koopman Eigenfunction 0")
+    axs[0,0].contourf(XX, YY, k_eigen_function_0)
+    axs[0,1].set_title("Koopman Eigenfunction 1")
+    axs[0,1].contourf(XX, YY, k_eigen_function_1)
+    axs[1,0].set_title("Perron Eigenfunction 0")
+    axs[1,0].contourf(XX, YY, p_eigen_function_0)
+    axs[1,1].set_title("Perron Eigenfunction 1")
+    axs[1,1].contourf(XX, YY, p_eigen_function_1)
+    plt.tight_layout()
     plt.show()
 
     fig = plt.figure()
@@ -232,8 +246,8 @@ if __name__ == '__main__':
     # plt.show()
 
     # Choose the FPS and the number of seconds to run for
-    fps = 60
-    num_seconds = 30
+    # fps = 60
+    # num_seconds = 30
 
     # First set up the figure, the axis, and the plot element we want to animate
     # fig = plt.figure(figsize=(8,4))
@@ -243,21 +257,21 @@ if __name__ == '__main__':
     # a = koopman_snapshots[0]
     # im = plt.imshow(a, cmap='hot', clim=(-1,1))
 
-    def animate(i):
-        xs = states[0,:i]
-        ys = states[1,:i]
-        zs = (xs**2 - 1)**2 + ys**2
-        line.set_xdata(xs)
-        line.set_ydata(ys)
-        # line.set_3d_properties(np.arange(states.shape[1])[:i])
-        line.set_3d_properties((xs**2 - 1)**2 + ys**2)
-        return line,
+    # def animate(i):
+    #     xs = states[0,:i]
+    #     ys = states[1,:i]
+    #     zs = (xs**2 - 1)**2 + ys**2
+    #     line.set_xdata(xs)
+    #     line.set_ydata(ys)
+    #     # line.set_3d_properties(np.arange(states.shape[1])[:i])
+    #     line.set_3d_properties((xs**2 - 1)**2 + ys**2)
+    #     return line,
 
-    anim = FuncAnimation(
-        fig,
-        animate,
-        frames = num_seconds * fps,
-        interval = 1000 / fps # in ms
-    )
+    # anim = FuncAnimation(
+    #     fig,
+    #     animate,
+    #     frames = num_seconds * fps,
+    #     interval = 1000 / fps # in ms
+    # )
     
-    plt.show()
+    # plt.show()
