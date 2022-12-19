@@ -91,9 +91,12 @@ class KoopmanTensor:
                 Instance of the KoopmanTensor class.
         """
 
+        # Save datasets
         self.X = X
         self.Y = Y
         self.U = U
+
+        # Extract dictionary/observable functions
         self.phi = phi
         self.psi = psi
 
@@ -103,11 +106,6 @@ class KoopmanTensor:
         # Construct Phi and Psi matrices
         self.Phi_X = self.phi(X)
         self.Phi_Y = self.phi(Y)
-        if is_generator:
-            self.dt = dt
-            self.regression_Y = (self.Phi_Y - self.Phi_X) / self.dt
-        else:
-            self.regression_Y = self.Phi_Y
         self.Psi_U = self.psi(U)
 
         # Get dimensions
@@ -118,6 +116,29 @@ class KoopmanTensor:
         self.x_column_dim = [self.x_dim, 1]
         self.u_column_dim = [self.u_dim, 1]
         self.phi_column_dim = [self.phi_dim, 1]
+
+        # Update regression matrices if dealing with Koopman generator
+        if is_generator:
+            # Save delta time
+            self.dt = dt
+
+            # Update regression target
+            finite_differences = (self.Y - self.X) # (self.x_dim, self.N)
+            phi_derivative = self.phi.diff(self.X) # (self.phi_dim, self.x_dim, self.N)
+            phi_double_derivative = self.phi.ddiff(self.X) # (self.phi_dim, self.x_dim, self.x_dim, self.N)
+            self.regression_Y = np.einsum(
+                'os,pos->ps',
+                finite_differences / self.dt,
+                phi_derivative
+            )
+            self.regression_Y += np.einsum(
+                'ot,pots->ps',
+                0.5 * ( finite_differences @ finite_differences.T ) / self.dt, # (state_dim, state_dim)
+                phi_double_derivative
+            )
+        else:
+            # Set regression target to phi(Y)
+            self.regression_Y = self.Phi_Y
 
         # Make sure data is full rank
         checkMatrixRank(self.Phi_X, "Phi_X")
@@ -143,14 +164,14 @@ class KoopmanTensor:
             )
 
         # Solve for M and B
-        lowercaseRegressor = regressor.lower()
-        if lowercaseRegressor == 'rrr':
+        lowercase_regressor = regressor.lower()
+        if lowercase_regressor == 'rrr':
             self.M = rrr(self.kron_matrix.T, self.regression_Y.T, rank).T
             self.B = rrr(self.Phi_X.T, self.X.T, rank)
-        elif lowercaseRegressor == 'sindy':
+        elif lowercase_regressor == 'sindy':
             self.M = SINDy(self.kron_matrix.T, self.regression_Y.T).T
             self.B = SINDy(self.Phi_X.T, self.X.T)
-        elif lowercaseRegressor == 'ols':
+        elif lowercase_regressor == 'ols':
             self.M = ols(self.kron_matrix.T, self.regression_Y.T, p_inv).T
             self.B = ols(self.Phi_X.T, self.X.T, p_inv)
         else:

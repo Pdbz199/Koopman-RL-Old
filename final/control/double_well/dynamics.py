@@ -159,21 +159,47 @@ if __name__ == '__main__':
         phi=observables.monomials(state_order),
         psi=observables.monomials(action_order),
         regressor='ols',
-        # is_generator=True,
-        # dt=dt
+        is_generator=True,
+        dt=dt
     )
     K_0 = koopman_tensor.K_(np.array([[0]]))
-    P_0 = K_0.T #! Probably not correct way of getting Perron–Frobenius operator
+    P_0 = K_0.T #! May not be correct way of getting Perron–Frobenius operator
     k_eigen_values, k_eigen_vectors = np.linalg.eig(K_0)
     p_eigen_values, p_eigen_vectors = np.linalg.eig(P_0)
+
     xs = np.linspace(-2,2,100)
     ys = np.linspace(-1,1,100)
     XX, YY = np.meshgrid(xs, ys)
+
+    potential = (XX**2 - 1)**2 + YY**2
+    
+    plt.title("Potential Given [x_0,x_1]")
+    plt.contourf(XX, YY, potential)
+    plt.xlim(-2,2)
+    plt.ylim(-1,1)
+    plt.show()
+
+    fig = plt.figure()
+    ax = fig.add_subplot(121, projection='3d')
+    ax.set_title("Potential Given [x_0,x_1]")
+    ax.contourf3D(XX, YY, potential, 50)
+    # ax.plot_surface(XX, YY, potential, cmap='viridis')
+    ax.set_xlim(-2,2)
+    ax.set_ylim(-1,1)
+    ax.set_zlim(0,1)
+    ax = fig.add_subplot(122, projection='3d')
+    XXX, YYY = np.meshgrid(states[0,:100], states[1,:100])
+    potential = (XXX**2 - 1)**2 + YYY**2
+    ax.contourf3D(XXX, YYY, potential, 50, cmap='binary')
+    ax.set_xlim(-2,2)
+    ax.set_ylim(-1,1)
+    ax.set_zlim(0,1)
+    plt.show()
+
     k_eigen_function_0 = np.empty((xs.shape[0], ys.shape[0]))
     k_eigen_function_1 = np.empty_like(k_eigen_function_0)
     p_eigen_function_0 = np.empty_like(k_eigen_function_0)
     p_eigen_function_1 = np.empty_like(k_eigen_function_0)
-    potential = (XX**2 - 1)**2 + YY**2
     for i in range(xs.shape[0]):
         for j in range(ys.shape[0]):
             state = np.array([[xs[i]],[ys[j]]])
@@ -182,11 +208,7 @@ if __name__ == '__main__':
             k_eigen_function_1[i,j] = (k_eigen_vectors[:,1] @ phi_state)[0]
             p_eigen_function_0[i,j] = (p_eigen_vectors[:,0] @ phi_state)[0]
             p_eigen_function_1[i,j] = (p_eigen_vectors[:,1] @ phi_state)[0]
-    plt.title("Potential Given [x_0,x_1]")
-    plt.contourf(XX, YY, potential)
-    plt.xlim(-2,2)
-    plt.ylim(-1,1)
-    plt.show()
+
     fig, axs = plt.subplots(nrows=2, ncols=2)
     axs[0,0].set_title("Koopman Eigenfunction 0")
     axs[0,0].contourf(XX, YY, k_eigen_function_0)
@@ -214,26 +236,6 @@ if __name__ == '__main__':
     ax.plot(np.arange(num_steps), states[1])
     ax.plot(0, states[1,0], marker="o", color='g', markersize=4)
     ax.plot(states.shape[1]-1, states[1,-1], marker="o", color='r', markersize=4)
-    plt.show()
-
-    # fig = plt.figure()
-    # ax = fig.add_subplot(111)
-    # ax.plot(states[0], 4*states[0] - 4*(states[0]**3))
-    # plt.show()
-
-    fig = plt.figure()
-    # ax = fig.add_subplot(111)
-    ax = fig.add_subplot(111, projection='3d')
-    # Plot x,y,V(x)
-    ax.plot(states[0], states[1], (states[0]**2 - 1)**2 + states[1]**2)
-    # Plot phase portrait
-    # xs = np.linspace(-2,2,1000)
-    # ys = np.linspace(-2,2,1000)
-    # XX, YY = np.meshgrid(xs, ys)
-    # ax.contourf(xs, ys, (XX**2 - 1)**2 + YY**2)
-    # Plot potential
-    # ys = 0
-    # ax.plot(xs, (xs**2 - 1)**2 + ys**2)
     plt.show()
 
     # PLOT STATES OVER TIME
