@@ -28,7 +28,7 @@ from dynamics import (
 from matplotlib.animation import FFMpegWriter, FuncAnimation
 from scipy.integrate import solve_ivp
 
-sys.path.append('../../../')
+sys.path.append('../../../../')
 import final.observables as observables
 from final.tensor import KoopmanTensor
 from final.control.policies.discrete_actor_critic import DiscreteKoopmanPolicyIterationPolicy
@@ -78,7 +78,7 @@ actor_critic_policy = DiscreteKoopmanPolicyIterationPolicy(
     state_maximums,
     all_actions,
     cost,
-    'saved_models/double-well-discrete-actor-critic-policy.pt',
+    '../saved_models/double-well-discrete-actor-critic-policy.pt',
     dt=dt,
     seed=seed,
     learning_rate=0.003,
@@ -93,7 +93,7 @@ value_iteration_policy = DiscreteKoopmanValueIterationPolicy(
     tensor,
     all_actions,
     cost,
-    'saved_models/double-well-discrete-value-iteration-policy.pt',
+    '../saved_models/double-well-discrete-value-iteration-policy.pt',
     dt=dt,
     seed=seed
 )
