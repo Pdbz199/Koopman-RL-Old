@@ -7,6 +7,7 @@ except:
     seed = 123
 np.random.seed(seed)
 
+sys.path.append('./')
 from cost import cost, Q, R, reference_point
 from dynamics import (
     action_dim,
@@ -22,7 +23,7 @@ from dynamics import (
     state_order
 )
 
-sys.path.append('../../../../')
+sys.path.append('../../../')
 import final.observables as observables
 from final.tensor import KoopmanTensor
 from final.control.policies.discrete_actor_critic import DiscreteKoopmanPolicyIterationPolicy
@@ -71,7 +72,7 @@ actor_critic_policy = DiscreteKoopmanPolicyIterationPolicy(
     state_maximums,
     all_actions,
     cost,
-    '../saved_models/double-well-discrete-actor-critic-policy.pt',
+    'saved_models/double-well-discrete-actor-critic-policy.pt',
     dt=dt,
     seed=seed,
     learning_rate=0.003,
@@ -86,7 +87,7 @@ value_iteration_policy = DiscreteKoopmanValueIterationPolicy(
     tensor,
     all_actions,
     cost,
-    '../saved_models/double-well-discrete-value-iteration-policy.pt',
+    'saved_models/double-well-discrete-value-iteration-policy.pt',
     dt=dt,
     seed=seed
 )
@@ -100,7 +101,7 @@ initial_states = np.random.uniform(
 ).T
 
 #%% Set number of steps per path
-num_episodes = 1000
+num_episodes = 10
 num_steps_per_path = int(10.0 / dt)
 
 # #%% Create arrays for tracking states, actions, and costs
@@ -114,8 +115,28 @@ lqr_states = np.empty_like(actor_critic_states)
 lqr_actions = np.empty_like(actor_critic_actions)
 lqr_costs = np.empty_like(actor_critic_costs)
 
+#%% Set variables for saving arrays
+tmp_dir = './analysis/tmp'
+array_types = ['states', 'actions', 'costs']
+controller_types = ['actor_critic', 'value_iteration', 'lqr']
+extension = 'npy'
+
+#%% Function to save numpy arrays
+def save_arrays():
+    np.save(f"{tmp_dir}/{controller_types[0]}_{array_types[0]}.{extension}", actor_critic_states)
+    np.save(f"{tmp_dir}/{controller_types[0]}_{array_types[1]}.{extension}", actor_critic_actions)
+    np.save(f"{tmp_dir}/{controller_types[0]}_{array_types[2]}.{extension}", actor_critic_costs)
+    np.save(f"{tmp_dir}/{controller_types[1]}_{array_types[0]}.{extension}", value_iteration_states)
+    np.save(f"{tmp_dir}/{controller_types[1]}_{array_types[1]}.{extension}", value_iteration_actions)
+    np.save(f"{tmp_dir}/{controller_types[1]}_{array_types[2]}.{extension}", value_iteration_costs)
+    np.save(f"{tmp_dir}/{controller_types[2]}_{array_types[0]}.{extension}", lqr_states)
+    np.save(f"{tmp_dir}/{controller_types[2]}_{array_types[1]}.{extension}", lqr_actions)
+    np.save(f"{tmp_dir}/{controller_types[2]}_{array_types[2]}.{extension}", lqr_costs)
+
 #%% Generate paths for each initial state
+# TODO: Implement parallelism (https://github.com/classner/pymp)
 for path_num in range(num_initial_states_to_generate):
+    print(f"Path #{path_num+1}", end='\r')
     # Get initial state from pre-generated list
     initial_state = initial_states[path_num]
 
@@ -153,19 +174,4 @@ for path_num in range(num_initial_states_to_generate):
             value_iteration_state = f(value_iteration_state, value_iteration_action)
             lqr_state = f(lqr_state, lqr_action)
 
-#%% Set variables for saving arrays
-tmp_dir = './tmp'
-array_types = ['states', 'actions', 'costs']
-controller_types = ['actor_critic', 'value_iteration', 'lqr']
-extension = 'npy'
-
-#%% Save numpy arrays
-np.save(f"{tmp_dir}/{controller_types[0]}_{array_types[0]}.{extension}", actor_critic_states)
-np.save(f"{tmp_dir}/{controller_types[0]}_{array_types[1]}.{extension}", actor_critic_actions)
-np.save(f"{tmp_dir}/{controller_types[0]}_{array_types[2]}.{extension}", actor_critic_costs)
-np.save(f"{tmp_dir}/{controller_types[1]}_{array_types[0]}.{extension}", value_iteration_states)
-np.save(f"{tmp_dir}/{controller_types[1]}_{array_types[1]}.{extension}", value_iteration_actions)
-np.save(f"{tmp_dir}/{controller_types[1]}_{array_types[2]}.{extension}", value_iteration_costs)
-np.save(f"{tmp_dir}/{controller_types[2]}_{array_types[0]}.{extension}", lqr_states)
-np.save(f"{tmp_dir}/{controller_types[2]}_{array_types[1]}.{extension}", lqr_actions)
-np.save(f"{tmp_dir}/{controller_types[2]}_{array_types[2]}.{extension}", lqr_costs)
+    save_arrays()
