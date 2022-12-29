@@ -93,14 +93,21 @@ for step_num in range(path_length):
     true_state_primes[step_num] = state[:,0]
     true_observable_primes[step_num] = tensor.phi(state)[:,0]
 
-average_state_norm = np.mean(np.linalg.norm(states, axis=0))
+#%% Print norms
+average_state_norm = np.mean(np.linalg.norm(states, axis=1))
+diff_state_norms = np.linalg.norm(true_state_primes - predicted_state_primes, axis=1)
+normalized_diff_state_norms = diff_state_norms / average_state_norm
+average_normalized_diff_state_norm = np.mean(normalized_diff_state_norms)
 print(
-    "Norm of difference in states (normalized by average state norm):",
-    np.linalg.norm(true_state_primes - predicted_state_primes) / average_state_norm
+    "Average norm of difference in states (normalized by average state norm):",
+    average_normalized_diff_state_norm
 )
 
-average_observable_norm = np.mean(np.linalg.norm(observables, axis=0))
+average_observable_norm = np.mean(np.linalg.norm(observables, axis=1))
+diff_observable_norms = np.linalg.norm(true_observable_primes - predicted_observable_primes, axis=1)
+normalized_diff_observable_norms = diff_observable_norms / average_observable_norm
+average_normalized_diff_observable_norm = np.mean(normalized_diff_observable_norms)
 print(
-    "Norm of difference in observables (normalized by average observable norm):",
-    np.linalg.norm(true_observable_primes - predicted_observable_primes) / average_observable_norm
+    "Average norm of difference in observables (normalized by average observable norm):",
+    average_normalized_diff_observable_norm
 )
