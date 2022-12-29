@@ -72,7 +72,7 @@ actor_critic_policy = DiscreteKoopmanPolicyIterationPolicy(
     state_maximums,
     all_actions,
     cost,
-    'saved_models/double-well-discrete-actor-critic-policy.pt',
+    'saved_models/lorenz-discrete-actor-critic-policy.pt',
     dt=dt,
     seed=seed,
     learning_rate=0.003,
@@ -87,7 +87,7 @@ value_iteration_policy = DiscreteKoopmanValueIterationPolicy(
     tensor,
     all_actions,
     cost,
-    'saved_models/double-well-discrete-value-iteration-policy.pt',
+    'saved_models/lorenz-discrete-value-iteration-policy.pt',
     dt=dt,
     seed=seed
 )
@@ -159,7 +159,7 @@ def main():
         np_lqr_states = np.array(lqr_states)
         np_lqr_actions = np.array(lqr_actions)
         np_lqr_costs = np.array(lqr_costs)
-
+        
         np.save(f"{folder}/{prefix}{controller_types[0]}_{array_types[0]}{suffix}.{extension}", np_actor_critic_states)
         np.save(f"{folder}/{prefix}{controller_types[0]}_{array_types[1]}{suffix}.{extension}", np_actor_critic_actions)
         np.save(f"{folder}/{prefix}{controller_types[0]}_{array_types[2]}{suffix}.{extension}", np_actor_critic_costs)
@@ -227,7 +227,7 @@ def main():
                         value_iteration_state = f(value_iteration_state, value_iteration_action)
                         lqr_state = f(lqr_state, lqr_action)
 
-            save_arrays(folder="./analysis/tmp/test", prefix="TEST-")
+            save_arrays()
 
 if __name__ == '__main__':
     main()

@@ -3,11 +3,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 #%% Load numpy arrays
-folder = "./analysis/tmp/test"
+folder = "./analysis/tmp"
 array_types = ['states', 'actions', 'costs']
 controller_types = ['actor_critic', 'value_iteration', 'lqr']
 extension = 'npy'
-prefix="TEST-"
+prefix=""
 suffix=""
 
 actor_critic_states = np.load(f"{folder}/{prefix}{controller_types[0]}_{array_types[0]}{suffix}.{extension}")
@@ -61,30 +61,127 @@ fig = plt.figure()
 
 #%% Plot actor-critic policy costs vs initial states
 ax = fig.add_subplot(131, projection='3d')
-ax.scatter(actor_critic_states[:, :, 0, 0], actor_critic_states[:, :, 0, 1], actor_critic_average_cost_per_initial_state)
+ax.scatter(
+    actor_critic_states[:, episode_num_to_plot, 0, 0],
+    actor_critic_states[:, episode_num_to_plot, 0, 1],
+    actor_critic_states[:, episode_num_to_plot, 0, 2],
+    c=actor_critic_average_cost_per_initial_state,
+    cmap=plt.hot()
+)
 ax.set_xlabel("x_0")
 ax.set_ylabel("x_1")
-ax.set_zlabel("cost")
+ax.set_zlabel("x_2")
 plt.savefig(f"{folder}/{controller_types[0]}_costs_vs_initial_state.svg")
 plt.savefig(f"{folder}/{controller_types[0]}_costs_vs_initial_state.png")
 
 #%% Plot value iteration policy costs vs initial states
 ax = fig.add_subplot(132, projection='3d')
-ax.scatter(value_iteration_states[:, :, 0, 0], value_iteration_states[:, :, 0, 1], value_iteration_average_cost_per_initial_state)
+ax.scatter(
+    value_iteration_states[:, episode_num_to_plot, 0, 0],
+    value_iteration_states[:, episode_num_to_plot, 0, 1],
+    value_iteration_states[:, episode_num_to_plot, 0, 2],
+    c=value_iteration_average_cost_per_initial_state,
+    cmap=plt.hot()
+)
 ax.set_xlabel("x_0")
 ax.set_ylabel("x_1")
-ax.set_zlabel("cost")
+ax.set_zlabel("x_2")
+# ax.set_zlabel("cost")
 plt.savefig(f"{folder}/{controller_types[1]}_costs_vs_initial_state.svg")
 plt.savefig(f"{folder}/{controller_types[1]}_costs_vs_initial_state.png")
 
 #%% Plot LQR costs vs initial states
 ax = fig.add_subplot(133, projection='3d')
-ax.scatter(lqr_states[:, :, 0, 0], lqr_states[:, :, 0, 1], lqr_average_cost_per_initial_state)
+ax.scatter(
+    lqr_states[:, episode_num_to_plot, 0, 0],
+    lqr_states[:, episode_num_to_plot, 0, 1],
+    lqr_states[:, episode_num_to_plot, 0, 2],
+    c=lqr_average_cost_per_initial_state,
+    cmap=plt.hot()
+)
 ax.set_xlabel("x_0")
 ax.set_ylabel("x_1")
-ax.set_zlabel("cost")
+ax.set_zlabel("x_2")
+# ax.set_zlabel("cost")
 plt.savefig(f"{folder}/{controller_types[2]}_costs_vs_initial_state.svg")
 plt.savefig(f"{folder}/{controller_types[2]}_costs_vs_initial_state.png")
 
 #%% Show plots
+plt.show()
+
+#%% Plot all pairs of states
+fig = plt.figure()
+
+state_dim = lqr_states.shape[-1]
+for pair in ((0,1), (0,2), (1,2)):
+    i, j = pair
+    column_index = i+j
+
+    ax = fig.add_subplot(3, 3, column_index, projection='3d')
+    ax.scatter(
+        actor_critic_states[:, episode_num_to_plot, 0, i],
+        actor_critic_states[:, episode_num_to_plot, 0, j],
+        actor_critic_average_cost_per_initial_state
+    )
+    ax.set_xlabel(f"x_{i}")
+    ax.set_ylabel(f"x_{j}")
+    ax.set_zlabel("cost")
+    
+    ax = fig.add_subplot(3, 3, state_dim+column_index, projection='3d')
+    ax.scatter(
+        value_iteration_states[:, episode_num_to_plot, 0, i],
+        value_iteration_states[:, episode_num_to_plot, 0, j],
+        value_iteration_average_cost_per_initial_state
+    )
+    ax.set_xlabel(f"x_{i}")
+    ax.set_ylabel(f"x_{j}")
+    ax.set_zlabel("cost")
+
+    ax = fig.add_subplot(3, 3, state_dim*2+column_index, projection='3d')
+    ax.scatter(
+        lqr_states[:, episode_num_to_plot, 0, i],
+        lqr_states[:, episode_num_to_plot, 0, j],
+        lqr_average_cost_per_initial_state
+    )
+    ax.set_xlabel(f"x_{i}")
+    ax.set_ylabel(f"x_{j}")
+    ax.set_zlabel("cost")
+
+#%% Show plot
+plt.show()
+
+#%% Compare actor critic to lqr cost
+ratio = actor_critic_average_cost_per_initial_state / lqr_average_cost_per_initial_state
+ratio_min_index = np.argmin(ratio)
+ratio_max_index = np.argmax(ratio)
+
+#%% Plot trajectories
+fig = plt.figure()
+
+ax = fig.add_subplot(1, 2, 1, projection='3d')
+ax.plot3D(
+    actor_critic_states[ratio_min_index, episode_num_to_plot, :, 0],
+    actor_critic_states[ratio_min_index, episode_num_to_plot, :, 1],
+    actor_critic_states[ratio_min_index, episode_num_to_plot, :, 2]
+)
+ax.plot3D(
+    lqr_states[ratio_min_index, episode_num_to_plot, :, 0],
+    lqr_states[ratio_min_index, episode_num_to_plot, :, 1],
+    lqr_states[ratio_min_index, episode_num_to_plot, :, 2]
+)
+ax.set_title("MINIMUM")
+
+ax = fig.add_subplot(1, 2, 2, projection='3d')
+ax.plot3D(
+    actor_critic_states[ratio_max_index, episode_num_to_plot, :, 0],
+    actor_critic_states[ratio_max_index, episode_num_to_plot, :, 1],
+    actor_critic_states[ratio_max_index, episode_num_to_plot, :, 2]
+)
+ax.plot3D(
+    lqr_states[ratio_max_index, episode_num_to_plot, :, 0],
+    lqr_states[ratio_max_index, episode_num_to_plot, :, 1],
+    lqr_states[ratio_max_index, episode_num_to_plot, :, 2]
+)
+ax.set_title("MAXIMUM")
+
 plt.show()

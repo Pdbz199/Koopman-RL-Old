@@ -95,7 +95,7 @@ def f(state, action):
 
     drift = np.vstack(continuous_f(u)(0, state[:,0])) * dt
     diffusion = sigma_x @ np.random.normal(loc=0, scale=1, size=(2,1)) * np.sqrt(dt)
-    return drift + diffusion
+    return state + (drift + diffusion)
 
     # soln = solve_ivp(fun=continuous_f(u), t_span=[0, dt], y0=state[:,0], method='RK45')
 
