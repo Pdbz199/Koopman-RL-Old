@@ -1,7 +1,8 @@
 # Imports
 import numpy as np
 
-from scipy.integrate import solve_ivp
+# from scipy.integrate import solve_ivp
+from cost import cost
 
 # Variables
 state_dim = 2
@@ -115,6 +116,64 @@ W, V = np.linalg.eig(continuous_A)
 
 print(f"Eigenvalues of continuous A:\n{W}\n")
 print(f"Eigenvectors of continuous A:\n{V}\n")
+
+def generate_data(
+    num_episodes,
+    num_steps_per_episode,
+    policies=[zero_policy],
+    parallelized=False,
+    num_episode_threads=8
+):
+    if parallelized:
+        # Import pymp for OpenMP functionality
+        import pymp
+
+    num_controllers = len(policies)
+
+    states = np.zeros((num_controllers, num_episodes, num_steps_per_episode, state_dim))
+    actions = np.zeros((num_controllers, num_episodes, num_steps_per_episode, action_dim))
+    costs = np.zeros((num_controllers, num_episodes, num_steps_per_episode))
+
+    initial_states = np.random.uniform(
+        state_minimums,
+        state_maximums,
+        [state_dim, num_episodes]
+    ).T
+
+    with pymp.Parallel(num_episode_threads) as p:
+        if parallelized:
+            episode_iterator = p.range(0, num_episodes)
+        else:
+            episode_iterator = range(num_episodes)
+
+        for episode_num in episode_iterator:
+            # Set initial states for the episode
+            controller_states = np.array([initial_states[episode_num] for _ in range(num_controllers)])
+
+            for step_num in range(num_steps_per_episode):
+                # Save states to array
+                for i in range(num_controllers):
+                    states[i, episode_num, step_num] = controller_states[i]
+
+                # Compute action for each policy
+
+                for i, policy in enumerate(policies):
+                    try:
+                        action, _ = policy.get_action(controller_states[i]) # If actor critic
+                    except:
+                        action = policy.get_action(controller_states[i]) # If another controller
+
+                    actions[i, episode_num, step_num] = action
+
+                    costs[i, episode_num, step_num] = cost(controller_states[i], action)
+
+                    controller_states[i] = f(controller_states[i], action)
+
+    return (
+        states,
+        actions,
+        costs
+    )
 
 if __name__ == '__main__':
     import matplotlib.pyplot as plt

@@ -17,6 +17,7 @@ from matplotlib.gridspec import GridSpec
 sys.path.append('./')
 from cost import cost
 from dynamics import (
+    action_dim,
     all_actions,
     dt,
     f,
@@ -81,8 +82,12 @@ initial_states = np.random.uniform(
 
 #%% Specify number of steps and storage arrays
 num_steps = int(10.0 / dt)
+
 estimated_states = np.zeros((num_controllers, num_episodes, num_steps, state_dim))
 true_states = np.zeros_like(estimated_states)
+
+estimated_actions = np.zeros((num_controllers, num_episodes, num_steps, action_dim))
+true_actions = np.zeros_like(estimated_actions)
 
 for episode_num in range(num_episodes):
     # Retrieve initial state for this episode
@@ -111,6 +116,12 @@ for episode_num in range(num_episodes):
         # actor_critic_action += np.random.normal(loc=0, scale=5)
         value_iteration_action = value_iteration_policy.get_action(true_state[1])
 
+        # Save actions in arrays
+        estimated_actions[0, episode_num, step_num] = actor_critic_action
+        estimated_actions[1, episode_num, step_num] = value_iteration_action
+        true_actions[0, episode_num, step_num] = actor_critic_action
+        true_actions[1, episode_num, step_num] = value_iteration_action
+
         # estimated_state = tensor.f(estimated_state, zero_action)
         estimated_state = np.array((
             tensor.f(true_state[0], actor_critic_action),
@@ -122,14 +133,15 @@ for episode_num in range(num_episodes):
         ))
 
 #%% Plot trajectories
-fig = plt.figure()
-gs = GridSpec(nrows=1, ncols=3, figure=fig)
+fig = plt.figure(constrained_layout=True)
+gs = GridSpec(nrows=2, ncols=3, figure=fig)
 
 # Norm per step
 ax = fig.add_subplot(gs[0, 0:2])
-ax.set_title("Mean Norm Per Step")
-ax.set_xlabel("Step Number")
+ax.set_title("Mean Norm Per Episode")
+ax.set_xlabel("Episode Number")
 ax.set_ylabel("L2 Norm Value")
+
 norms_per_episode = np.linalg.norm(
     true_states - estimated_states,
     axis=3
@@ -141,6 +153,7 @@ mean_state_norms = np.linalg.norm(
 mean_state_norm_0 = mean_state_norms[0]
 mean_state_norm_1 = mean_state_norms[1]
 mean_norm_per_episode = norms_per_episode.mean(axis=2) # (num_controllers, num_episodes)
+
 ax.plot(
     np.arange(mean_norm_per_episode.shape[1]),
     mean_norm_per_episode[0] / mean_state_norm_0
@@ -149,10 +162,12 @@ ax.plot(
     np.arange(mean_norm_per_episode.shape[1]),
     mean_norm_per_episode[1] / mean_state_norm_1
 )
+
 arg_min_norm_0 = np.argmin(mean_norm_per_episode[0])
 arg_min_norm_1 = np.argmin(mean_norm_per_episode[1])
 arg_max_norm_0 = np.argmax(mean_norm_per_episode[0])
 arg_max_norm_1 = np.argmax(mean_norm_per_episode[1])
+
 ax.scatter(
     np.arange(mean_norm_per_episode.shape[1])[arg_min_norm_0],
     mean_norm_per_episode[0, arg_min_norm_0] / mean_state_norm_0,
@@ -191,6 +206,25 @@ ax.scatter3D(
     mean_norm_per_episode[1]
 )
 
+# Average action per initial state
+ax = fig.add_subplot(gs[1, 0:2], projection='3d')
+ax.set_title('Average Action per Initial State')
+ax.set_xlabel('x_0')
+ax.set_ylabel('x_1')
+ax.set_zlabel('Average Action')
+
+average_actions = estimated_actions.mean(axis=2) # (num_controllers, num_episodes, 1)
+
+ax.scatter3D(
+    initial_states[:, 0],
+    initial_states[:, 1],
+    average_actions[0, :, 0]
+)
+ax.scatter3D(
+    initial_states[:, 0],
+    initial_states[:, 1],
+    average_actions[1, :, 0]
+)
+
 # Show plot
-plt.tight_layout()
 plt.show()
