@@ -71,8 +71,8 @@ actor_critic_policy = DiscreteKoopmanPolicyIterationPolicy(
 )
 
 #%% Generate initial states
-num_episodes = 10
-# num_episodes = 100
+# num_episodes = 10
+num_episodes = 100
 initial_states = np.random.uniform(
     state_minimums,
     state_maximums,
@@ -134,14 +134,20 @@ norms_per_episode = np.linalg.norm(
     true_states - estimated_states,
     axis=3
 ) # (num_controllers, num_episodes, num_steps)
+mean_state_norms = np.linalg.norm(
+    true_states,
+    axis=3
+).mean(axis=1).mean(axis=1)
+mean_state_norm_0 = mean_state_norms[0]
+mean_state_norm_1 = mean_state_norms[1]
 mean_norm_per_episode = norms_per_episode.mean(axis=2) # (num_controllers, num_episodes)
 ax.plot(
     np.arange(mean_norm_per_episode.shape[1]),
-    mean_norm_per_episode[0]
+    mean_norm_per_episode[0] / mean_state_norm_0
 )
 ax.plot(
     np.arange(mean_norm_per_episode.shape[1]),
-    mean_norm_per_episode[1]
+    mean_norm_per_episode[1] / mean_state_norm_1
 )
 arg_min_norm_0 = np.argmin(mean_norm_per_episode[0])
 arg_min_norm_1 = np.argmin(mean_norm_per_episode[1])
@@ -149,22 +155,22 @@ arg_max_norm_0 = np.argmax(mean_norm_per_episode[0])
 arg_max_norm_1 = np.argmax(mean_norm_per_episode[1])
 ax.scatter(
     np.arange(mean_norm_per_episode.shape[1])[arg_min_norm_0],
-    mean_norm_per_episode[0, arg_min_norm_0],
+    mean_norm_per_episode[0, arg_min_norm_0] / mean_state_norm_0,
     color='green'
 )
 ax.scatter(
     np.arange(mean_norm_per_episode.shape[1])[arg_max_norm_0],
-    mean_norm_per_episode[0, arg_max_norm_0],
+    mean_norm_per_episode[0, arg_max_norm_0] / mean_state_norm_0,
     color='red'
 )
 ax.scatter(
     np.arange(mean_norm_per_episode.shape[1])[arg_min_norm_1],
-    mean_norm_per_episode[1, arg_min_norm_1],
+    mean_norm_per_episode[1, arg_min_norm_1] / mean_state_norm_1,
     color='green'
 )
 ax.scatter(
     np.arange(mean_norm_per_episode.shape[1])[arg_max_norm_1],
-    mean_norm_per_episode[1, arg_max_norm_1],
+    mean_norm_per_episode[1, arg_max_norm_1] / mean_state_norm_1,
     color='red'
 )
 
