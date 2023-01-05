@@ -118,7 +118,7 @@ print(f"Eigenvectors of continuous A:\n{V}\n")
 
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
-    from matplotlib.animation import FFMpegWriter, FuncAnimation
+    # from matplotlib.animation import FFMpegWriter, FuncAnimation
     import sys
     try:
         seed = int(sys.argv[1])
@@ -159,7 +159,7 @@ if __name__ == '__main__':
         phi=observables.monomials(state_order),
         psi=observables.monomials(action_order),
         regressor='ols',
-        is_generator=True,
+        # is_generator=True,
         dt=dt
     )
     K_0 = koopman_tensor.K_(np.array([[0]]))

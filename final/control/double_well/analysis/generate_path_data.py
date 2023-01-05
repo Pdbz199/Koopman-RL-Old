@@ -1,4 +1,5 @@
 import numpy as np
+import pickle
 import sys
 
 try:
@@ -24,11 +25,28 @@ from dynamics import (
 )
 
 sys.path.append('../../../')
-import final.observables as observables
-from final.tensor import KoopmanTensor
+# import final.observables as observables
+# from final.tensor import KoopmanTensor
 from final.control.policies.discrete_actor_critic import DiscreteKoopmanPolicyIterationPolicy
 from final.control.policies.discrete_value_iteration import DiscreteKoopmanValueIterationPolicy
 from final.control.policies.lqr import LQRPolicy
+
+# Dummy Koopman tensor
+# N = 10
+# X = np.zeros([state_dim,N])
+# Y = np.zeros([state_dim,N])
+# U = np.zeros([action_dim,N])
+# tensor = KoopmanTensor(
+#     X,
+#     Y,
+#     U,
+#     phi=observables.monomials(state_order),
+#     psi=observables.monomials(action_order),
+#     regressor='ols'
+# )
+
+with open(f'./analysis/tmp/shotgun-tensor.pickle', 'rb') as handle:
+    tensor = pickle.load(handle)
 
 # Variables
 gamma = 0.99
@@ -46,20 +64,6 @@ lqr_policy = LQRPolicy(
     dt=dt,
     is_continuous=True,
     seed=seed
-)
-
-# Dummy Koopman tensor
-N = 10
-X = np.zeros([state_dim,N])
-Y = np.zeros([state_dim,N])
-U = np.zeros([action_dim,N])
-tensor = KoopmanTensor(
-    X,
-    Y,
-    U,
-    phi=observables.monomials(state_order),
-    psi=observables.monomials(action_order),
-    regressor='ols'
 )
 
 # Koopman discrete actor critic policy
@@ -101,7 +105,7 @@ initial_states = np.random.uniform(
 ).T
 
 #%% Set number of steps per path
-num_episodes = 1
+num_episodes = 5
 num_steps_per_path = int(10.0 / dt)
 
 #%% Set variables for saving arrays
