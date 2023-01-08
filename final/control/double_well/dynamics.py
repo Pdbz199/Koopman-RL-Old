@@ -1,8 +1,9 @@
 # Imports
 import numpy as np
 
-# from scipy.integrate import solve_ivp
 from cost import cost
+# from scipy.integrate import solve_ivp
+from scipy.special import comb
 
 # Variables
 state_dim = 2
@@ -22,6 +23,8 @@ action_maximums = np.ones([action_dim,1]) * action_range
 
 state_order = 2
 action_order = 2
+
+phi_dim = int( comb( state_order+state_dim, state_order ) )
 
 step_size = 1.0
 all_actions = np.arange(-action_range, action_range+step_size, step_size)

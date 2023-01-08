@@ -2,7 +2,7 @@
 import numpy as np
 
 # from dynamics import state_dim #, action_dim
-state_dim = 3
+state_dim = 2
 
 # Define cost/reward
 Q = np.eye(state_dim)
