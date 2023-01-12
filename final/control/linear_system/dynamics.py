@@ -1,9 +1,14 @@
 # Imports
 import numpy as np
 
+from scipy.special import comb
+
 # Variables
 state_dim = 3
 action_dim = 1
+
+state_column_shape = (state_dim, 1)
+action_column_shape = (action_dim, 1)
 
 state_range = 25.0
 # state_range = 5.0
@@ -24,6 +29,9 @@ all_actions = np.array([all_actions])
 state_order = 2
 action_order = 2
 
+phi_dim = int( comb( state_order+state_dim, state_order ) )
+psi_dim = int( comb( state_order+state_dim, state_order ) )
+
 # Dynamics
 max_eigen_factor = np.random.uniform(0.7, 1)
 print(f"max eigen factor: {max_eigen_factor}")
@@ -41,3 +49,10 @@ B = np.ones([state_dim, action_dim])
 
 def f(x, u):
     return A @ x + B @ u
+
+# Controllers
+def zero_policy(x=None):
+    return np.zeros(action_column_shape)
+
+def random_policy(x=None):
+    return np.random.choice(all_actions[0], size=action_column_shape)
