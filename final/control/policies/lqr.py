@@ -1,6 +1,6 @@
 import numpy as np
 
-from control import care, dare
+from control import dlqr, lqr
 
 class LQRPolicy:
     def __init__(
@@ -14,7 +14,7 @@ class LQRPolicy:
         regularization_lambda=1.0,
         dt=1.0,
         is_continuous=False,
-        seed=123,
+        seed=123
     ):
         """
             Initialize LQR policy for an arbitrary system.
@@ -29,14 +29,13 @@ class LQRPolicy:
                 regularization_lambda - The regularization parameter of the policy.
                 dt - The time step of the system.
                 is_continuous - Boolean indicating whether or not A and B describe x or dx.
-                seed - Random seed for reproducibility.
+                seed - Seed for reproducibility.
 
             OUTPUTS:
                 Instance of LQR policy class.
         """
 
         self.seed = seed
-        np.random.seed(self.seed)
 
         self.A = A
         self.B = B
@@ -53,12 +52,13 @@ class LQRPolicy:
         self.discounted_R = self.R / self.discount_factor
 
         if is_continuous:
-            self.P = care(self.discounted_A, self.B, self.Q, self.discounted_R)[0]
+            lqr_soln = lqr(self.discounted_A, self.B, self.Q, self.discounted_R)
         else:
-            self.P = dare(self.discounted_A, self.B, self.Q, self.discounted_R)[0]
+            lqr_soln = dlqr(self.discounted_A, self.B, self.Q, self.discounted_R)
 
-        self.C = np.linalg.inv(self.discounted_R + self.B.T @ self.P @ self.B) @ (self.B.T @ self.P @ self.discounted_A)
-        self.sigma_t = self.regularization_lambda * np.linalg.inv(self.discounted_R + self.B.T @ self.P @ self.B)
+        self.C = lqr_soln[0]
+        self.P = lqr_soln[1]
+        self.sigma_t = np.linalg.inv(self.discounted_R + self.B.T @ self.P @ self.B) * self.regularization_lambda
 
     def get_action(self, x, is_entropy_regularized=True):
         """
@@ -72,7 +72,6 @@ class LQRPolicy:
                 Action from LQR policy.
         """
 
-        # TODO: Check if this is returning the correct action dimensions
         if is_entropy_regularized:
             return np.random.normal(-self.C @ (x - self.reference_point), self.sigma_t)
         else:

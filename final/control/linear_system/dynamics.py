@@ -42,12 +42,23 @@ A = Z.T @ Z
 W, _ = np.linalg.eig(A)
 max_abs_real_eigen_val = np.max(np.abs(np.real(W)))
 
-print(f"A: {A}")
+print(f"A:\n{A}")
 print(f"A's max absolute real eigenvalue: {max_abs_real_eigen_val}")
 
 B = np.ones([state_dim, action_dim])
 
 def f(x, u):
+    """
+        True dynamics of linear system.
+
+        INPUTS:
+            x - State as a column vector
+            u - Action as a column vector
+
+        OUTPUTS:
+            x' - Next state as a column vector
+    """
+
     return A @ x + B @ u
 
 # Controllers
