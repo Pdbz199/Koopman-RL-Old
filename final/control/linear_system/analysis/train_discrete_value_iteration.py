@@ -34,7 +34,7 @@ koopman_policy = DiscreteKoopmanValueIterationPolicy(
     tensor,
     all_actions,
     cost,
-    './analysis/tmp/discrete_value_iteration/policy.pt',
+    save_data_path="./analysis/tmp/discrete_value_iteration",
     seed=seed
 )
 

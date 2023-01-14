@@ -12,7 +12,7 @@ class DiscreteKoopmanValueIterationPolicy:
         dynamics_model: KoopmanTensor,
         all_actions,
         cost,
-        saved_file_path,
+        save_data_path,
         use_ols=True,
         learning_rate=0.003,
         dt=1.0,
@@ -29,7 +29,7 @@ class DiscreteKoopmanValueIterationPolicy:
                 dynamics_model - The trained Koopman tensor for the system.
                 all_actions - The actions that the policy can take. Should be a single dimensional array.
                 cost - The cost function of the system. Function must take in states and actions and return scalars.
-                saved_file_path - The path to save the policy model.
+                save_data_path - The path to save the training data and policy model.
                 use_ols - Boolean to indicate whether or not to use OLS in computing new value function weights,
                 learning_rate - The learning rate of the policy.
                 dt - The time step of the system.
@@ -50,7 +50,7 @@ class DiscreteKoopmanValueIterationPolicy:
         self.dynamics_model = dynamics_model
         self.all_actions = all_actions
         self.cost = cost
-        self.saved_file_path = saved_file_path
+        self.save_data_path = save_data_path
         self.use_ols = use_ols
         self.learning_rate = learning_rate
         self.dt = dt
@@ -58,12 +58,12 @@ class DiscreteKoopmanValueIterationPolicy:
         self.discount_factor = self.gamma**self.dt
 
         if load_model:
-            self.value_function_weights = torch.load(self.saved_file_path)
+            self.value_function_weights = torch.load(f"{self.save_data_path}/policy.pt")
         else:
             if self.use_ols:
-                self.value_function_weights = torch.zeros([self.dynamics_model.phi_dim, 1])
+                self.value_function_weights = torch.zeros((self.dynamics_model.phi_dim, 1))
             else:
-                self.value_function_weights = torch.zeros([self.dynamics_model.phi_dim, 1], requires_grad=True)
+                self.value_function_weights = torch.zeros((self.dynamics_model.phi_dim, 1), requires_grad=True)
 
         if not self.use_ols:
             self.value_function_optimizer = torch.optim.Adam([self.value_function_weights], lr=self.learning_rate)
@@ -135,8 +135,6 @@ class DiscreteKoopmanValueIterationPolicy:
             V_x_primes[u] = self.value_function_weights.T @ torch.Tensor(phi_x_primes[u])
 
         # Compute policy distribution
-        # pis_response = self.pis(x_batch) # (all_actions.shape[1], batch_size)
-
         inner_pi_us_values = -(costs + self.discount_factor*V_x_primes) # all_actions.shape[1] x xs.shape[1]
         inner_pi_us = inner_pi_us_values * (1 / self.regularization_lambda) # all_actions.shape[1] x xs.shape[1]
         real_inner_pi_us = torch.real(inner_pi_us) # all_actions.shape[1] x xs.shape[1]
@@ -155,9 +153,9 @@ class DiscreteKoopmanValueIterationPolicy:
 
         # Compute expectation
         expectation_u = torch.sum(
-            (
-                costs + self.regularization_lambda*log_pis + self.discount_factor*V_x_primes
-            ) * pis_response,
+            (costs + \
+                self.regularization_lambda * log_pis + \
+                    self.discount_factor * V_x_primes) * pis_response,
             axis=0
         ).reshape(-1,1) # (batch_size, 1)
 
@@ -179,12 +177,16 @@ class DiscreteKoopmanValueIterationPolicy:
                 Action from value iteration policy.
         """
 
-        pis_response = self.pis(x)[:,0]
-
         if sample_size is None:
             sample_size = self.dynamics_model.u_column_dim
-        
-        return np.random.choice(self.all_actions[0], size=sample_size, p=pis_response.data.numpy())
+
+        pis_response = (self.pis(x)[:, 0]).data.numpy()
+
+        return np.random.choice(
+            self.all_actions[0],
+            size=sample_size,
+            p=pis_response
+        )
 
     def train(
         self,
@@ -208,37 +210,43 @@ class DiscreteKoopmanValueIterationPolicy:
                 gamma_increment_amount - Amount by which to increment gamma until it reaches 0.99. If 0.0, no incrementing.
         """
 
+        # Save original gamma and set gamma to first in array
         original_gamma = self.gamma
         if len(gammas) > 0:
             self.gamma = gammas[0]
         self.discount_factor = self.gamma**self.dt
 
-        BE = self.discrete_bellman_error(batch_size*batch_scale).detach().numpy()
-        # bellman_errors = [BE]
-        print("Initial Bellman error:", BE)
+        # Compute initial Bellman error
+        BE = self.discrete_bellman_error(batch_size * batch_scale).detach().numpy()
+        bellman_errors = [BE]
+        print(f"Initial Bellman error: {BE}")
 
         step = 0
-        gammaIterationCondition = self.gamma <= 0.99
-        while gammaIterationCondition:
-            print("gamma:", self.gamma)
+        gamma_iteration_condition = self.gamma <= 0.99
+        while gamma_iteration_condition:
+            print(f"gamma for iteration #{step+1}: {self.gamma}")
             self.discount_factor = self.gamma**self.dt
 
             for epoch in range(training_epochs):
-                # Get random batch of X and Phi_X
-                x_batch_indices = np.random.choice(self.dynamics_model.X.shape[1], batch_size, replace=False)
-                x_batch = self.dynamics_model.X[:,x_batch_indices] # X.shape[0] x batch_size
-                phi_x_batch = self.dynamics_model.Phi_X[:,x_batch_indices] # dim_phi x batch_size
+                # Get random batch of X and Phi_X from tensor training data
+                x_batch_indices = np.random.choice(
+                    self.dynamics_model.X.shape[1],
+                    batch_size,
+                    replace=False
+                )
+                x_batch = self.dynamics_model.X[:, x_batch_indices] # X.shape[0] x batch_size
+                phi_x_batch = self.dynamics_model.Phi_X[:, x_batch_indices] # dim_phi x batch_size
 
-                # Get costs
+                # Compute costs
                 costs = torch.Tensor(self.cost(x_batch, self.all_actions)) # (all_actions.shape[1], batch_size)
 
                 # Compute V(x')s
                 K_us = self.dynamics_model.K_(self.all_actions)
-                phi_x_primes = np.zeros([self.all_actions.shape[1], self.dynamics_model.phi_dim, batch_size])
-                V_x_primes = torch.zeros([self.all_actions.shape[1], batch_size])
-                for u in range(phi_x_primes.shape[0]):
-                    phi_x_primes[u] = K_us[u] @ phi_x_batch
-                    V_x_primes[u] = self.value_function_weights.T @ torch.Tensor(phi_x_primes[u])
+                phi_x_primes = np.zeros((self.all_actions.shape[1], self.dynamics_model.phi_dim, batch_size))
+                V_x_primes = torch.zeros((self.all_actions.shape[1], batch_size))
+                for action_index in range(phi_x_primes.shape[0]):
+                    phi_x_primes[action_index] = K_us[action_index] @ phi_x_batch
+                    V_x_primes[action_index] = self.value_function_weights.T @ torch.Tensor(phi_x_primes[action_index])
 
                 # Get current distribution of actions for each state
                 pis_response = self.pis(x_batch) # (all_actions.shape[1], batch_size)
@@ -246,11 +254,11 @@ class DiscreteKoopmanValueIterationPolicy:
 
                 # Compute expectations
                 expectation_term_1 = torch.sum(
-                    (
-                        costs + self.regularization_lambda*log_pis + self.discount_factor*V_x_primes
-                    ) * pis_response,
+                    (costs + \
+                        self.regularization_lambda * log_pis + \
+                            self.discount_factor * V_x_primes) * pis_response,
                     dim=0
-                ).reshape(1,-1) # (1, batch_size)
+                ).reshape(1, -1) # (1, batch_size)
 
                 # Optimize value function weights
                 if self.use_ols:
@@ -261,7 +269,7 @@ class DiscreteKoopmanValueIterationPolicy:
                     ).solution
                 else:
                     # Compute loss
-                    loss = torch.pow( V_x_primes - expectation_term_1, 2 ).mean()
+                    loss = torch.pow(V_x_primes - expectation_term_1, 2).mean()
 
                     # Backpropogation for value function weights
                     self.value_function_optimizer.zero_grad()
@@ -269,24 +277,26 @@ class DiscreteKoopmanValueIterationPolicy:
                     self.value_function_optimizer.step()
 
                 # Recompute Bellman error
-                BE = self.discrete_bellman_error(batch_size*batch_scale).detach().numpy()
-                # bellman_errors = np.append(bellman_errors, BE)
+                BE = self.discrete_bellman_error(batch_size * batch_scale).detach().numpy()
+                bellman_errors.append(BE)
 
-                # Every so often, print out and save the model weights
+                # Every so often, print out and save the model weights and bellman errors
                 if (epoch+1) % 250 == 0:
-                    torch.save(self.value_function_weights, self.saved_file_path)
+                    torch.save(self.value_function_weights, f"{self.save_data_path}/policy.pt")
+                    np.save(f"{self.save_data_path}/training_data/bellman_errors.npy", np.array(bellman_errors))
                     print(f"Bellman error at epoch {epoch+1}: {BE}")
 
-                # If the bellman error is less than or equal to epsilon, save the model weights
+                # If the bellman error is less than or equal to epsilon, save the model weights and bellman errors
                 if BE <= epsilon:
-                    torch.save(self.value_function_weights, self.saved_file_path)
+                    torch.save(self.value_function_weights, f"{self.save_data_path}/policy.pt")
+                    np.save(f"{self.save_data_path}/training_data/bellman_errors.npy", np.array(bellman_errors))
                     print(f"Bellman error at epoch {epoch+1}: {BE}")
                     break
 
             step += 1
 
             if len(gammas) == 0 and gamma_increment_amount == 0:
-                gammaIterationCondition = False
+                gamma_iteration_condition = False
                 break
 
             if self.gamma == 0.99: break
@@ -298,7 +308,7 @@ class DiscreteKoopmanValueIterationPolicy:
 
             if self.gamma > 0.99: self.gamma = 0.99
 
-            gammaIterationCondition = self.gamma <= 0.99
+            gamma_iteration_condition = self.gamma <= 0.99
 
         self.gamma = original_gamma
         self.discount_factor = self.gamma**self.dt
