@@ -14,6 +14,7 @@ sys.path.append('./')
 from cost import cost
 from dynamics import (
     all_actions,
+    dt,
     f,
     state_maximums,
     state_minimums
@@ -47,4 +48,4 @@ koopman_policy = DiscreteKoopmanPolicyIterationPolicy(
 print(f"\nLearning rate: {koopman_policy.learning_rate}\n")
 
 # Train Koopman policy
-koopman_policy.train(num_training_episodes=2_000, num_steps_per_episode=200)
+koopman_policy.train(num_training_episodes=2_000, num_steps_per_episode=int(20 / dt))

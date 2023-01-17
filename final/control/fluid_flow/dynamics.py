@@ -2,6 +2,7 @@
 import numpy as np
 
 from scipy.integrate import solve_ivp
+from scipy.special import comb
 
 # Variables
 state_dim = 3
@@ -12,23 +13,38 @@ action_column_shape = [action_dim, 1]
 
 # state_range = 25.0
 state_range = 1.0
-state_minimums = np.ones([state_dim,1]) * -state_range
-state_maximums = np.ones([state_dim,1]) * state_range
+state_minimums = np.array([
+    [-state_range],
+    [-state_range],
+    [0.0]
+])
+state_maximums = np.array([
+    [state_range],
+    [state_range],
+    [1.0]
+])
 
 action_range = 10.0
-action_minimums = np.ones([action_dim,1]) * -action_range
-action_maximums = np.ones([action_dim,1]) * action_range
+action_minimums = np.array([
+    [-action_range]
+])
+action_maximums = np.array([
+    [action_range]
+])
 
 state_order = 2
 action_order = 2
 
-step_size = 1.0
+step_size = 0.1
 all_actions = np.arange(-action_range, action_range+step_size, step_size)
 all_actions = np.round(all_actions, decimals=2)
 all_actions = np.array([all_actions])
 
 state_order = 2
 action_order = 2
+
+phi_dim = int( comb( state_order+state_dim, state_order ) )
+psi_dim = int( comb( state_order+state_dim, state_order ) )
 
 # Default basic policies
 def zero_policy(x=None):
@@ -90,7 +106,7 @@ def f(state, action):
 
     soln = solve_ivp(fun=continuous_f(u), t_span=[0, dt], y0=state[:,0], method='RK45')
     
-    return np.vstack(soln.y[:,-1])
+    return np.vstack(soln.y[:, -1])
 
 # Compute continuous A and B for LQR policy
 x_bar = 0
