@@ -52,6 +52,7 @@ koopman_policy = DiscreteKoopmanValueIterationPolicy(
     cost,
     save_data_path="./analysis/tmp/discrete_value_iteration",
     seed=seed,
+    dt=dt,
     load_model=True
 )
 

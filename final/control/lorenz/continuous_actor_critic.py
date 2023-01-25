@@ -29,7 +29,7 @@ from dynamics import (
 sys.path.append('../../../')
 import final.observables as observables
 from final.tensor import KoopmanTensor
-from final.control.policies.continuous_actor_critic import ContinuousKoopmanPolicyIterationPolicy
+from final.control.policies.continuous_actor_critic_v1 import ContinuousKoopmanPolicyIterationPolicy
 
 # Variables
 gamma = 0.99

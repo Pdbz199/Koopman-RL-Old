@@ -12,7 +12,7 @@ np.random.seed(seed)
 
 sys.path.append('./')
 from cost import Q, R, reference_point
-from dynamics import continuous_A, continuous_B
+from dynamics import continuous_A, continuous_B, dt
 
 sys.path.append('../../../')
 from final.control.policies.lqr import LQRPolicy
@@ -33,7 +33,8 @@ lqr_policy = LQRPolicy(
     gamma,
     reg_lambda,
     seed=seed,
-    is_continuous=True
+    is_continuous=True,
+    dt=dt
 )
 
 #%% Save LQR policy

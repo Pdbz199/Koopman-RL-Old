@@ -4,8 +4,6 @@ import numpy as np
 import pickle
 import sys
 
-from scipy.integrate import solve_ivp
-
 # Set seed
 try:
     seed = int(sys.argv[1])
@@ -17,10 +15,8 @@ sys.path.append('./')
 from cost import cost, reference_point
 from dynamics import (
     action_dim,
-    continuous_f,
     dt,
     f,
-    state_column_shape,
     state_dim,
     state_maximums,
     state_minimums,

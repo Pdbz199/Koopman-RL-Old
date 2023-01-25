@@ -50,19 +50,9 @@ with open(f'./analysis/tmp/shotgun-tensor.pickle', 'rb') as handle:
 gamma = 0.99
 reg_lambda = 1.0
 
-# LQR Policy
-lqr_policy = LQRPolicy(
-    continuous_A,
-    continuous_B,
-    Q,
-    R,
-    reference_point,
-    gamma,
-    reg_lambda,
-    dt=dt,
-    is_continuous=True,
-    seed=seed
-)
+#%% Load LQR policy
+with open('./analysis/tmp/lqr/policy.pickle', 'rb') as handle:
+    lqr_policy = pickle.load(handle)
 
 # Koopman discrete actor critic policy
 actor_critic_policy = DiscreteKoopmanPolicyIterationPolicy(
@@ -74,14 +64,14 @@ actor_critic_policy = DiscreteKoopmanPolicyIterationPolicy(
     state_maximums,
     all_actions,
     cost,
-    'saved_models/fluid-flow-discrete-actor-critic-policy.pt',
+    './analysis/tmp/discrete_actor_critic/policy.pt',
     dt=dt,
     seed=seed,
     learning_rate=0.003,
     load_model=True
 )
 
-# Koopman value iteration policy
+# Koopman discrete value iteration policy
 value_iteration_policy = DiscreteKoopmanValueIterationPolicy(
     f,
     gamma,
@@ -89,7 +79,7 @@ value_iteration_policy = DiscreteKoopmanValueIterationPolicy(
     tensor,
     all_actions,
     cost,
-    'saved_models/fluid-flow-discrete-value-iteration-policy.pt',
+    './analysis/tmp/discrete_value_iteration/policy.pt',
     dt=dt,
     seed=seed
 )

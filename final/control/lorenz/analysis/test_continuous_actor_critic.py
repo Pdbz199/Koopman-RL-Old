@@ -4,8 +4,6 @@ import numpy as np
 import pickle
 import sys
 
-from scipy.integrate import solve_ivp
-
 # Set seed
 try:
     seed = int(sys.argv[1])
@@ -18,17 +16,15 @@ from cost import cost, reference_point
 from dynamics import (
     action_dim,
     all_actions,
-    continuous_f,
     dt,
     f,
-    state_column_shape,
     state_dim,
     state_maximums,
     state_minimums
 )
 
 sys.path.append('../../../')
-from final.control.policies.discrete_actor_critic import DiscreteKoopmanPolicyIterationPolicy
+from final.control.policies.continuous_actor_critic import ContinuousKoopmanPolicyIterationPolicy
 
 #%% Load Koopman tensor with pickle
 with open('./analysis/tmp/path_based_tensor.pickle', 'rb') as handle:
@@ -43,7 +39,7 @@ gamma = 0.99
 reg_lambda = 1.0
 
 #%% Koopman actor-critic policy
-koopman_policy = DiscreteKoopmanPolicyIterationPolicy(
+koopman_policy = ContinuousKoopmanPolicyIterationPolicy(
     f,
     gamma,
     reg_lambda,
@@ -52,7 +48,7 @@ koopman_policy = DiscreteKoopmanPolicyIterationPolicy(
     state_maximums,
     all_actions,
     cost,
-    save_data_path="./analysis/tmp/discrete_actor_critic",
+    save_data_path="./analysis/tmp/continuous_actor_critic",
     seed=seed,
     dt=dt,
     load_model=True
@@ -63,7 +59,7 @@ def show_plot():
     plt.tight_layout()
     plt.show()
 
-path = "./analysis/tmp/discrete_actor_critic/plots"
+path = "./analysis/tmp/continuous_actor_critic/plots"
 plot_file_extensions = ['png', 'svg']
 def save_figure(title: str):
     plt.tight_layout()
@@ -85,19 +81,11 @@ def watch_agent(num_episodes, num_steps_per_episode, specified_episode):
     actor_critic_costs = np.zeros_like(lqr_costs)
 
     # Starting randomly in the space
-    # initial_states = np.random.uniform(
-    #     state_minimums,
-    #     state_maximums,
-    #     [state_dim, num_episodes]
-    # ).T
-
-    # Starting on the limit cycle
-    initial_states = np.zeros([num_episodes, state_dim])
-    for episode in range(num_episodes):
-        x = np.random.random(state_column_shape) * 0.5 * np.random.choice([-1,1], size=state_column_shape)
-        u = np.array([[0]])
-        soln = solve_ivp(fun=continuous_f(u), t_span=[0, 30.0], y0=x[:, 0], method='RK45')
-        initial_states[episode] = soln.y[:,-1]
+    initial_states = np.random.uniform(
+        state_minimums,
+        state_maximums,
+        [state_dim, num_episodes]
+    ).T
 
     for episode_num in range(num_episodes):
         # Extract initial state
@@ -116,6 +104,7 @@ def watch_agent(num_episodes, num_steps_per_episode, specified_episode):
             lqr_action = lqr_policy.get_action(lqr_state)
             lqr_actions[episode_num, step_num] = lqr_action[:, 0]
             actor_critic_action, _ = koopman_policy.get_action(actor_critic_state)
+            actor_critic_action = actor_critic_action.detach().numpy()
             actor_critic_actions[episode_num, step_num] = actor_critic_action[:, 0]
 
             # Compute costs

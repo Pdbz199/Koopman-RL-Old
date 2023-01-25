@@ -21,7 +21,7 @@ from dynamics import (
 )
 
 sys.path.append('../../../')
-from final.control.policies.discrete_actor_critic import DiscreteKoopmanPolicyIterationPolicy
+from final.control.policies.continuous_actor_critic import ContinuousKoopmanPolicyIterationPolicy
 
 #%% Load Koopman tensor with pickle
 with open('./analysis/tmp/path_based_tensor.pickle', 'rb') as handle:
@@ -32,7 +32,7 @@ gamma = 0.99
 reg_lambda = 1.0
 
 # Koopman value iteration policy
-koopman_policy = DiscreteKoopmanPolicyIterationPolicy(
+koopman_policy = ContinuousKoopmanPolicyIterationPolicy(
     f,
     gamma,
     reg_lambda,
@@ -41,7 +41,7 @@ koopman_policy = DiscreteKoopmanPolicyIterationPolicy(
     state_maximums,
     all_actions,
     cost,
-    save_data_path="./analysis/tmp/discrete_actor_critic",
+    save_data_path="./analysis/tmp/continuous_actor_critic",
     seed=seed,
     dt=dt,
     learning_rate=0.003

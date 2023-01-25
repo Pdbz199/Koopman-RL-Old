@@ -13,7 +13,7 @@ np.random.seed(seed)
 
 sys.path.append('./')
 from cost import cost
-from dynamics import all_actions, f
+from dynamics import all_actions, dt, f
 
 sys.path.append('../../../')
 from final.control.policies.discrete_value_iteration import DiscreteKoopmanValueIterationPolicy
@@ -35,7 +35,8 @@ koopman_policy = DiscreteKoopmanValueIterationPolicy(
     all_actions,
     cost,
     save_data_path="./analysis/tmp/discrete_value_iteration",
-    seed=seed
+    seed=seed,
+    dt=dt
 )
 
 # Train Koopman policy

@@ -4,8 +4,6 @@ import numpy as np
 import pickle
 import sys
 
-from scipy.integrate import solve_ivp
-
 # Set seed
 try:
     seed = int(sys.argv[1])
@@ -18,10 +16,8 @@ from cost import cost, reference_point
 from dynamics import (
     action_dim,
     all_actions,
-    continuous_f,
     dt,
     f,
-    state_column_shape,
     state_dim,
     state_maximums,
     state_minimums
@@ -54,6 +50,7 @@ koopman_policy = DiscreteKoopmanPolicyIterationPolicy(
     cost,
     save_data_path="./analysis/tmp/discrete_actor_critic",
     seed=seed,
+    dt=dt,
     load_model=True
 )
 

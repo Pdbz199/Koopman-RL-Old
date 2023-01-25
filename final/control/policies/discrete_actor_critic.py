@@ -194,7 +194,7 @@ class DiscreteKoopmanPolicyIterationPolicy:
         actions = []
         log_probs = []
         rewards = []
-        total_reward_per_episode = torch.zeros(num_training_episodes)
+        # total_reward_per_episode = torch.zeros(num_training_episodes)
 
         initial_states = np.random.uniform(
             self.state_minimums,
@@ -226,7 +226,8 @@ class DiscreteKoopmanPolicyIterationPolicy:
                 log_probs_per_episode[step_num] = log_prob
 
                 # Compute V_x_prime
-                V_x_prime = self.value_function_weights.T @ self.dynamics_model.phi_f(state, action)
+                # V_x_prime = self.value_function_weights.T @ self.dynamics_model.phi_f(state, action)
+                V_x_prime = self.value_function_weights.T @ self.dynamics_model.phi(self.dynamics_model.f(state, action))
                 V_x_primes_per_episode[step_num] = torch.Tensor(V_x_prime)
 
                 # Take action A, observe S', R
@@ -235,7 +236,7 @@ class DiscreteKoopmanPolicyIterationPolicy:
                 rewards_per_episode[step_num] = curr_reward
 
                 # Add to total discounted reward for the current episode
-                total_reward_per_episode[episode_num] += self.gamma**(step_num*self.dt) * curr_reward
+                # total_reward_per_episode[episode_num] += self.gamma**(step_num*self.dt) * curr_reward
 
                 # Update state for next loop
                 state = next_state
@@ -269,7 +270,8 @@ class DiscreteKoopmanPolicyIterationPolicy:
 
             # Progress prints
             if episode_num == 0 or (episode_num+1) % 250 == 0:
-                print(f"Episode: {episode_num+1}, total discounted reward: {total_reward_per_episode[episode_num]}")
+                # print(f"Episode: {episode_num+1}, total discounted reward: {total_reward_per_episode[episode_num]}")
+                print(f"Episode: {episode_num+1}, total reward: {rewards_per_episode.sum()}")
 
                 # Save models
                 torch.save(self.policy_model, f"{self.save_data_path}/policy.pt")
@@ -282,4 +284,4 @@ class DiscreteKoopmanPolicyIterationPolicy:
                 np.save(f"{training_data_path}/actions.npy", np.array(actions))
                 np.save(f"{training_data_path}/log_probs.npy", np.array(log_probs))
                 np.save(f"{training_data_path}/rewards.npy", np.array(rewards))
-                np.save(f"{training_data_path}/total_reward_per_episode.npy", total_reward_per_episode.numpy())
+                # np.save(f"{training_data_path}/total_reward_per_episode.npy", total_reward_per_episode.numpy())

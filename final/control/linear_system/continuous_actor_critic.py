@@ -15,7 +15,7 @@ from dynamics import state_minimums, state_maximums, state_dim, action_minimums,
 sys.path.append('../../../')
 import final.observables as observables
 from final.tensor import KoopmanTensor
-from final.control.policies.continuous_actor_critic import ContinuousKoopmanPolicyIterationPolicy
+from final.control.policies.continuous_actor_critic_v1 import ContinuousKoopmanPolicyIterationPolicy
 
 # Variables
 gamma = 0.99
