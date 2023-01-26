@@ -80,7 +80,11 @@ class ContinuousKoopmanPolicyIterationPolicy:
             self.policy_model = torch.load(f"{self.save_data_path}/policy.pt")
             self.value_function_weights = np.load(f"{self.save_data_path}/{self.value_function_weights_file_name}")
         else:
-            self.policy_model = GaussianPolicy(self.dynamics_model.x_dim, self.action_dim)
+            self.policy_model = GaussianPolicy(
+                self.dynamics_model.x_dim,
+                self.action_dim,
+                action_space=self.all_actions
+            )
 
             # self.value_function_weights = torch.zeros(self.dynamics_model.phi_column_dim, requires_grad=True)
             self.value_function_weights = np.zeros(self.dynamics_model.phi_column_dim)

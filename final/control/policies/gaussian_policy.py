@@ -1,7 +1,8 @@
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+from torch.autograd import Variable
+# import torch.nn.functional as F
 
 from torch.distributions import Normal
 
@@ -10,6 +11,7 @@ def init_weights(m):
         m.weight.data.fill_(0.0)
 
 LOG_SIG_MAX = 2
+# LOG_SIG_MAX = 20
 LOG_SIG_MIN = -20
 epsilon = np.finfo(np.float32).eps.item()
 
@@ -33,6 +35,7 @@ class GaussianPolicy(nn.Module):
         # self.log_std_linear = nn.Linear(layer_2_dim, action_dim)
         self.mean_linear = nn.Linear(state_dim, action_dim)
         self.log_std_linear = nn.Linear(state_dim, action_dim)
+        # self.log_std_linear = nn.Linear(1, action_dim)
 
         self.apply(init_weights)
 
@@ -41,10 +44,9 @@ class GaussianPolicy(nn.Module):
             self.action_scale = torch.tensor(1.0)
             self.action_bias = torch.tensor(0.0)
         else:
-            self.action_scale = torch.FloatTensor(
-                (action_space.high - action_space.low) / 2.0)
-            self.action_bias = torch.FloatTensor(
-                (action_space.high + action_space.low) / 2.0)
+            self.action_scale = torch.FloatTensor((action_space[:, -1] - action_space[:, 0]) / 2.0)
+            # self.action_bias = torch.FloatTensor((action_space[:, -1] + action_space[:, 0]) / 2.0)
+            self.action_bias = torch.tensor(0.0)
 
     def forward(self, state):
         # state = torch.Tensor(state)[:, 0]
@@ -54,6 +56,10 @@ class GaussianPolicy(nn.Module):
         # x = F.relu(self.linear2(x))
         mean = self.mean_linear(x)
         log_std = self.log_std_linear(x)
+        # if len(x.shape) == 1:
+        #     log_std = self.log_std_linear(torch.ones(1))
+        # else:
+        #     log_std = self.log_std_linear(torch.ones((x.shape[0], 1)))
         log_std = torch.clamp(log_std, min=LOG_SIG_MIN, max=LOG_SIG_MAX)
         return mean, log_std
 
