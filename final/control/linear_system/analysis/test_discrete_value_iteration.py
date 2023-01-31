@@ -208,7 +208,7 @@ def watch_agent(num_episodes, num_steps_per_episode, specified_episode):
     ax.set_title(f"Bellman Errors During Policy Training")
     ax.set_xlabel("Epoch #")
     ax.set_ylabel("Bellman Error")
-    ax.plot(np.load(f"{koopman_policy.save_data_path}/bellman_errors.npy"))
+    ax.plot(np.load(f"{koopman_policy.save_data_path}/training_data/bellman_errors.npy"))
 
     # Show/save plots
     save_figure("linear_system_dynamics_with_value_iteration_vs_lqr")

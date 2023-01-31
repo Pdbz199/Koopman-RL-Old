@@ -194,7 +194,6 @@ class DiscreteKoopmanPolicyIterationPolicy:
         actions = []
         log_probs = []
         rewards = []
-        # total_reward_per_episode = torch.zeros(num_training_episodes)
 
         initial_states = np.random.uniform(
             self.state_minimums,
@@ -228,15 +227,12 @@ class DiscreteKoopmanPolicyIterationPolicy:
                 # Compute V_x_prime
                 # V_x_prime = self.value_function_weights.T @ self.dynamics_model.phi_f(state, action)
                 V_x_prime = self.value_function_weights.T @ self.dynamics_model.phi(self.dynamics_model.f(state, action))
-                V_x_primes_per_episode[step_num] = torch.Tensor(V_x_prime)
+                V_x_primes_per_episode[step_num] = V_x_prime[0, 0]
 
                 # Take action A, observe S', R
                 next_state = self.true_dynamics(state, action)
                 curr_reward = -self.cost(state, action)[0, 0]
                 rewards_per_episode[step_num] = curr_reward
-
-                # Add to total discounted reward for the current episode
-                # total_reward_per_episode[episode_num] += self.gamma**(step_num*self.dt) * curr_reward
 
                 # Update state for next loop
                 state = next_state
@@ -249,12 +245,13 @@ class DiscreteKoopmanPolicyIterationPolicy:
             rewards.append(rewards_per_episode.detach().numpy())
 
             # Compute advantage
-            target_V_xs = rewards_per_episode + (self.discount_factor * V_x_primes_per_episode) - \
-                (self.regularization_lambda * log_probs_per_episode) * torch.exp(log_probs_per_episode)
-            advantage = target_V_xs - V_xs_per_episode
+            target_V_xs_per_episode = rewards_per_episode + (self.discount_factor * V_x_primes_per_episode)# - \
+                #self.regularization_lambda * log_probs_per_episode
+            advantage_per_episode = target_V_xs_per_episode - V_xs_per_episode
 
             # Compute actor and critic losses
-            actor_loss = (-log_probs_per_episode * advantage.detach()).mean()
+            actor_loss = (-log_probs_per_episode * advantage_per_episode.detach()).mean()
+            # actor_loss = (self.regularization_lambda * log_probs_per_episode - V_xs_per_episode).mean()
             # critic_loss = advantage.pow(2).mean()
 
             # Backpropagation

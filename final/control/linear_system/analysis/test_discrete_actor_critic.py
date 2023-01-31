@@ -130,19 +130,19 @@ def watch_agent(num_episodes, num_steps_per_episode, specified_episode):
 
     print(f"Mean of total LQR costs per episode over {num_episodes} episode(s): {lqr_costs_per_episode.mean()}")
     print(f"Standard deviation of total LQR costs per episode over {num_episodes} episode(s): {lqr_costs_per_episode.std()}")
-    print(f"Mean of total value iteration costs per episode over {num_episodes} episode(s): {actor_critic_costs_per_episode.mean()}")
-    print(f"Standard deviation of total value iteration costs per episode over {num_episodes} episode(s): {actor_critic_costs_per_episode.std()}\n")
+    print(f"Mean of total discrete actor critic costs per episode over {num_episodes} episode(s): {actor_critic_costs_per_episode.mean()}")
+    print(f"Standard deviation of total discrete actor critic costs per episode over {num_episodes} episode(s): {actor_critic_costs_per_episode.std()}\n")
 
     print(f"Initial state of episode #{specified_episode}: {lqr_states[specified_episode, 0]}")
     print(f"Final LQR state of episode #{specified_episode}: {lqr_states[specified_episode, -1]}")
-    print(f"Final value iteration state of episode #{specified_episode}: {actor_critic_states[specified_episode, -1]}\n")
+    print(f"Final discrete actor critic state of episode #{specified_episode}: {actor_critic_states[specified_episode, -1]}\n")
 
     print(f"Reference state: {reference_point[:, 0]}\n")
 
     print(f"Difference between final LQR state of episode #{specified_episode} and reference state: {np.abs(lqr_states[specified_episode, -1] - reference_point[:, 0])}")
     print(f"Norm between final LQR state of episode #{specified_episode} and reference state: {np.linalg.norm(lqr_states[specified_episode, -1] - reference_point[:, 0])}")
-    print(f"Difference between final value iteration state of episode #{specified_episode} and reference state: {np.abs(actor_critic_states[specified_episode, -1] - reference_point[:, 0])}")
-    print(f"Norm between final value iteration state of episode #{specified_episode} and reference state: {np.linalg.norm(actor_critic_states[specified_episode, -1] - reference_point[:, 0])}\n")
+    print(f"Difference between final discrete actor critic state of episode #{specified_episode} and reference state: {np.abs(actor_critic_states[specified_episode, -1] - reference_point[:, 0])}")
+    print(f"Norm between final discrete actor critic state of episode #{specified_episode} and reference state: {np.linalg.norm(actor_critic_states[specified_episode, -1] - reference_point[:, 0])}\n")
 
     # Plot dynamics over time for all state dimensions
     ax = fig.add_subplot(3, 3, 2)

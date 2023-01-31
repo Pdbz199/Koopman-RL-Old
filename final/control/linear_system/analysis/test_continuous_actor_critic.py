@@ -101,7 +101,7 @@ def watch_agent(num_episodes, num_steps_per_episode, specified_episode):
             lqr_action = lqr_policy.get_action(lqr_state)
             lqr_actions[episode_num, step_num] = lqr_action[:, 0]
             actor_critic_action, _ = koopman_policy.get_action(actor_critic_state)
-            actor_critic_action = actor_critic_action.detach().numpy()
+            actor_critic_action = np.array([actor_critic_action.detach().numpy()])
             actor_critic_actions[episode_num, step_num] = actor_critic_action[:, 0]
 
             # Compute costs
@@ -131,19 +131,19 @@ def watch_agent(num_episodes, num_steps_per_episode, specified_episode):
 
     print(f"Mean of total LQR costs per episode over {num_episodes} episode(s): {lqr_costs_per_episode.mean()}")
     print(f"Standard deviation of total LQR costs per episode over {num_episodes} episode(s): {lqr_costs_per_episode.std()}")
-    print(f"Mean of total value iteration costs per episode over {num_episodes} episode(s): {actor_critic_costs_per_episode.mean()}")
-    print(f"Standard deviation of total value iteration costs per episode over {num_episodes} episode(s): {actor_critic_costs_per_episode.std()}\n")
+    print(f"Mean of total continuous actor critic costs per episode over {num_episodes} episode(s): {actor_critic_costs_per_episode.mean()}")
+    print(f"Standard deviation of total continuous actor critic costs per episode over {num_episodes} episode(s): {actor_critic_costs_per_episode.std()}\n")
 
     print(f"Initial state of episode #{specified_episode}: {lqr_states[specified_episode, 0]}")
     print(f"Final LQR state of episode #{specified_episode}: {lqr_states[specified_episode, -1]}")
-    print(f"Final value iteration state of episode #{specified_episode}: {actor_critic_states[specified_episode, -1]}\n")
+    print(f"Final continuous actor critic state of episode #{specified_episode}: {actor_critic_states[specified_episode, -1]}\n")
 
     print(f"Reference state: {reference_point[:, 0]}\n")
 
     print(f"Difference between final LQR state of episode #{specified_episode} and reference state: {np.abs(lqr_states[specified_episode, -1] - reference_point[:, 0])}")
     print(f"Norm between final LQR state of episode #{specified_episode} and reference state: {np.linalg.norm(lqr_states[specified_episode, -1] - reference_point[:, 0])}")
-    print(f"Difference between final value iteration state of episode #{specified_episode} and reference state: {np.abs(actor_critic_states[specified_episode, -1] - reference_point[:, 0])}")
-    print(f"Norm between final value iteration state of episode #{specified_episode} and reference state: {np.linalg.norm(actor_critic_states[specified_episode, -1] - reference_point[:, 0])}\n")
+    print(f"Difference between final continuous actor critic state of episode #{specified_episode} and reference state: {np.abs(actor_critic_states[specified_episode, -1] - reference_point[:, 0])}")
+    print(f"Norm between final continuous actor critic state of episode #{specified_episode} and reference state: {np.linalg.norm(actor_critic_states[specified_episode, -1] - reference_point[:, 0])}\n")
 
     # Plot dynamics over time for all state dimensions
     ax = fig.add_subplot(3, 3, 2)

@@ -2,12 +2,13 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from final.control.policies.gaussian_policy import GaussianPolicy
 from final.tensor import KoopmanTensor
+# from torch.distributions.multivariate_normal import MultivariateNormal
+from torch.distributions.normal import Normal
 
 class ContinuousKoopmanPolicyIterationPolicy:
     """
-        Compute the optimal policy for the given state using continuous Koopman policy iteration methodology.
+        Compute the optimal policy for the given state using discrete Koopman policy iteration methodology.
     """
 
     def __init__(
@@ -64,7 +65,6 @@ class ContinuousKoopmanPolicyIterationPolicy:
         self.state_minimums = state_minimums
         self.state_maximums = state_maximums
         self.all_actions = all_actions
-        self.action_dim = all_actions.shape[0]
         self.cost = cost
         self.save_data_path = save_data_path
         self.value_function_weights_file_name = "value_function_weights.npy"
@@ -77,27 +77,66 @@ class ContinuousKoopmanPolicyIterationPolicy:
         self.layer_2_dim = layer_2_dim
 
         if load_model:
-            self.policy_model = torch.load(f"{self.save_data_path}/policy.pt")
+            self.mu_model = torch.load(f"{self.save_data_path}/mu_model.pt")
+            self.log_sigma_model = torch.load(f"{self.save_data_path}/log_sigma_model.pt")
             self.value_function_weights = np.load(f"{self.save_data_path}/{self.value_function_weights_file_name}")
         else:
-            self.policy_model = GaussianPolicy(
-                self.dynamics_model.x_dim,
-                self.action_dim,
-                action_space=self.all_actions
+            # self.mu_model = nn.Linear(self.dynamics_model.x_dim, self.all_actions.shape[0])
+            self.mu_model = nn.Sequential(
+                nn.Linear(self.dynamics_model.x_dim, self.layer_1_dim),
+                nn.ReLU(),
+                nn.Linear(self.layer_1_dim, self.layer_2_dim),
+                nn.ReLU(),
+                nn.Linear(self.layer_2_dim, self.all_actions.shape[0]),
+                nn.Softmax(dim=-1)
             )
+            self.log_sigma_model = torch.zeros(self.all_actions.shape[0], requires_grad=True)
 
-            # self.value_function_weights = torch.zeros(self.dynamics_model.phi_column_dim, requires_grad=True)
             self.value_function_weights = np.zeros(self.dynamics_model.phi_column_dim)
 
-            # def init_weights(m):
-            #     if type(m) == torch.nn.Linear:
-            #         m.weight.data.fill_(0.0)
+            def init_weights(m):
+                if type(m) == torch.nn.Linear:
+                    m.weight.data.fill_(0.0)
         
-            # self.policy_model.apply(init_weights)
+            self.mu_model.apply(init_weights)
             # self.value_function_weights.apply(init_weights)
 
-        self.policy_model_optimizer = torch.optim.Adam(self.policy_model.parameters(), lr=self.learning_rate)
+        self.policy_model_optimizer = torch.optim.Adam(list(self.mu_model.parameters()) + [self.log_sigma_model], lr=self.learning_rate)
         # self.value_function_optimizer = torch.optim.Adam([self.value_function_weights], lr=self.learning_rate)
+
+    def get_action_distribution(self, x):
+        """
+            Get the action distribution for a given state.
+
+            INPUTS:
+                x - State column vector.
+
+            OUTPUTS:
+                Normal distribution using state dependent mu and latest sigma.
+        """
+
+        mu = self.mu_model(torch.Tensor(x[:, 0]))
+        sigma = torch.exp(self.log_sigma_model)
+
+        # return MultivariateNormal(mu, torch.diag(sigma))
+        return Normal(mu, sigma)
+
+    def get_action(self, x):
+        """
+            Estimate the policy and sample an action, compute its log probability.
+            
+            INPUTS:
+                x - State column vector.
+            
+            OUTPUTS:
+                The selected action and log probability.
+        """
+
+        action_distribution = self.get_action_distribution(x)
+        action = action_distribution.sample()
+        log_prob = action_distribution.log_prob(action)
+
+        return action, log_prob
 
     def update_value_function_weights(self):
         """
@@ -115,7 +154,10 @@ class ContinuousKoopmanPolicyIterationPolicy:
 
         # Compute policy probabilities for each state in the batch
         with torch.no_grad():
-            pi_response = self.policy_model(torch.Tensor(x_batch.T))[1].T.numpy() # (all_actions.shape[1], w_hat_batch_size)
+            pi_response = np.zeros([self.all_actions.shape[1],self.w_hat_batch_size])
+            for state_index, state in enumerate(x_batch.T):
+                action_distribution = self.get_action_distribution(np.vstack(state))
+                pi_response[:, state_index] = action_distribution.log_prob(torch.Tensor(self.all_actions.T))[:, 0]
 
         # Compute phi_x_prime for all states in the batch using all actions in the action space
         K_us = self.dynamics_model.K_(self.all_actions) # (all_actions.shape[1], phi_dim, phi_dim)
@@ -146,19 +188,6 @@ class ContinuousKoopmanPolicyIterationPolicy:
             torch.Tensor(expectation_term_2.T)
         ).solution.numpy() # (phi_dim, 1)
 
-    def get_action(self, x):
-        """
-            Estimate the policy distribution, sample an action, and compute the log probability of sampled action.
-
-            INPUTS:
-                x - State column vector.
-
-            OUTPUTS:
-                The selected action and log probabilities.
-        """
-
-        return self.policy_model.get_action(x)
-
     def train(self, num_training_episodes, num_steps_per_episode):
         """
             Actor-Critic algorithm. Train the policy iteration model. This updates the class parameters without returning anything.
@@ -175,7 +204,6 @@ class ContinuousKoopmanPolicyIterationPolicy:
         actions = []
         log_probs = []
         rewards = []
-        # total_reward_per_episode = torch.zeros(num_training_episodes)
 
         initial_states = np.random.uniform(
             self.state_minimums,
@@ -187,7 +215,7 @@ class ContinuousKoopmanPolicyIterationPolicy:
             # Create arrays to save training data
             V_xs_per_episode = torch.zeros(num_steps_per_episode)
             V_x_primes_per_episode = torch.zeros_like(V_xs_per_episode)
-            actions_per_episode = torch.zeros((num_steps_per_episode, self.action_dim))
+            actions_per_episode = torch.zeros((num_steps_per_episode, self.all_actions.shape[1]))
             log_probs_per_episode = torch.zeros_like(V_xs_per_episode)
             rewards_per_episode = torch.zeros_like(V_xs_per_episode)
 
@@ -196,30 +224,25 @@ class ContinuousKoopmanPolicyIterationPolicy:
 
             for step_num in range(num_steps_per_episode):
                 # Compute V_x
-                # V_x = torch.Tensor(self.value_function_weights.T @ self.phi(state))
                 V_x = self.value_function_weights.T @ self.phi(state)
-                # V_x = self.value_function_weights(torch.Tensor(state[:,0]))[0]
-                V_xs_per_episode[step_num] = V_x[0, 0]
+                V_xs_per_episode[step_num] = V_x[0, 0] # ()
 
                 # Get action and action probabilities for current state
                 action, log_prob = self.get_action(state)
-                # action = action.reshape((self.action_dim, 1))
+                action = action.reshape(self.all_actions.shape[0], 1)
                 numpy_action = action.detach().numpy()
-                actions_per_episode[step_num] = action[:, 0]
-                log_probs_per_episode[step_num] = log_prob[:, 0]
+                actions_per_episode[step_num] = action[:, 0] # (action dim,)
+                log_probs_per_episode[step_num] = log_prob[0] # ()
 
                 # Compute V_x_prime
-                # V_x_prime = self.value_function_weights.T @ self.dynamics_model.phi_f(state, numpy_action)
+                # V_x_prime = self.value_function_weights.T @ self.dynamics_model.phi_f(state, action)
                 V_x_prime = self.value_function_weights.T @ self.dynamics_model.phi(self.dynamics_model.f(state, numpy_action))
-                V_x_primes_per_episode[step_num] = torch.Tensor(V_x_prime)
+                V_x_primes_per_episode[step_num] = V_x_prime[0, 0] # ()
 
                 # Take action A, observe S', R
                 next_state = self.true_dynamics(state, numpy_action)
-                curr_reward = -self.cost(state, numpy_action)[0, 0]
-                rewards_per_episode[step_num] = curr_reward
-
-                # Add to total discounted reward for the current episode
-                # total_reward_per_episode[episode_num] += self.gamma**(step_num*self.dt) * curr_reward
+                earned_reward = -self.cost(state, numpy_action)[0, 0]
+                rewards_per_episode[step_num] = earned_reward # ()
 
                 # Update state for next loop
                 state = next_state
@@ -232,21 +255,18 @@ class ContinuousKoopmanPolicyIterationPolicy:
             rewards.append(rewards_per_episode.detach().numpy())
 
             # Compute advantage
-            target_V_xs = rewards_per_episode + (self.discount_factor * V_x_primes_per_episode) - \
-                (self.regularization_lambda * log_probs_per_episode) * torch.exp(log_probs_per_episode)
-            advantage = target_V_xs - V_xs_per_episode
+            target_V_xs_per_episode = rewards_per_episode + (self.discount_factor * V_x_primes_per_episode)# - \
+                #self.regularization_lambda * log_probs_per_episode
+            advantage_per_episode = target_V_xs_per_episode - V_xs_per_episode
 
             # Compute actor and critic losses
-            actor_loss = (-log_probs_per_episode * advantage.detach()).mean()
-            # critic_loss = advantage.pow(2).mean()
+            actor_loss = (-log_probs_per_episode * advantage_per_episode.detach()).mean()
+            # actor_loss = (self.regularization_lambda * log_probs_per_episode - V_xs_per_episode).mean()
 
             # Backpropagation
             self.policy_model_optimizer.zero_grad()
-            # self.value_function_optimizer.zero_grad()
             actor_loss.backward()
-            # critic_loss.backward()
             self.policy_model_optimizer.step()
-            # self.value_function_optimizer.step()
 
             # Update value function weights
             self.update_value_function_weights()
@@ -257,7 +277,8 @@ class ContinuousKoopmanPolicyIterationPolicy:
                 print(f"Episode: {episode_num+1}, total reward: {rewards_per_episode.sum()}")
 
                 # Save models
-                torch.save(self.policy_model, f"{self.save_data_path}/policy.pt")
+                torch.save(self.mu_model, f"{self.save_data_path}/mu_model.pt")
+                torch.save(self.log_sigma_model, f"{self.save_data_path}/log_sigma_model.pt")
                 torch.save(self.value_function_weights, f"{self.save_data_path}/{self.value_function_weights_file_name}")
 
                 # Save training data
