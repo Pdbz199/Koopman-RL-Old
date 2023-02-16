@@ -3,6 +3,7 @@
     https://cloudflare-ipfs.com/ipfs/bafybeibg7jh2hm4w2vcpkgb55qeguo5oiom7qff5s4dxw4xfrjjlamfbg4/Soft%20Actor-Critic-%20Off-Policy%20Maximum%20Entropy%20Deep%20Reinforcement%20Learning%20with%20a%20Stochastic%20Actor.pdf
 """
 
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
@@ -33,12 +34,12 @@ def update_net(target, source, tau):
             tau * source_param.data + (1.0 - tau) * target_param.data
         )
 
-# def normalize_angle(x):
-#     """
-#         If there are angles in the state space, this will matter.
-#     """
+def normalize_angle(x):
+    """
+        If there are angles in the state space, this will matter.
+    """
 
-#     return (((x+np.pi) % (2*np.pi)) - np.pi)
+    return (((x+np.pi) % (2*np.pi)) - np.pi)
 
 def scale_action(a, min, max):
     """
@@ -72,7 +73,8 @@ class Agent:
         batch_size=64,
         discount_factor=0.99,
         reward_scale=10,
-        tau=1e-3
+        tau=1e-3,
+        learning_rate=3e-4
     ):
         """
             Initializes the agent.
@@ -94,13 +96,14 @@ class Agent:
         self.reward_scale = reward_scale
         self.alpha = 1 / reward_scale
         self.tau = tau
+        self.learning_rate = learning_rate
 
         self.memory = Memory(memory_capacity)
-        self.actor = PolicyNetwork(state_dim, self.u_dim).to(device)
-        self.critic1 = QNetwork(state_dim, self.u_dim).to(device)
-        self.critic2 = QNetwork(state_dim, self.u_dim).to(device)
-        self.baseline = VNetwork(state_dim).to(device)
-        self.baseline_target = VNetwork(state_dim).to(device)
+        self.actor = PolicyNetwork(state_dim, self.u_dim, learning_rate=self.learning_rate).to(device)
+        self.critic1 = QNetwork(state_dim, self.u_dim, learning_rate=self.learning_rate).to(device)
+        self.critic2 = QNetwork(state_dim, self.u_dim, learning_rate=self.learning_rate).to(device)
+        self.baseline = VNetwork(state_dim, learning_rate=self.learning_rate).to(device)
+        self.baseline_target = VNetwork(state_dim, learning_rate=self.learning_rate).to(device)
 
         # Make sure parameters are initially equal for baseline and baseline_target
         update_net(
@@ -112,8 +115,9 @@ class Agent:
     def act(self, state):
         # At inference time, we don't want to compute gradients
         with torch.no_grad():
-            unscaled_action = self.actor.sample_action(state)
-            return scale_action(unscaled_action, self.action_minimums, self.action_maximums)
+            normalized_action = self.actor.sample_action(state)
+            action = scale_action(normalized_action, self.action_minimums[0], self.action_maximums[0])
+            return action
 
     def memorize(self, event):
         """
@@ -194,24 +198,30 @@ class Agent:
 class System:
     def __init__(
         self,
+        is_gym_env: bool,
         true_dynamics: Callable[[List[float], List[float]], List[float]],
         cost: Callable[[List[float], List[float]], float],
         state_minimums: List[float],
         state_maximums: List[float],
         action_minimums: List[float],
         action_maximums: List[float],
+        render_env=False,
         memory_capacity=200_000,
         environment_steps=1,
         gradient_steps=1,
         init_steps=256,
         reward_scale=10,
-        tau=1e-3, # 5e-3
+        tau=5e-3,
+        learning_rate=3e-4,
         batch_size=256,
         is_episodic=False
     ):
         assert len(state_minimums) == len(state_maximums), "Min and max state must have same dimension."
         assert len(action_minimums) == len(action_maximums), "Min and max action must have same dimension."
 
+        self.is_gym_env = is_gym_env
+        self.render_env = render_env
+        self.has_completed = False
         self.true_dynamics = true_dynamics
         self.cost = cost
 
@@ -237,50 +247,67 @@ class System:
             memory_capacity=memory_capacity,
             batch_size=batch_size,
             reward_scale=reward_scale,
-            tau=tau
+            tau=tau,
+            learning_rate=learning_rate
         )
 
         self.is_episodic = is_episodic
 
+        # Set up random number generator
         self.rng = np.random.default_rng()
-        self.latest_state = (0.5 * (self.rng.random((self.x_dim,1))*2-1) * (state_maximums-state_minimums))[:, 0]
 
     def reward(self, x, u):
         return -self.cost(x, u)
-
-    def initialization(self):
-        # Create empty events matrix
-        events = np.empty((self.init_steps, self.event_dim))
-
-        # If episodic, reset latest state to random initial condition
-        if self.is_episodic:
+    
+    def reset_env(self):
+        if self.is_gym_env:
+            self.latest_state = self.true_dynamics.reset()
+        else:
             self.latest_state = (0.5 * (self.rng.random((self.x_dim,1))*2-1) * (self.state_maximums-self.state_minimums))[:, 0]
 
-        state = np.vstack(self.latest_state)
+    def initialization(self):
+        # If episodic, reset latest state to random initial condition
+        if self.is_episodic:
+            self.reset_env()
+
+        state = np.vstack(self.latest_state) # Turn array into column vector
 
         for init_step in range(self.init_steps):
+            # Create empty events matrix
+            event = np.empty(self.event_dim)
+
             # Select random action between -1 and 1 and scale it
             normalized_action = np.random.rand(self.u_dim)*2 - 1
-            action = scale_action(normalized_action, self.action_minimums, self.action_maximums)
+            # action = scale_action(normalized_action, self.action_minimums, self.action_maximums)
+            action = scale_action(normalized_action, self.action_minimums[0], self.action_maximums[0])
 
-            # Get reward for state-action pair
-            reward = self.reward(state, action)
+            if self.is_gym_env:
+                # Get next state, reward, and more from true dynamics
+                # next_state, reward, self.has_completed, _ = self.true_dynamics.step(int(action[0,0])) # Cartpole
+                next_state, reward, self.has_completed, _ = self.true_dynamics.step(action) # Bipedal Walker
+            else:
+                # Get reward for state-action pair
+                reward = self.reward(state, action)
 
-            # Get next state from true dynamics
-            next_state = self.true_dynamics(state, action)
+                # Get next state from true dynamics
+                next_state = self.true_dynamics(state, action)
 
             # Populate the event array with state, action, reward, and next state
-            events[init_step, :self.x_dim] = state[:, 0]
-            events[init_step, self.x_dim:self.xu_dim] = action
-            events[init_step, self.xu_dim] = reward
-            events[init_step, self.xu_dim+1:self.event_dim] = next_state[:, 0]
+            event[:self.x_dim] = state[:, 0]
+            event[self.x_dim:self.xu_dim] = action
+            event[self.xu_dim] = reward
+            event[self.xu_dim+1:self.event_dim] = next_state
 
             # Add the event to the replay buffer
-            self.agent.memorize(events[init_step])
+            self.agent.memorize(event)
 
             # Update state
-            state = next_state
+            state = np.vstack(next_state)
             self.latest_state = state[:, 0]
+
+            # If done condition is met, break out of loop
+            if self.has_completed:
+                break
 
     def interaction(self, learn=True, remember=True):
         # Create empty events matrix
@@ -288,35 +315,53 @@ class System:
 
         # If episodic, reset latest state to random initial condition
         if self.is_episodic:
-            self.latest_state = (0.5 * (self.rng.random((self.x_dim,1))*2-1) * (self.state_maximums-self.state_minimums))[:, 0]
+            self.reset_env()
 
         for environment_step_num in range(self.environment_steps):
             # Convert state to a cuda-friendly version
             cuda_state = torch.FloatTensor(self.latest_state).unsqueeze(0).to(device) # Row vector (1, state_dim)
-            numpy_state = cuda_state.numpy().T  # Column vector (state_dim, 1)
 
             # Get action from policy model
             action = self.agent.act(cuda_state) # Get scaled action from policy network
-            numpy_action = action.numpy() # convert to numpy action
+            numpy_action = action.numpy() # convert to numpy array
 
-            # Get reward from state-action pair
-            reward = self.reward(numpy_state, numpy_action) # Compute reward
+            if self.is_gym_env:
+                # Get next state, reward, and more from true dynamics
+                # next_state, reward, self.has_completed, __ = self.true_dynamics.step(int(numpy_action[0,0])) # Cartpole
+                next_state, reward, self.has_completed, __ = self.true_dynamics.step(numpy_action[0]) # BipedalWalker
+                if self.render_env:
+                    self.true_dynamics.render()
+            else:
+                numpy_state = cuda_state.numpy().T  # Column vector (state_dim, 1)
 
-            # Get next state from true dynamics
-            next_state = self.true_dynamics(numpy_state, numpy_action) # Column vector (state_dim, 1)
+                # Get reward from state-action pair
+                reward = self.reward(numpy_state, numpy_action) # Compute reward
+
+                # Get next state from true dynamics
+                next_state = self.true_dynamics(numpy_state, numpy_action) # Column vector (state_dim, 1)
 
             # Populate the event array with state, action, reward, and next state
             events[environment_step_num, :self.x_dim] = self.latest_state # Current state
             events[environment_step_num, self.x_dim:self.xu_dim] = action # Action from policy
             events[environment_step_num, self.xu_dim] = reward # Reward from state-action pair
-            events[environment_step_num, self.xu_dim+1:self.event_dim] = next_state[:, 0] # Next state
+            events[environment_step_num, self.xu_dim+1:self.event_dim] = next_state # Next state
 
             if remember:
                 # Add to replay buffer
                 self.agent.memorize(events[environment_step_num])
 
             # Update state
-            self.latest_state = next_state[:, 0]
+            self.latest_state = next_state
+
+            # Update number of last step taken
+            last_step = environment_step_num
+
+            # If done condition is met, break out of loop
+            if self.has_completed:
+                break
+
+        # Parse out all empty rows
+        events = events[:last_step]
 
         if learn:
             for gradient_step_num in range(self.gradient_steps):
@@ -329,6 +374,11 @@ class System:
         num_training_iterations,
         initialization=True
     ):
+        # Track rewards per iteration
+        min_reward_per_iteration = 10e10
+        max_reward_per_iteration = -10e10
+        total_rewards_per_iteration = []
+
         # Run some number of initial steps using random agent
         if initialization:
             self.initialization()
@@ -350,9 +400,24 @@ class System:
             total_reward = rewards.sum()
             mean_reward = total_reward / len(rewards)
 
+            # Update rewards data
+            if min_reward < min_reward_per_iteration:
+                min_reward_per_iteration = min_reward
+            if max_reward > max_reward_per_iteration:
+                max_reward_per_iteration = max_reward
+
+            # Save total reward for the iteration
+            total_rewards_per_iteration.append(total_reward)
+
             # Print out reward details for the episode
             print(
-                "Finished episode %i, min reward = %.4f, max reward = %.4f, average reward per step = %.4f, total reward = %.4f" %
-                ((training_episode_num+1), min_reward, max_reward, mean_reward, total_reward),
-                end='\r'
+                "Finished episode %i, min reward = %.4f, max reward = %.4f, average reward per step = %.4f, total reward = %.4f\nmin reward across iterations = %.4f, max reward across iterations = %.4f, average total reward over the iterations = %.4f" %
+                ((training_episode_num+1), min_reward, max_reward, mean_reward, total_reward, min_reward_per_iteration, max_reward_per_iteration, np.mean(total_rewards_per_iteration))
             )
+        print()
+
+        plt.title("Total reward per iteration")
+        plt.xlabel("Iteration number")
+        plt.ylabel("Total reward")
+        plt.plot(total_rewards_per_iteration)
+        plt.show()

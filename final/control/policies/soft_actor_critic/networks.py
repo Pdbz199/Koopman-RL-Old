@@ -82,7 +82,7 @@ class VNetwork(nn.Module):
             forward - Calculates otput of network.
     """
 
-    def __init__(self, state_dim):
+    def __init__(self, state_dim, learning_rate=3e-4):
         """
             Creates the three linear layers of the network.
 
@@ -104,7 +104,7 @@ class VNetwork(nn.Module):
 
         # Define loss function and optimizer
         self.loss_func = nn.MSELoss()
-        self.optimizer = optim.Adam(self.parameters(), lr=3e-4)
+        self.optimizer = optim.Adam(self.parameters(), lr=learning_rate)
 
     def forward(self, state):
         """
@@ -136,7 +136,7 @@ class QNetwork(nn.Module):
             forward - Calculates otput of network.
     """
 
-    def __init__(self, state_dim, action_dim):
+    def __init__(self, state_dim, action_dim, learning_rate=3e-4):
         """
             Creates the three linear layers of the network.
 
@@ -158,7 +158,7 @@ class QNetwork(nn.Module):
 
         # Define loss function and optimizer
         self.loss_func = nn.MSELoss()
-        self.optimizer = optim.Adam(self.parameters(), lr=3e-4)
+        self.optimizer = optim.Adam(self.parameters(), lr=learning_rate)
 
     def forward(self, state, action):
         """
@@ -197,6 +197,7 @@ class PolicyNetwork(nn.Module):
         self,
         state_dim,
         action_dim,
+        learning_rate=3e-4,
         min_log_sigma=-30,
         max_log_sigma=30
     ):
@@ -227,7 +228,7 @@ class PolicyNetwork(nn.Module):
         # self.l32.bias.data.uniform_(-3e-3, 3e-3)
 
         # Define optimizer
-        self.optimizer = optim.Adam(self.parameters(), lr=3e-4)
+        self.optimizer = optim.Adam(self.parameters(), lr=learning_rate)
 
     def forward(self, state):
         x = F.relu(self.l1(state))
