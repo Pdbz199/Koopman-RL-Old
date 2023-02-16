@@ -10,7 +10,7 @@ class Memory:
     """
         The Memory class allows to store and sample events.
 
-        ATTRIBUTES:  
+        ATTRIBUTES:
             capacity - Max amount of events stored.
             data - List with events memorized.
             pointer - Position of the list in which an event will be registered.
@@ -32,23 +32,23 @@ class Memory:
         """
 
         self.capacity = capacity
-        self.data = []        
+        self.data = []
         self.pointer = 0
-    
+
     def store(self, event):
         """
             Stores the input event in the location designated by the pointer.
             The pointer is increased by one modulo the capacity.
 
             INPUTS:
-                event - Tuple to be stored.
+                event - Array to be stored.
         """
 
         if len(self.data) < self.capacity:
             self.data.append(None)
         self.data[self.pointer] = event
-        self.pointer = (self.pointer + 1) % self.capacity
-    
+        self.pointer = (self.pointer + 1) % self.capacity # Have pointer wrap around if needed
+
     def sample(self, batch_size):
         """
             Samples a specified number of events.
@@ -60,18 +60,8 @@ class Memory:
                 Random list with stored events.
         """
 
-        return random.sample(self.data, batch_size) 
+        return random.sample(self.data, batch_size)
 
-    def retrieve(self):
-        """
-            Returns the whole stored data
-
-            OUTPUTS:
-                data
-        """
-
-        return self.data
-    
     def forget(self):
         """
             Resets the stored data and the pointer.
@@ -85,34 +75,38 @@ class VNetwork(nn.Module):
         The VNetwork is a standard fully connected NN with ReLU activation functions
         and 3 linear layers that approximates the V function.
 
-        ATTRIBUTES:  
+        ATTRIBUTES:
             l1, l2, l3 -- Linear layers.
-        
+
         METHODS:
             forward - Calculates otput of network.
     """
 
-    def __init__(self, input_dim):
+    def __init__(self, state_dim):
         """
             Creates the three linear layers of the network.
 
-            INPUTS:  
-                input_dim - Int that specifies the size of input.
+            INPUTS:
+                state_dim - Int that specifies the size of input state.
         """
 
+        # Initialize parent module
         super().__init__()
-        self.l1 = nn.Linear(input_dim, 256)
+
+        # Define the layers of the network
+        self.l1 = nn.Linear(state_dim, 256)
         self.l2 = nn.Linear(256, 256)
         self.l3 = nn.Linear(256, 1)
 
+        # Set initial parameter values
         # self.l3.weight.data.uniform_(-3e-3, 3e-3)
         # self.l3.bias.data.uniform_(-3e-3, 3e-3)
 
         # Define loss function and optimizer
         self.loss_func = nn.MSELoss()
-        self.optimizer = optim.Adam(self.parameters(), lr=3e-4)    
-    
-    def forward(self, s):
+        self.optimizer = optim.Adam(self.parameters(), lr=3e-4)
+
+    def forward(self, state):
         """
             Calculates output for the given input.
 
@@ -123,7 +117,7 @@ class VNetwork(nn.Module):
                 x - Number that represents the approximate value of the input.
         """
 
-        x = F.relu(self.l1(s))
+        x = F.relu(self.l1(state))
         x = F.relu(self.l2(x))
         x = self.l3(x)
 
@@ -137,12 +131,12 @@ class QNetwork(nn.Module):
 
         ATTRIBUTES:
             l1, l2, l3 - Linear layers.
-        
+
         METHODS:
             forward - Calculates otput of network.
     """
 
-    def __init__(self, s_dim, a_dim):
+    def __init__(self, state_dim, action_dim):
         """
             Creates the three linear layers of the network.
 
@@ -150,19 +144,23 @@ class QNetwork(nn.Module):
             input_dim - Int that specifies the size of input.
         """
 
+        # Initialize parent module
         super().__init__()
-        self.l1 = nn.Linear(s_dim+a_dim, 256)
+
+        # Define the layers of the network
+        self.l1 = nn.Linear(state_dim + action_dim, 256)
         self.l2 = nn.Linear(256, 256)
         self.l3 = nn.Linear(256, 1)
 
+        # Set initial parameter values
         # self.l3.weight.data.uniform_(-3e-3, 3e-3)
-        # self.l3.bias.data.uniform_(-3e-3, 3e-3) 
+        # self.l3.bias.data.uniform_(-3e-3, 3e-3)
 
         # Define loss function and optimizer
         self.loss_func = nn.MSELoss()
         self.optimizer = optim.Adam(self.parameters(), lr=3e-4)
-    
-    def forward(self, s,a):
+
+    def forward(self, state, action):
         """
             Calculates output for the given input.
 
@@ -174,7 +172,7 @@ class QNetwork(nn.Module):
         """
 
         # Concatenate action vector to state vector
-        x = torch.cat([s, a], 1)
+        x = torch.cat([state, action], axis=1)
 
         # Pass extended vector through network
         x = F.relu(self.l1(x))
@@ -184,85 +182,102 @@ class QNetwork(nn.Module):
         return(x)
 
 class PolicyNetwork(nn.Module):
-    '''
-    Description:
-    The policyNet is a standard fully connected NN with ReLU and sigmoid activation 
-    functions and 3 linear layers. This net determines the action for a given state. 
+    """:
+        The PolicyNetwork is a standard fully connected NN with ReLU activation 
+        functions and 3 linear layers. This net determines the action for a given state. 
 
-    Attributes:  
-    l1,l2,l3 -- linear layers
-    
-    Methods:
-    forward -- calculates otput of network
-    '''
-    def __init__(self, input_dim, output_dim, min_log_stdev=-30, max_log_stdev=30):
-        '''
-        Descrption:
-        Creates the three linear layers of the net
+        ATTRIBUTES:
+            l1, l2, l3 - Linear layers.
 
-        Arguments:  
-        input_dim -- int that specifies the size of input        
-        '''
+        METHODS:
+            forward - Calculates output of network.
+    """
+
+    def __init__(
+        self,
+        state_dim,
+        action_dim,
+        min_log_sigma=-30,
+        max_log_sigma=30
+    ):
+        """
+            Creates the three linear layers of the network.
+
+            INPUTS:
+                input_dim - Int that specifies the size of input.
+        """
+
+        # Initialize parent module
         super().__init__()
-        self.min_log_stdev = min_log_stdev
-        self.max_log_stdev = max_log_stdev
 
-        self.l1 = nn.Linear(input_dim, 256)
+        # Set the minimum and maximum log std
+        self.min_log_sigma = min_log_sigma
+        self.max_log_sigma = max_log_sigma
+
+        # Define the layers of the network
+        self.l1 = nn.Linear(state_dim, 256)
         self.l2 = nn.Linear(256, 256)
-        self.l31 = nn.Linear(256, output_dim)
-        self.l32 = nn.Linear(256, output_dim)
+        self.l31 = nn.Linear(256, action_dim)
+        self.l32 = nn.Linear(256, action_dim)
 
+        # Set initial parameter values
         # self.l31.weight.data.uniform_(-3e-3, 3e-3)
         # self.l32.weight.data.uniform_(-3e-3, 3e-3)
         # self.l31.bias.data.uniform_(-3e-3, 3e-3)
         # self.l32.bias.data.uniform_(-3e-3, 3e-3)
 
-        self.optimizer = optim.Adam(self.parameters(), lr = 3e-4)    
-    
-    def forward(self, s):
-        x = F.relu(self.l1(s))
+        # Define optimizer
+        self.optimizer = optim.Adam(self.parameters(), lr=3e-4)
+
+    def forward(self, state):
+        x = F.relu(self.l1(state))
         x = F.relu(self.l2(x))
-        m = self.l31(x)
-        log_stdev = self.l32(x)
-        log_stdev = torch.clamp(log_stdev, self.min_log_stdev, self.max_log_stdev)
-        return m, log_stdev
-    
-    def sample_action(self, s):
+
+        # Get mu and log sigma
+        mu = self.l31(x)
+        log_sigma = self.l32(x)
+
+        # Clamp log sigma to be within the defined range
+        log_sigma = torch.clamp(log_sigma, self.min_log_sigma, self.max_log_sigma)
+
+        return mu, log_sigma
+
+    def sample_action(self, state):
         """"
             Calculates output for the given input.
 
             INPUTS:
-                x - input to be propagated through the net.
+                state - Input to be propagated through the network.
 
             OUTPUTS:
                 action
         """
 
-        # Get muy and sigma from network
-        m, log_stdev = self(s)
+        # Get mu and sigma from network
+        mu, log_sigma = self(state)
 
         # Sample action from normal distribution
-        u = m + log_stdev.exp()*torch.randn_like(m)
+        u = mu + log_sigma.exp()*torch.randn_like(mu)
 
         # Normalize action between -1 and 1
         a = torch.tanh(u).cpu()
 
         return a
 
-    def sample_action_and_llhood(self, s):
+    def sample_action_and_log_probability(self, state):
         # Get mu and sigma from network
-        m, log_stdev = self(s)
-        stdev = log_stdev.exp()
+        mu, log_sigma = self(state)
+        sigma = log_sigma.exp()
 
         # Sample action from normal distribution
-        u = m + stdev*torch.randn_like(m)
+        u = mu + sigma*torch.randn_like(mu)
 
         # Normalize action between -1 and 1
         a = torch.tanh(u)
 
         # From section C of appendix in SAC paper
-        llhood = (
-            Normal(m, stdev).log_prob(u) - torch.log(torch.clamp(1 - a.pow(2), 1e-6, 1.0))
+        log_probability = (
+            Normal(mu, sigma).log_prob(u) - torch.log(torch.clamp(1 - a.pow(2), 1e-6, 1.0))
         ).sum(dim=1, keepdim=True)
 
-        return a, llhood
+        return a, log_probability

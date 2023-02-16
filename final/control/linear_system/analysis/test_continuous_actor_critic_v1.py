@@ -3,7 +3,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pickle
 import sys
-import torch
 
 # Set seed
 try:
@@ -15,8 +14,6 @@ np.random.seed(seed)
 sys.path.append('./')
 from cost import cost, reference_point
 from dynamics import (
-    action_maximums,
-    action_minimums,
     action_dim,
     all_actions,
     f,
@@ -26,31 +23,34 @@ from dynamics import (
 )
 
 sys.path.append('../../../')
+from final.control.policies.continuous_actor_critic import ContinuousKoopmanPolicyIterationPolicy
 
 #%% Load Koopman tensor with pickle
-# with open('./analysis/tmp/path_based_tensor.pickle', 'rb') as handle:
-#     tensor = pickle.load(handle)
+with open('./analysis/tmp/path_based_tensor.pickle', 'rb') as handle:
+    tensor = pickle.load(handle)
 
 #%% Load LQR policy
-with open('./analysis/tmp/lqr/policy.pickle', 'rb') as file:
-    lqr_policy = pickle.load(file)
+with open('./analysis/tmp/lqr/policy.pickle', 'rb') as handle:
+    lqr_policy = pickle.load(handle)
 
 #%% Variables
 gamma = 0.99
 reg_lambda = 1.0
 
 #%% Koopman actor-critic policy
-with open('./analysis/tmp/continuous_actor_critic/policy.pkl', 'rb') as file:
-    koopman_policy = pickle.load(file)
-
-#%% Need a function to scale actions from policy network
-def scale_action(a, min, max):
-    """
-        Scale the result of tanh(u) to that of the action space.
-        This is linear and `a` is the only value with dependence on the policy parameters.
-    """
-
-    return (0.5*(a+1.0)*(max-min) + min)
+koopman_policy = ContinuousKoopmanPolicyIterationPolicy(
+    f,
+    gamma,
+    reg_lambda,
+    tensor,
+    state_minimums,
+    state_maximums,
+    all_actions,
+    cost,
+    save_data_path="./analysis/tmp/continuous_actor_critic",
+    seed=seed,
+    load_model=True
+)
 
 #%% Functions for showing/saving figures
 def show_plot():
@@ -100,7 +100,8 @@ def watch_agent(num_episodes, num_steps_per_episode, specified_episode):
             # Get actions for current state and save them
             lqr_action = lqr_policy.get_action(lqr_state)
             lqr_actions[episode_num, step_num] = lqr_action[:, 0]
-            actor_critic_action = koopman_policy.agent.act(torch.Tensor(actor_critic_state[:, 0])).numpy()
+            actor_critic_action, _ = koopman_policy.get_action(actor_critic_state)
+            actor_critic_action = np.array([actor_critic_action.detach().numpy()])
             actor_critic_actions[episode_num, step_num] = actor_critic_action[:, 0]
 
             # Compute costs

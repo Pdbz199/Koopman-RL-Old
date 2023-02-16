@@ -1,30 +1,49 @@
+"""
+    LINK TO PAPER:
+    https://cloudflare-ipfs.com/ipfs/bafybeibg7jh2hm4w2vcpkgb55qeguo5oiom7qff5s4dxw4xfrjjlamfbg4/Soft%20Actor-Critic-%20Off-Policy%20Maximum%20Entropy%20Deep%20Reinforcement%20Learning%20with%20a%20Stochastic%20Actor.pdf
+"""
+
 import numpy as np
-import time
 import torch
 
-from final.control.policies.soft_actor_critic.networks import Memory, VNetwork, QNetwork, PolicyNetwork
-from sys import stdout
-from typing import List
+from final.control.policies.soft_actor_critic.networks import (
+    Memory,
+    PolicyNetwork,
+    QNetwork,
+    VNetwork
+)
+from typing import Callable, List
 
-use_cuda = torch.cuda.is_available()
-device = torch.device("cuda" if use_cuda else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 """ GENERAL METHODS """
 
 def update_net(target, source, tau):
+    """
+        This is equivalent to line 12 of the Soft Actor-Critic algorithm in the paper.
+        (c) in figure 3 of the paper suggests that tau should be between 0.01 and 0.001.
+    """
+
+    # Confirm that tau is between 0 and 1
     assert tau >= 0 and tau <= 1, "tau must be between 0 and 1 (inclusive)."
 
+    # Update parameters
     for target_param, source_param in zip(target.parameters(), source.parameters()):
         target_param.data.copy_(
             tau * source_param.data + (1.0 - tau) * target_param.data
         )
 
 # def normalize_angle(x):
+#     """
+#         If there are angles in the state space, this will matter.
+#     """
+
 #     return (((x+np.pi) % (2*np.pi)) - np.pi)
 
 def scale_action(a, min, max):
     """
         Scale the result of tanh(u) to that of the action space.
+        This is linear and `a` is the only value with dependence on the policy parameters.
     """
 
     return (0.5*(a+1.0)*(max-min) + min)
@@ -33,27 +52,27 @@ def scale_action(a, min, max):
 
 class Agent:
     """
-        ATTRIBUTES:    
+        ATTRIBUTES:
 
         METHODS:
-            fit --  
-            s_score --  
-            sample_a -- 
-            sample_m_state -- 
-            act --    
-            learn --
+            fit - 
+            s_score - 
+            sample_a - 
+            sample_m_state - 
+            act - 
+            learn - 
     """
 
     def __init__(
         self,
-        state_dim=2,
-        action_dim=1,
+        state_dim,
+        action_minimums,
+        action_maximums,
         memory_capacity=50_000,
         batch_size=64,
         discount_factor=0.99,
-        temperature=1.0, # 0.33
-        soft_lr=5e-3,
-        reward_scale=1.0
+        reward_scale=10,
+        tau=1e-3
     ):
         """
             Initializes the agent.
@@ -64,37 +83,53 @@ class Agent:
                 None
         """
 
-        self.x_dim = state_dim
-        self.u_dim = action_dim
-        self.xu_dim = self.x_dim + self.u_dim
-        self.batch_size = batch_size 
-        self.gamma = discount_factor
-        self.soft_lr = soft_lr        
-        self.alpha = temperature
-        self.reward_scale = reward_scale
-         
-        self.memory = Memory(memory_capacity)
-        self.actor = PolicyNetwork(self.x_dim, self.u_dim).to(device)        
-        self.critic1 = QNetwork(self.x_dim, self.u_dim).to(device)
-        self.critic2 = QNetwork(self.x_dim, self.u_dim).to(device)
-        self.baseline = VNetwork(self.x_dim).to(device)
-        self.baseline_target = VNetwork(self.x_dim).to(device)
+        self.action_minimums = action_minimums
+        self.action_maximums = action_maximums
 
+        self.x_dim = state_dim
+        self.u_dim = len(action_minimums)
+        self.xu_dim = state_dim + self.u_dim
+        self.batch_size = batch_size
+        self.gamma = discount_factor
+        self.reward_scale = reward_scale
+        self.alpha = 1 / reward_scale
+        self.tau = tau
+
+        self.memory = Memory(memory_capacity)
+        self.actor = PolicyNetwork(state_dim, self.u_dim).to(device)
+        self.critic1 = QNetwork(state_dim, self.u_dim).to(device)
+        self.critic2 = QNetwork(state_dim, self.u_dim).to(device)
+        self.baseline = VNetwork(state_dim).to(device)
+        self.baseline_target = VNetwork(state_dim).to(device)
+
+        # Make sure parameters are initially equal for baseline and baseline_target
         update_net(
             target=self.baseline_target,
             source=self.baseline,
-            tau=1.0 # 0.001
+            tau=1.0
         )
 
     def act(self, state):
+        # At inference time, we don't want to compute gradients
         with torch.no_grad():
-            return self.actor.sample_action(state)
+            unscaled_action = self.actor.sample_action(state)
+            return scale_action(unscaled_action, self.action_minimums, self.action_maximums)
 
     def memorize(self, event):
+        """
+            Store an event in the replay buffer.
+
+            INPUTS:
+                event - Array containing environment step information.
+
+            OUTPUTS:
+                None
+        """
+
         self.memory.store(event[np.newaxis, :])
 
     def learn(self):
-        # Sample batch of data from replay buffer
+        # Sample batch of data from replay buffer and concatenate data into long arrays
         data_batch = self.memory.sample(self.batch_size)
         data_batch = np.concatenate(data_batch, axis=0)
 
@@ -104,12 +139,18 @@ class Agent:
         r_batch = torch.FloatTensor(data_batch[:, self.xu_dim]).unsqueeze(1).to(device)
         x_prime_batch = torch.FloatTensor(data_batch[:, self.xu_dim+1:self.xu_dim+1+self.x_dim]).to(device)
 
-        # Optimize Q networks
-        q1 = self.critic1(x_batch, u_batch)
-        q2 = self.critic2(x_batch, u_batch)     
-        v_prime = self.baseline_target(x_prime_batch)
-        q_approx = self.reward_scale * r_batch + self.gamma * v_prime
+        # Compute actions and log probabilities for each state in the sample
+        a_batch_off, log_probability = self.actor.sample_action_and_log_probability(x_batch)
 
+        """ Optimize Q networks """
+
+        q1 = self.critic1(x_batch, u_batch)
+        q2 = self.critic2(x_batch, u_batch)
+        v_prime = self.baseline_target(x_prime_batch)
+        # Equation 8
+        q_approx = self.reward_scale*r_batch + self.gamma*v_prime
+
+        # Mean squared error as in equation 7
         q1_loss = self.critic1.loss_func(q1, q_approx.detach())
         self.critic1.optimizer.zero_grad()
         q1_loss.backward()
@@ -120,190 +161,198 @@ class Agent:
         q2_loss.backward()
         self.critic2.optimizer.step()
 
-        # Optimize V network
+        """ Optimize V network """
+
         v = self.baseline(x_batch)
-        a_batch_off, llhood = self.actor.sample_action_and_llhood(x_batch)
         q1_off = self.critic1(x_batch, a_batch_off)
         q2_off = self.critic2(x_batch, a_batch_off)
         q_off = torch.min(q1_off, q2_off)
-        v_approx = q_off - self.alpha*llhood
+        # Equation 3
+        v_approx = q_off - log_probability
 
+        # Mean squared error as in equation 5
         v_loss = self.baseline.loss_func(v, v_approx.detach())
         self.baseline.optimizer.zero_grad()
         v_loss.backward()
         self.baseline.optimizer.step()
-        
-        # Optimize policy network
-        pi_loss = (llhood - q_off).mean()
+
+        """ Optimize policy network (equations 10 and 12) """
+
+        pi_loss = (log_probability - q_off).mean()
         self.actor.optimizer.zero_grad()
         pi_loss.backward()
         self.actor.optimizer.step()
 
-        # Update V target network
+        """ Update V target network  """
+
         update_net(
             target=self.baseline_target,
             source=self.baseline,
-            tau=self.soft_lr
+            tau=self.tau
         )
 
 class System:
     def __init__(
         self,
-        state_dim: float,
-        all_actions: List[List[float]],
+        true_dynamics: Callable[[List[float], List[float]], List[float]],
+        cost: Callable[[List[float], List[float]], float],
+        state_minimums: List[float],
+        state_maximums: List[float],
+        action_minimums: List[float],
+        action_maximums: List[float],
         memory_capacity=200_000,
-        env_steps=1,
-        grad_steps=1,
+        environment_steps=1,
+        gradient_steps=1,
         init_steps=256,
-        reward_scale=25,
-        temperature=1.0,
-        soft_lr=5e-3,
+        reward_scale=10,
+        tau=1e-3, # 5e-3
         batch_size=256,
-        hard_start=False,
-        original_state=True
-    ): # system='Hopper-v2' or 'Pendulum-v0', 'Hopper-v2', 'HalfCheetah-v2', 'Swimmer-v2'
-        self.x_dim = state_dim
-        self.all_actions = np.sort(all_actions, axis=1)
-        self.u_dim = all_actions.shape[1]
-        self.xu_dim = self.x_dim + self.u_dim
-        self.event_dim = self.x_dim*2 + self.u_dim + 1 # state, action, reward, and next_state in an array
+        is_episodic=False
+    ):
+        assert len(state_minimums) == len(state_maximums), "Min and max state must have same dimension."
+        assert len(action_minimums) == len(action_maximums), "Min and max action must have same dimension."
 
-        self.env_steps = env_steps
-        self.grad_steps = grad_steps
+        self.true_dynamics = true_dynamics
+        self.cost = cost
+
+        self.x_dim = len(state_minimums)
+        self.u_dim = len(action_minimums)
+        self.xu_dim = self.x_dim + self.u_dim
+        self.event_dim = self.x_dim + self.u_dim + 1 + self.x_dim # state, action, reward, and next_state
+
+        self.environment_steps = environment_steps
+        self.gradient_steps = gradient_steps
         self.init_steps = init_steps
         self.batch_size = batch_size
-        self.hard_start = hard_start
-        self.original_state = original_state
 
-        self.min_action = self.all_actions[:, 0]
-        self.max_action = self.all_actions[:, -1]
-        self.temperature = temperature
-        self.reward_scale = reward_scale
+        self.state_minimums = state_minimums
+        self.state_maximums = state_maximums
+        self.action_minimums = action_minimums
+        self.action_maximums = action_maximums
 
         self.agent = Agent(
-            s_dim=self.s_dim,
-            a_dim=self.a_dim,
+            state_dim=self.x_dim,
+            action_minimums=action_minimums,
+            action_maximums=action_maximums,
             memory_capacity=memory_capacity,
             batch_size=batch_size,
             reward_scale=reward_scale,
-            temperature=temperature,
-            soft_lr=soft_lr
-        )    
+            tau=tau
+        )
+
+        self.is_episodic = is_episodic
+
+        self.rng = np.random.default_rng()
+        self.latest_state = (0.5 * (self.rng.random((self.x_dim,1))*2-1) * (state_maximums-state_minimums))[:, 0]
+
+    def reward(self, x, u):
+        return -self.cost(x, u)
 
     def initialization(self):
-        event = np.empty(self.e_dim)
-        if self.hard_start:
-            initial_state = np.array([-np.pi,0.0])
-            self.env.state = initial_state
-        else:
-            self.env.reset()
-        if self.original_state:
-            state = self.env._get_obs()
-        else:
-            state = self.env.state 
-        
-        for init_step in range(0, self.init_steps):            
-            action = np.random.rand(self.a_dim)*2 - 1
-            reward = self.env.step(scale_action(action, self.min_action, self.max_action))[1]
-            if self.original_state:
-                next_state = self.env._get_obs()
-            else:
-                next_state = self.env.state
-                next_state[0] = normalize_angle(next_state[0])
+        # Create empty events matrix
+        events = np.empty((self.init_steps, self.event_dim))
 
-            event[:self.s_dim] = state
-            event[self.s_dim:self.sa_dim] = action
-            event[self.sa_dim] = reward
-            event[self.sa_dim+1:self.e_dim] = next_state
+        # If episodic, reset latest state to random initial condition
+        if self.is_episodic:
+            self.latest_state = (0.5 * (self.rng.random((self.x_dim,1))*2-1) * (self.state_maximums-self.state_minimums))[:, 0]
 
-            self.agent.memorize(event)
-            state = np.copy(next_state)
-    
-    def interaction(self, learn=True, remember=True):   
-        event = np.empty(self.e_dim)
-        if self.original_state:
-            state = self.env._get_obs()
-        else:            
-            state = self.env.state 
-            state[0] = normalize_angle(state[0])
+        state = np.vstack(self.latest_state)
 
-        for env_step in range(0, self.env_steps):
-            cuda_state = torch.FloatTensor(state).unsqueeze(0).to(device)         
-            action = self.agent.act(cuda_state, explore=learn)
+        for init_step in range(self.init_steps):
+            # Select random action between -1 and 1 and scale it
+            normalized_action = np.random.rand(self.u_dim)*2 - 1
+            action = scale_action(normalized_action, self.action_minimums, self.action_maximums)
 
-            reward = self.env.step(scale_action(action, self.min_action, self.max_action))[1]
+            # Get reward for state-action pair
+            reward = self.reward(state, action)
 
-            if self.original_state:
-                next_state = self.env._get_obs()
-            else:
-                next_state = self.env.state
-                next_state[0] = normalize_angle(next_state[0])
+            # Get next state from true dynamics
+            next_state = self.true_dynamics(state, action)
 
-            event[:self.s_dim] = state
-            event[self.s_dim:self.sa_dim] = action
-            event[self.sa_dim] = reward
-            event[self.sa_dim+1:self.e_dim] = next_state
+            # Populate the event array with state, action, reward, and next state
+            events[init_step, :self.x_dim] = state[:, 0]
+            events[init_step, self.x_dim:self.xu_dim] = action
+            events[init_step, self.xu_dim] = reward
+            events[init_step, self.xu_dim+1:self.event_dim] = next_state[:, 0]
+
+            # Add the event to the replay buffer
+            self.agent.memorize(events[init_step])
+
+            # Update state
+            state = next_state
+            self.latest_state = state[:, 0]
+
+    def interaction(self, learn=True, remember=True):
+        # Create empty events matrix
+        events = np.empty((self.environment_steps, self.event_dim))
+
+        # If episodic, reset latest state to random initial condition
+        if self.is_episodic:
+            self.latest_state = (0.5 * (self.rng.random((self.x_dim,1))*2-1) * (self.state_maximums-self.state_minimums))[:, 0]
+
+        for environment_step_num in range(self.environment_steps):
+            # Convert state to a cuda-friendly version
+            cuda_state = torch.FloatTensor(self.latest_state).unsqueeze(0).to(device) # Row vector (1, state_dim)
+            numpy_state = cuda_state.numpy().T  # Column vector (state_dim, 1)
+
+            # Get action from policy model
+            action = self.agent.act(cuda_state) # Get scaled action from policy network
+            numpy_action = action.numpy() # convert to numpy action
+
+            # Get reward from state-action pair
+            reward = self.reward(numpy_state, numpy_action) # Compute reward
+
+            # Get next state from true dynamics
+            next_state = self.true_dynamics(numpy_state, numpy_action) # Column vector (state_dim, 1)
+
+            # Populate the event array with state, action, reward, and next state
+            events[environment_step_num, :self.x_dim] = self.latest_state # Current state
+            events[environment_step_num, self.x_dim:self.xu_dim] = action # Action from policy
+            events[environment_step_num, self.xu_dim] = reward # Reward from state-action pair
+            events[environment_step_num, self.xu_dim+1:self.event_dim] = next_state[:, 0] # Next state
 
             if remember:
-                self.agent.memorize(event)   
+                # Add to replay buffer
+                self.agent.memorize(events[environment_step_num])
 
-            state = np.copy(next_state)
+            # Update state
+            self.latest_state = next_state[:, 0]
 
         if learn:
-            for grad_step in range(0, self.grad_steps):
+            for gradient_step_num in range(self.gradient_steps):
                 self.agent.learn()
 
-        return(event)
+        return events
 
-    def train_agent(self, tr_epsds, epsd_steps, initialization=True):
+    def train_agent(
+        self,
+        num_training_iterations,
+        initialization=True
+    ):
+        # Run some number of initial steps using random agent
         if initialization:
             self.initialization()
 
-        min_reward = 1e10
-        max_reward = -1e10
-        mean_reward = 0.0   
-        min_mean_reward = 1e10
-        max_mean_reward = -1e10   
+        # Refer to Soft Actor-Critic algorithm (Algorithm 1) in paper
+        for training_episode_num in range(num_training_iterations):
+            # Take some number of steps in the environment and store the event data
+            # This function will also compute gradient updates if there is enough data to start learning
+            events = self.interaction(
+                learn = len(self.agent.memory.data) >= self.batch_size
+            )
 
-        mean_rewards = []           
+            # Parse rewards from the events data
+            rewards = events[:, self.xu_dim]
 
-        for epsd in range(0, tr_epsds):
-            epsd_min_reward = 1e10
-            epsd_max_reward = -1e10                
-            epsd_mean_reward = 0.0
+            # Compute min, max, and mean rewards from the training episode
+            min_reward = np.min(rewards)
+            max_reward = np.max(rewards)
+            total_reward = rewards.sum()
+            mean_reward = total_reward / len(rewards)
 
-            if self.hard_start:
-                initial_state = np.array([-np.pi,0.0])
-                self.env.state = initial_state
-            else:
-                self.env.reset()
-
-            for epsd_step in range(0, epsd_steps):
-                if len(self.agent.memory.data) < self.batch_size:
-                    event = self.interaction(learn=False)
-                else:
-                    event = self.interaction()
-                r = event[self.sa_dim]
-
-                min_reward = np.min([r, min_reward])
-                max_reward = np.max([r, max_reward])
-                epsd_min_reward = np.min([r, epsd_min_reward])                        
-                epsd_max_reward = np.max([r, epsd_max_reward])                        
-                epsd_mean_reward += r           
-
-            # if epsd_mean_reward > max_mean_reward:
-            #     pickle.dump(self,open(self.type+'.p','wb'))
-
-            epsd_mean_reward /= epsd_steps            
-            mean_rewards.append(epsd_mean_reward)
-
-            min_mean_reward = np.min([epsd_mean_reward, min_mean_reward])
-            max_mean_reward = np.max([epsd_mean_reward, max_mean_reward])            
-            mean_reward += (epsd_mean_reward - mean_reward)/(epsd+1)            
-            stdout.write("Finished epsd %i, epsd.min(r) = %.4f, epsd.max(r) = %.4f, min.(r) = %.4f, max.(r) = %.4f, min.(av.r) = %.4f, max.(av.r) = %.4f, epsd.av.r = %.4f, total av.r = %.4f\r " %
-                ((epsd+1), epsd_min_reward, epsd_max_reward, min_reward, max_reward, min_mean_reward, max_mean_reward, epsd_mean_reward, mean_reward))
-            stdout.flush()
-            time.sleep(0.0001)
-        print()
-
-        return mean_rewards
+            # Print out reward details for the episode
+            print(
+                "Finished episode %i, min reward = %.4f, max reward = %.4f, average reward per step = %.4f, total reward = %.4f" %
+                ((training_episode_num+1), min_reward, max_reward, mean_reward, total_reward),
+                end='\r'
+            )
