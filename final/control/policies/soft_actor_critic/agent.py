@@ -94,16 +94,34 @@ class Agent:
         self.batch_size = batch_size
         self.gamma = discount_factor
         self.reward_scale = reward_scale
-        self.alpha = 1 / reward_scale
         self.tau = tau
         self.learning_rate = learning_rate
 
         self.memory = Memory(memory_capacity)
-        self.actor = PolicyNetwork(state_dim, self.u_dim, learning_rate=self.learning_rate).to(device)
-        self.critic1 = QNetwork(state_dim, self.u_dim, learning_rate=self.learning_rate).to(device)
-        self.critic2 = QNetwork(state_dim, self.u_dim, learning_rate=self.learning_rate).to(device)
-        self.baseline = VNetwork(state_dim, learning_rate=self.learning_rate).to(device)
-        self.baseline_target = VNetwork(state_dim, learning_rate=self.learning_rate).to(device)
+        self.actor = PolicyNetwork(
+            state_dim,
+            action_minimums,
+            action_maximums,
+            learning_rate=self.learning_rate
+        ).to(device)
+        self.critic1 = QNetwork(
+            state_dim,
+            self.u_dim,
+            learning_rate=self.learning_rate
+        ).to(device)
+        self.critic2 = QNetwork(
+            state_dim,
+            self.u_dim,
+            learning_rate=self.learning_rate
+        ).to(device)
+        self.baseline = VNetwork(
+            state_dim,
+            learning_rate=self.learning_rate
+        ).to(device)
+        self.baseline_target = VNetwork(
+            state_dim,
+            learning_rate=self.learning_rate
+        ).to(device)
 
         # Make sure parameters are initially equal for baseline and baseline_target
         update_net(
@@ -112,12 +130,15 @@ class Agent:
             tau=1.0
         )
 
-    def act(self, state):
-        # At inference time, we don't want to compute gradients
-        with torch.no_grad():
-            normalized_action = self.actor.sample_action(state)
-            action = scale_action(normalized_action, self.action_minimums[0], self.action_maximums[0])
-            return action
+    def act(self, state, reparameterize=False):
+        """
+            Sample scaled action from agent.
+            If `reparameterize` is True, compute gradients.
+            If `reparameterize` is False, do not compute gradients.
+        """
+
+        action = self.actor.sample_action(state, reparameterize=reparameterize)
+        return action
 
     def memorize(self, event):
         """
@@ -143,46 +164,75 @@ class Agent:
         r_batch = torch.FloatTensor(data_batch[:, self.xu_dim]).unsqueeze(1).to(device)
         x_prime_batch = torch.FloatTensor(data_batch[:, self.xu_dim+1:self.xu_dim+1+self.x_dim]).to(device)
 
-        # Compute actions and log probabilities for each state in the sample
-        a_batch_off, log_probability = self.actor.sample_action_and_log_probability(x_batch)
+        """ Compute Vs, actions, log probabilities, and Qs """
 
-        """ Optimize Q networks """
+        # Compute V(x) for x in sample from replay buffer
+        v_batch = self.baseline(x_batch)
 
-        q1 = self.critic1(x_batch, u_batch)
-        q2 = self.critic2(x_batch, u_batch)
-        v_prime = self.baseline_target(x_prime_batch)
-        # Equation 8
-        q_approx = self.reward_scale*r_batch + self.gamma*v_prime
+        # Sample actions and log probabilities
+        action_batch, log_probability_batch = self.actor.sample_action_and_log_probability(
+            x_batch,
+            reparameterize=False
+        )
 
-        # Mean squared error as in equation 7
-        q1_loss = self.critic1.loss_func(q1, q_approx.detach())
-        self.critic1.optimizer.zero_grad()
-        q1_loss.backward()
-        self.critic1.optimizer.step()
-
-        q2_loss = self.critic2.loss_func(q2, q_approx.detach())
-        self.critic2.optimizer.zero_grad()
-        q2_loss.backward()
-        self.critic2.optimizer.step()
+        # Compute Q(x, u) for x in sample from replay buffer and action from current policy
+        q1_new_policy_batch = self.critic1(x_batch, action_batch)
+        q2_new_policy_batch = self.critic2(x_batch, action_batch)
+        q_new_policy_batch = torch.min(q1_new_policy_batch, q2_new_policy_batch)
 
         """ Optimize V network """
 
-        v = self.baseline(x_batch)
-        q1_off = self.critic1(x_batch, a_batch_off)
-        q2_off = self.critic2(x_batch, a_batch_off)
-        q_off = torch.min(q1_off, q2_off)
         # Equation 3
-        v_approx = q_off - log_probability
+        v_target_batch = q_new_policy_batch - log_probability_batch
 
-        # Mean squared error as in equation 5
-        v_loss = self.baseline.loss_func(v, v_approx.detach())
+        # Compute loss (mean squared error as in equation 5)
+        v_loss = 0.5 * self.baseline.loss_func(v_batch, v_target_batch)
+
+        # Backprop
         self.baseline.optimizer.zero_grad()
         v_loss.backward()
         self.baseline.optimizer.step()
 
+        """ Optimize Q networks """
+
+        # Compute V(x')
+        # TODO: Why is this self.baseline_target instead of self.baseline ?
+        v_prime_batch = self.baseline_target(x_prime_batch)
+
+        # Compute Q values with actions sampled from replay buffer
+        q1_old_policy_batch = self.critic1(x_batch, u_batch)
+        q2_old_policy_batch = self.critic2(x_batch, u_batch)
+
+        # Equation 8
+        q_target = self.reward_scale*r_batch + self.gamma*v_prime_batch
+
+        # Compute loss (Mean squared error as in equation 7)
+        q1_loss = 0.5 * self.critic1.loss_func(q1_old_policy_batch, q_target.detach())
+        q2_loss = 0.5 * self.critic2.loss_func(q2_old_policy_batch, q_target.detach())
+        q_loss = q1_loss + q2_loss
+
+        # Backprop
+        self.critic1.optimizer.zero_grad()
+        self.critic2.optimizer.zero_grad()
+        q_loss.backward()
+        self.critic1.optimizer.step()
+        self.critic2.optimizer.step()
+
         """ Optimize policy network (equations 10 and 12) """
 
-        pi_loss = (log_probability - q_off).mean()
+        # Sample new actions and log probabilities
+        action_batch, log_probability_batch = self.actor.sample_action_and_log_probability(
+            x_batch,
+            reparameterize=True
+        )
+        q1_new_policy_batch = self.critic1(x_batch, action_batch)
+        q2_new_policy_batch = self.critic2(x_batch, action_batch)
+        q_new_policy_batch = torch.min(q1_new_policy_batch, q2_new_policy_batch)
+
+        # Compute loss
+        pi_loss = (log_probability_batch - q_new_policy_batch).mean()
+
+        # Backprop
         self.actor.optimizer.zero_grad()
         pi_loss.backward()
         self.actor.optimizer.step()

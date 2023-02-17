@@ -1,8 +1,9 @@
 # Imports
+import gym
 import numpy as np
 import pickle
+import pybullet_envs
 import sys
-import gym
 
 # Set seed
 try:
@@ -67,23 +68,43 @@ reg_lambda = 1.0
 #     render_env=True
 # )
 
+# koopman_policy = System(
+#     is_gym_env=True,
+#     true_dynamics=gym.make('BipedalWalker-v3'),
+#     cost=cost,
+#     state_minimums=np.vstack([3.14, 5.0, 5.0, 5.0, 3.14, 5.0, 3.14, 5.0, 5.0, 3.14, 5.0, 3.14, 5.0, 5.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]),
+#     state_maximums=-np.vstack([3.14, 5.0, 5.0, 5.0, 3.14, 5.0, 3.14, 5.0, 5.0, 3.14, 5.0, 3.14, 5.0, 5.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]),
+#     action_minimums=np.vstack([-1.0, -1.0, -1.0, -1.0]),
+#     action_maximums=np.vstack([1.0, 1.0, 1.0, 1.0]),
+#     environment_steps=10_000,
+#     memory_capacity=1_000_000,
+#     gradient_steps=1,
+#     init_steps=10_000,
+#     reward_scale=4,
+#     batch_size=256,
+#     is_episodic=True,
+#     render_env=False,
+#     tau=1e-3,
+#     learning_rate=3e-4
+# )
+
 koopman_policy = System(
     is_gym_env=True,
-    true_dynamics=gym.make('BipedalWalker-v3'),
+    true_dynamics=gym.make('InvertedPendulumBulletEnv-v0'),
     cost=cost,
-    state_minimums=np.vstack([3.14, 5.0, 5.0, 5.0, 3.14, 5.0, 3.14, 5.0, 5.0, 3.14, 5.0, 3.14, 5.0, 5.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]),
-    state_maximums=-np.vstack([3.14, 5.0, 5.0, 5.0, 3.14, 5.0, 3.14, 5.0, 5.0, 3.14, 5.0, 3.14, 5.0, 5.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]),
+    state_minimums=np.vstack([0.0 for _ in range(5)]),
+    state_maximums=-np.vstack([0.0 for _ in range(5)]),
     action_minimums=np.vstack([-1.0, -1.0, -1.0, -1.0]),
     action_maximums=np.vstack([1.0, 1.0, 1.0, 1.0]),
     environment_steps=10_000,
     memory_capacity=1_000_000,
     gradient_steps=1,
     init_steps=10_000,
-    reward_scale=5,
+    reward_scale=2,
     batch_size=256,
     is_episodic=True,
     render_env=False,
-    tau=1e-3,
+    tau=5e-3,
     learning_rate=3e-4
 )
 

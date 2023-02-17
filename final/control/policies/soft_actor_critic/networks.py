@@ -6,6 +6,14 @@ import torch.nn.functional as F
 
 from torch.distributions import Normal
 
+def scale_action(a, min, max):
+    """
+        Scale the result of tanh(u) to that of the action space.
+        This is linear and `a` is the only value with dependence on the policy parameters.
+    """
+
+    return (0.5*(a+1.0)*(max-min) + min)
+
 class Memory:
     """
         The Memory class allows to store and sample events.
@@ -196,7 +204,8 @@ class PolicyNetwork(nn.Module):
     def __init__(
         self,
         state_dim,
-        action_dim,
+        action_minimums,
+        action_maximums,
         learning_rate=3e-4,
         min_log_sigma=-30,
         max_log_sigma=30
@@ -210,6 +219,13 @@ class PolicyNetwork(nn.Module):
 
         # Initialize parent module
         super().__init__()
+
+        # Store action mimimums and maximums
+        self.action_minimums = action_minimums
+        self.action_maximums = action_maximums
+
+        # Extract action dim from input
+        action_dim = len(action_minimums)
 
         # Set the minimum and maximum log std
         self.min_log_sigma = min_log_sigma
@@ -241,9 +257,9 @@ class PolicyNetwork(nn.Module):
         # Clamp log sigma to be within the defined range
         log_sigma = torch.clamp(log_sigma, self.min_log_sigma, self.max_log_sigma)
 
-        return mu, log_sigma
+        return mu, log_sigma.exp()
 
-    def sample_action(self, state):
+    def sample_action(self, state, reparameterize=False):
         """"
             Calculates output for the given input.
 
@@ -255,30 +271,50 @@ class PolicyNetwork(nn.Module):
         """
 
         # Get mu and sigma from network
-        mu, log_sigma = self(state)
+        mu, sigma = self(state)
 
         # Sample action from normal distribution
-        u = mu + log_sigma.exp()*torch.randn_like(mu)
+        probability_distribution = Normal(mu, sigma)
+
+        if reparameterize:
+            u = probability_distribution.rsample()
+        else:
+            u = probability_distribution.sample()
 
         # Normalize action between -1 and 1
-        a = torch.tanh(u).cpu()
+        normalized_a = torch.tanh(u).cpu()
+        a = scale_action(
+            normalized_a,
+            torch.Tensor(self.action_minimums[0]),
+            torch.Tensor(self.action_maximums[0])
+        )
 
         return a
 
-    def sample_action_and_log_probability(self, state):
+    def sample_action_and_log_probability(self, state, reparameterize=False):
         # Get mu and sigma from network
-        mu, log_sigma = self(state)
-        sigma = log_sigma.exp()
+        mu, sigma = self(state)
 
         # Sample action from normal distribution
-        u = mu + sigma*torch.randn_like(mu)
+        probability_distribution = Normal(mu, sigma)
+
+        if reparameterize:
+            u = probability_distribution.rsample()
+        else:
+            u = probability_distribution.sample()
 
         # Normalize action between -1 and 1
-        a = torch.tanh(u)
+        normalized_a = torch.tanh(u)
+        a = scale_action(
+            normalized_a,
+            torch.Tensor(self.action_minimums[0]),
+            torch.Tensor(self.action_maximums[0])
+        )
 
         # From section C of appendix in SAC paper
-        log_probability = (
-            Normal(mu, sigma).log_prob(u) - torch.log(torch.clamp(1 - a.pow(2), 1e-6, 1.0))
+        reparameterization_noise = 1e-6
+        log_probabilities = (
+            probability_distribution.log_prob(u) - torch.log(torch.clamp(1 - a.pow(2), reparameterization_noise, 1.0))
         ).sum(dim=1, keepdim=True)
 
-        return a, log_probability
+        return a, log_probabilities
