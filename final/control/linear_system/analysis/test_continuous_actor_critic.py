@@ -43,15 +43,6 @@ reg_lambda = 1.0
 with open('./analysis/tmp/continuous_actor_critic/policy.pkl', 'rb') as file:
     koopman_policy = pickle.load(file)
 
-#%% Need a function to scale actions from policy network
-def scale_action(a, min, max):
-    """
-        Scale the result of tanh(u) to that of the action space.
-        This is linear and `a` is the only value with dependence on the policy parameters.
-    """
-
-    return (0.5*(a+1.0)*(max-min) + min)
-
 #%% Functions for showing/saving figures
 def show_plot():
     plt.tight_layout()

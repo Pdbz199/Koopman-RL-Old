@@ -19,7 +19,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 """ GENERAL METHODS """
 
-def update_net(target, source, tau):
+def update_net(source, target, tau):
     """
         This is equivalent to line 12 of the Soft Actor-Critic algorithm in the paper.
         (c) in figure 3 of the paper suggests that tau should be between 0.01 and 0.001.
@@ -29,7 +29,7 @@ def update_net(target, source, tau):
     assert tau >= 0 and tau <= 1, "tau must be between 0 and 1 (inclusive)."
 
     # Update parameters
-    for target_param, source_param in zip(target.parameters(), source.parameters()):
+    for source_param, target_param in zip(source.parameters(), target.parameters()):
         target_param.data.copy_(
             tau * source_param.data + (1.0 - tau) * target_param.data
         )
@@ -40,14 +40,6 @@ def normalize_angle(x):
     """
 
     return (((x+np.pi) % (2*np.pi)) - np.pi)
-
-def scale_action(a, min, max):
-    """
-        Scale the result of tanh(u) to that of the action space.
-        This is linear and `a` is the only value with dependence on the policy parameters.
-    """
-
-    return (0.5*(a+1.0)*(max-min) + min)
 
 """ CLASSES """
 
@@ -102,7 +94,9 @@ class Agent:
             state_dim,
             action_minimums,
             action_maximums,
-            learning_rate=self.learning_rate
+            learning_rate=self.learning_rate,
+            # min_log_sigma=1,
+            # max_log_sigma=2.7
         ).to(device)
         self.critic1 = QNetwork(
             state_dim,
@@ -137,8 +131,7 @@ class Agent:
             If `reparameterize` is False, do not compute gradients.
         """
 
-        action = self.actor.sample_action(state, reparameterize=reparameterize)
-        return action
+        return self.actor.sample_action(state, reparameterize=reparameterize)
 
     def memorize(self, event):
         """
@@ -328,8 +321,7 @@ class System:
 
             # Select random action between -1 and 1 and scale it
             normalized_action = np.random.rand(self.u_dim)*2 - 1
-            # action = scale_action(normalized_action, self.action_minimums, self.action_maximums)
-            action = scale_action(normalized_action, self.action_minimums[0], self.action_maximums[0])
+            action = self.agent.actor.scale_action(normalized_action)
 
             if self.is_gym_env:
                 # Get next state, reward, and more from true dynamics
@@ -355,9 +347,9 @@ class System:
             state = np.vstack(next_state)
             self.latest_state = state[:, 0]
 
-            # If done condition is met, break out of loop
+            # If done condition is met, reset env for initialization
             if self.has_completed:
-                break
+                self.reset_env()
 
     def interaction(self, learn=True, remember=True):
         # Create empty events matrix
@@ -403,15 +395,12 @@ class System:
             # Update state
             self.latest_state = next_state
 
-            # Update number of last step taken
-            last_step = environment_step_num
-
             # If done condition is met, break out of loop
             if self.has_completed:
                 break
 
         # Parse out all empty rows
-        events = events[:last_step]
+        events = events[:environment_step_num]
 
         if learn:
             for gradient_step_num in range(self.gradient_steps):

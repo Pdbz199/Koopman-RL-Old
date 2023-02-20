@@ -6,14 +6,6 @@ import torch.nn.functional as F
 
 from torch.distributions import Normal
 
-def scale_action(a, min, max):
-    """
-        Scale the result of tanh(u) to that of the action space.
-        This is linear and `a` is the only value with dependence on the policy parameters.
-    """
-
-    return (0.5*(a+1.0)*(max-min) + min)
-
 class Memory:
     """
         The Memory class allows to store and sample events.
@@ -255,9 +247,15 @@ class PolicyNetwork(nn.Module):
         log_sigma = self.l32(x)
 
         # Clamp log sigma to be within the defined range
-        log_sigma = torch.clamp(log_sigma, self.min_log_sigma, self.max_log_sigma)
+        # log_sigma = torch.clamp(log_sigma, self.min_log_sigma, self.max_log_sigma)
 
         return mu, log_sigma.exp()
+    
+    def scale_action(self, normalized_action):
+        normalized_action = torch.Tensor(normalized_action)
+        minimum = torch.Tensor(self.action_minimums[0])
+        maximum = torch.Tensor(self.action_maximums[0])
+        return (0.5*(normalized_action+1.0)*(maximum-minimum) + minimum)
 
     def sample_action(self, state, reparameterize=False):
         """"
@@ -282,14 +280,10 @@ class PolicyNetwork(nn.Module):
             u = probability_distribution.sample()
 
         # Normalize action between -1 and 1
-        normalized_a = torch.tanh(u).cpu()
-        a = scale_action(
-            normalized_a,
-            torch.Tensor(self.action_minimums[0]),
-            torch.Tensor(self.action_maximums[0])
-        )
+        normalized_action = torch.tanh(u).cpu()
 
-        return a
+        # Return scaled action
+        return self.scale_action(normalized_action)
 
     def sample_action_and_log_probability(self, state, reparameterize=False):
         # Get mu and sigma from network
@@ -304,17 +298,17 @@ class PolicyNetwork(nn.Module):
             u = probability_distribution.sample()
 
         # Normalize action between -1 and 1
-        normalized_a = torch.tanh(u)
-        a = scale_action(
-            normalized_a,
-            torch.Tensor(self.action_minimums[0]),
-            torch.Tensor(self.action_maximums[0])
-        )
+        normalized_action = torch.tanh(u)
 
         # From section C of appendix in SAC paper
         reparameterization_noise = 1e-6
         log_probabilities = (
-            probability_distribution.log_prob(u) - torch.log(torch.clamp(1 - a.pow(2), reparameterization_noise, 1.0))
+            probability_distribution.log_prob(u) - \
+                torch.log(torch.clamp(1 - normalized_action.pow(2), min=reparameterization_noise, max=1.0))
         ).sum(dim=1, keepdim=True)
 
-        return a, log_probabilities
+        # Return scaled action and log probability
+        return (
+            self.scale_action(normalized_action),
+            log_probabilities
+        )

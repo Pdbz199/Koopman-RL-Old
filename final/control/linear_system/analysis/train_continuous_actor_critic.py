@@ -109,8 +109,9 @@ koopman_policy = System(
 )
 
 # Train Koopman policy
-num_training_iterations = 400
-initialization = True
+num_training_iterations = 250
+initialization = False
+# initialization = True
 koopman_policy.train_agent(num_training_iterations, initialization)
 
 # Save koopman policy
