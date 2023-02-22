@@ -301,6 +301,8 @@ class System:
         # Set up random number generator
         self.rng = np.random.default_rng()
 
+        self.latest_state = None
+
     def reward(self, x, u):
         return -self.cost(x, u)
     
@@ -312,7 +314,7 @@ class System:
 
     def initialization(self):
         # If episodic, reset latest state to random initial condition
-        if self.is_episodic:
+        if self.is_episodic or self.latest_state is None:
             self.reset_env()
 
         state = np.vstack(self.latest_state) # Turn array into column vector
@@ -361,7 +363,7 @@ class System:
         events = np.empty((self.environment_steps, self.event_dim))
 
         # If episodic, reset latest state to random initial condition
-        if self.is_episodic:
+        if self.is_episodic or self.latest_state is None:
             self.reset_env()
 
         for environment_step_num in range(self.environment_steps):
