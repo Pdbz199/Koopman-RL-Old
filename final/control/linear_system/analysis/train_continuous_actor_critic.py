@@ -37,6 +37,7 @@ reg_lambda = 1.0
 
 # Koopman soft actor-critic policy
 # koopman_policy = System(
+#     is_gym_env=False,
 #     true_dynamics=f,
 #     cost=cost,
 #     state_minimums=state_minimums,
@@ -55,17 +56,17 @@ reg_lambda = 1.0
 #     is_gym_env=True,
 #     true_dynamics=gym.make('CartPole-v1'),
 #     cost=cost,
-#     state_minimums=np.array([[-4.8],[-np.inf],[-0.42],[-np.inf]]),
-#     state_maximums=np.array([[4.8],[np.inf],[0.42],[np.inf]]),
-#     action_minimums=np.array([[0.0]]),
-#     action_maximums=np.array([[1.0]]),
+#     state_minimums=np.vstack([-4.8, -np.inf, -0.42, -np.inf]),
+#     state_maximums=np.vstack([4.8, np.inf, 0.42, np.inf]),
+#     action_minimums=np.vstack([0.0]),
+#     action_maximums=np.vstack([1.0]),
 #     environment_steps=200,
 #     gradient_steps=1,
 #     init_steps=256,
 #     reward_scale=10,
 #     batch_size=256,
 #     is_episodic=True,
-#     render_env=True
+#     render_env=False
 # )
 
 # koopman_policy = System(
@@ -109,7 +110,7 @@ koopman_policy = System(
 )
 
 # Train Koopman policy
-num_training_iterations = 250
+num_training_iterations = 2_000
 initialization = False
 # initialization = True
 koopman_policy.train_agent(num_training_iterations, initialization)

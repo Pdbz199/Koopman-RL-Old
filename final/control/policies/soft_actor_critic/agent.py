@@ -83,6 +83,7 @@ class Agent:
         self.x_dim = state_dim
         self.u_dim = len(action_minimums)
         self.xu_dim = state_dim + self.u_dim
+        self.event_dim = self.x_dim + self.u_dim + 1 + self.x_dim + 1 # state, action, reward, next state, and done
         self.batch_size = batch_size
         self.gamma = discount_factor
         self.reward_scale = reward_scale
@@ -155,7 +156,8 @@ class Agent:
         x_batch = torch.FloatTensor(data_batch[:, :self.x_dim]).to(device)
         u_batch = torch.FloatTensor(data_batch[:, self.x_dim:self.xu_dim]).to(device)
         r_batch = torch.FloatTensor(data_batch[:, self.xu_dim]).unsqueeze(1).to(device)
-        x_prime_batch = torch.FloatTensor(data_batch[:, self.xu_dim+1:self.xu_dim+1+self.x_dim]).to(device)
+        x_prime_batch = torch.FloatTensor(data_batch[:, self.xu_dim+1:self.event_dim-1]).to(device)
+        done = torch.BoolTensor(data_batch[:, self.event_dim-1]).to(device)
 
         """ Compute Vs, actions, log probabilities, and Qs """
 
@@ -188,9 +190,9 @@ class Agent:
 
         """ Optimize Q networks """
 
-        # Compute V(x')
-        # TODO: Why is this self.baseline_target instead of self.baseline ?
+        # Compute V(x') as in equation 8
         v_prime_batch = self.baseline_target(x_prime_batch)
+        v_prime_batch[done] = 0.0
 
         # Compute Q values with actions sampled from replay buffer
         q1_old_policy_batch = self.critic1(x_batch, u_batch)
@@ -271,7 +273,7 @@ class System:
         self.x_dim = len(state_minimums)
         self.u_dim = len(action_minimums)
         self.xu_dim = self.x_dim + self.u_dim
-        self.event_dim = self.x_dim + self.u_dim + 1 + self.x_dim # state, action, reward, and next_state
+        self.event_dim = self.x_dim + self.u_dim + 1 + self.x_dim + 1 # state, action, reward, next_state, and done
 
         self.environment_steps = environment_steps
         self.gradient_steps = gradient_steps
@@ -325,20 +327,23 @@ class System:
 
             if self.is_gym_env:
                 # Get next state, reward, and more from true dynamics
-                # next_state, reward, self.has_completed, _ = self.true_dynamics.step(int(action[0,0])) # Cartpole
+                # next_state, reward, self.has_completed, _ = self.true_dynamics.step(int(action[0])) # Cartpole
                 next_state, reward, self.has_completed, _ = self.true_dynamics.step(action) # Bipedal Walker
             else:
+                numpy_action = np.vstack(action.numpy())
+
                 # Get reward for state-action pair
-                reward = self.reward(state, action)
+                reward = self.reward(state, numpy_action)
 
                 # Get next state from true dynamics
-                next_state = self.true_dynamics(state, action)
+                next_state = self.true_dynamics(state, numpy_action)[:, 0]
 
             # Populate the event array with state, action, reward, and next state
             event[:self.x_dim] = state[:, 0]
             event[self.x_dim:self.xu_dim] = action
             event[self.xu_dim] = reward
-            event[self.xu_dim+1:self.event_dim] = next_state
+            event[self.xu_dim+1:self.event_dim-1] = next_state
+            event[self.event_dim-1] = self.has_completed
 
             # Add the event to the replay buffer
             self.agent.memorize(event)
@@ -380,13 +385,14 @@ class System:
                 reward = self.reward(numpy_state, numpy_action) # Compute reward
 
                 # Get next state from true dynamics
-                next_state = self.true_dynamics(numpy_state, numpy_action) # Column vector (state_dim, 1)
+                next_state = self.true_dynamics(numpy_state, numpy_action)[:, 0] # Column vector (state_dim, 1)
 
             # Populate the event array with state, action, reward, and next state
             events[environment_step_num, :self.x_dim] = self.latest_state # Current state
             events[environment_step_num, self.x_dim:self.xu_dim] = action # Action from policy
             events[environment_step_num, self.xu_dim] = reward # Reward from state-action pair
-            events[environment_step_num, self.xu_dim+1:self.event_dim] = next_state # Next state
+            events[environment_step_num, self.xu_dim+1:self.event_dim-1] = next_state # Next state
+            events[environment_step_num, self.event_dim-1] = self.has_completed # Done
 
             if remember:
                 # Add to replay buffer
@@ -431,7 +437,9 @@ class System:
             )
 
             # Parse rewards from the events data
-            rewards = events[:, self.xu_dim]
+            rewards = events[:, self.xu_dim] # (self.environment_steps,)
+            dones = torch.BoolTensor(events[:, self.event_dim-1]) # (self.environment_steps,)
+            rewards[dones] = 0.0
 
             # Compute min, max, and mean rewards from the training episode
             min_reward = np.min(rewards)
@@ -455,6 +463,14 @@ class System:
             )
         print()
 
+        # Scatter plot of reward earned per iteration
+        plt.title("Total reward per iteration")
+        plt.xlabel("Iteration number")
+        plt.ylabel("Total reward")
+        plt.scatter(np.arange(num_training_iterations), total_rewards_per_iteration)
+        plt.show()
+
+        # Line plot of reward earned per iteration
         plt.title("Total reward per iteration")
         plt.xlabel("Iteration number")
         plt.ylabel("Total reward")
