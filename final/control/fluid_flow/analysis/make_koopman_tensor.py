@@ -35,7 +35,7 @@ N = num_episodes * num_steps_per_episode # Number of datapoints
 
 #%% Shotgun-based approach
 X = np.random.uniform(state_minimums, state_maximums, size=[state_dim, N])
-# U = np.zeros((action_dim, N))
+U = np.zeros((action_dim, N))
 U = np.random.uniform(action_minimums, action_maximums, size=[action_dim, N])
 Y = np.zeros_like(X)
 for i in range(N):

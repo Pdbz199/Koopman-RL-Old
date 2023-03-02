@@ -21,6 +21,7 @@ from dynamics import (
     all_actions,
     dt,
     f,
+    get_random_initial_conditions,
     state_dim,
     state_maximums,
     state_minimums
@@ -70,11 +71,7 @@ def watch_agent(num_episodes, num_steps_per_episode, specified_episode):
     actor_critic_actions = np.zeros_like(lqr_actions)
     actor_critic_costs = np.zeros_like(lqr_costs)
 
-    initial_states = np.random.uniform(
-        state_minimums,
-        state_maximums,
-        [state_dim, num_episodes]
-    ).T
+    initial_states = get_random_initial_conditions(num_episodes)
 
     for episode_num in range(num_episodes):
         # Extract initial state
@@ -206,9 +203,9 @@ def watch_agent(num_episodes, num_steps_per_episode, specified_episode):
     # ax.plot(-np.load(f"./analysis/tmp/continuous_actor_critic/training_data/rewards.npy").sum(axis=1))
 
     # Show/save plots
-    save_figure("linear_system_dynamics_with_actor_critic_vs_lqr")
+    save_figure("fluid_flow_dynamics_with_actor_critic_vs_lqr")
     # show_plot()
 
 if __name__ == '__main__':
     print("\nTesting learned policy...\n")
-    watch_agent(num_episodes=100, num_steps_per_episode=int(200 / dt), specified_episode=42)
+    watch_agent(num_episodes=100, num_steps_per_episode=int(20 / dt), specified_episode=42)

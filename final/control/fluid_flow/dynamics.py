@@ -46,6 +46,15 @@ action_order = 2
 phi_dim = int( comb( state_order+state_dim, state_order ) )
 psi_dim = int( comb( state_order+state_dim, state_order ) )
 
+def get_random_initial_conditions(num_samples=1):
+    initial_states = np.zeros([num_samples, state_dim])
+    for episode in range(num_samples):
+        x = np.random.random(state_column_shape) * 0.5 * np.random.choice([-1,1], size=state_column_shape)
+        u = np.array([[0]])
+        soln = solve_ivp(fun=continuous_f(u), t_span=[0, 30.0], y0=x[:, 0], method='RK45')
+        initial_states[episode] = soln.y[:,-1]
+    return initial_states
+
 # Default basic policies
 def zero_policy(x=None):
     return np.zeros(action_column_shape)
@@ -102,10 +111,10 @@ def f(state, action):
             State column vector pushed forward in time.
     """
 
-    u = action[:,0]
+    u = action[:, 0]
 
-    soln = solve_ivp(fun=continuous_f(u), t_span=[0, dt], y0=state[:,0], method='RK45')
-    
+    soln = solve_ivp(fun=continuous_f(u), t_span=[0, dt], y0=state[:, 0], method='RK45')
+
     return np.vstack(soln.y[:, -1])
 
 # Compute continuous A and B for LQR policy
@@ -125,6 +134,5 @@ continuous_B = np.array([
 ])
 
 W, V = np.linalg.eig(continuous_A)
-
 print(f"Eigenvalues of continuous A:\n{W}\n")
 print(f"Eigenvectors of continuous A:\n{V}\n")

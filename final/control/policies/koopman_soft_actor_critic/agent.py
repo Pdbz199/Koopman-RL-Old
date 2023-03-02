@@ -7,12 +7,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-from final.control.policies.soft_actor_critic.networks import (
+from final.control.policies.koopman_soft_actor_critic.networks import (
     Memory,
     PolicyNetwork,
     QNetwork,
     VNetwork
 )
+from final.tensor import KoopmanTensor
 from typing import Callable, List
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -34,13 +35,6 @@ def update_net(source, target, tau):
             tau * source_param.data + (1.0 - tau) * target_param.data
         )
 
-def normalize_angle(x):
-    """
-        If there are angles in the state space, this will matter.
-    """
-
-    return (((x+np.pi) % (2*np.pi)) - np.pi)
-
 """ CLASSES """
 
 class Agent:
@@ -58,7 +52,8 @@ class Agent:
 
     def __init__(
         self,
-        state_dim,
+        koopman_model: KoopmanTensor,
+        reward,
         action_minimums,
         action_maximums,
         memory_capacity=50_000,
@@ -73,6 +68,7 @@ class Agent:
 
             INPUTS:
 
+
             OUTPUTS:
                 None
         """
@@ -80,9 +76,11 @@ class Agent:
         self.action_minimums = action_minimums
         self.action_maximums = action_maximums
 
-        self.x_dim = state_dim
+        self.koopman_model = koopman_model
+        self.reward = reward
+        self.x_dim = self.koopman_model.x_dim
         self.u_dim = len(action_minimums)
-        self.xu_dim = state_dim + self.u_dim
+        self.xu_dim = self.x_dim + self.u_dim
         self.event_dim = self.x_dim + self.u_dim + 1 + self.x_dim + 1 # state, action, reward, next state, and done
         self.batch_size = batch_size
         self.gamma = discount_factor
@@ -91,30 +89,23 @@ class Agent:
         self.learning_rate = learning_rate
 
         self.memory = Memory(memory_capacity)
-        self.actor = PolicyNetwork(
-            state_dim,
-            action_minimums,
-            action_maximums,
-            learning_rate=self.learning_rate,
-            # min_log_sigma=1,
-            # max_log_sigma=2.7
-        ).to(device)
-        self.critic1 = QNetwork(
-            state_dim,
-            self.u_dim,
-            learning_rate=self.learning_rate
-        ).to(device)
-        self.critic2 = QNetwork(
-            state_dim,
-            self.u_dim,
-            learning_rate=self.learning_rate
-        ).to(device)
         self.baseline = VNetwork(
-            state_dim,
+            koopman_model=self.koopman_model,
             learning_rate=self.learning_rate
         ).to(device)
         self.baseline_target = VNetwork(
-            state_dim,
+            koopman_model=self.koopman_model,
+            learning_rate=self.learning_rate
+        ).to(device)
+        self.critic = QNetwork(
+            koopman_model=self.koopman_model,
+            reward=self.reward,
+            learning_rate=self.learning_rate
+        ).to(device)
+        self.actor = PolicyNetwork(
+            self.x_dim,
+            action_minimums,
+            action_maximums,
             learning_rate=self.learning_rate
         ).to(device)
 
@@ -171,9 +162,7 @@ class Agent:
         )
 
         # Compute Q(x, u) for x in sample from replay buffer and action from current policy
-        q1_new_policy_batch = self.critic1(x_batch, action_batch)
-        q2_new_policy_batch = self.critic2(x_batch, action_batch)
-        q_new_policy_batch = torch.min(q1_new_policy_batch, q2_new_policy_batch)
+        q_new_policy_batch = self.critic(x_batch, action_batch)
 
         """ Optimize V network """
 
@@ -195,23 +184,18 @@ class Agent:
         v_prime_batch[done] = 0.0
 
         # Compute Q values with actions sampled from replay buffer
-        q1_old_policy_batch = self.critic1(x_batch, u_batch)
-        q2_old_policy_batch = self.critic2(x_batch, u_batch)
+        q_old_policy_batch = self.critic(x_batch, u_batch)
 
         # Equation 8
         q_target = self.reward_scale*r_batch + self.gamma*v_prime_batch
 
         # Compute loss (Mean squared error as in equation 7)
-        q1_loss = 0.5 * self.critic1.loss_func(q1_old_policy_batch, q_target.detach())
-        q2_loss = 0.5 * self.critic2.loss_func(q2_old_policy_batch, q_target.detach())
-        q_loss = q1_loss + q2_loss
+        q_loss = 0.5 * self.critic.loss_func(q_old_policy_batch, q_target.detach())
 
         # Backprop
-        self.critic1.optimizer.zero_grad()
-        self.critic2.optimizer.zero_grad()
+        self.critic.optimizer.zero_grad()
         q_loss.backward()
-        self.critic1.optimizer.step()
-        self.critic2.optimizer.step()
+        self.critic.optimizer.step()
 
         """ Optimize policy network (equations 10 and 12) """
 
@@ -220,9 +204,7 @@ class Agent:
             x_batch,
             reparameterize=True
         )
-        q1_new_policy_batch = self.critic1(x_batch, action_batch)
-        q2_new_policy_batch = self.critic2(x_batch, action_batch)
-        q_new_policy_batch = torch.min(q1_new_policy_batch, q2_new_policy_batch)
+        q_new_policy_batch = self.critic(x_batch, action_batch)
 
         # Compute loss
         pi_loss = (log_probability_batch - q_new_policy_batch).mean()
@@ -245,7 +227,8 @@ class System:
         self,
         is_gym_env: bool,
         true_dynamics: Callable[[List[float], List[float]], List[float]],
-        cost: Callable[[List[float], List[float]], float],
+        koopman_model: KoopmanTensor,
+        reward: Callable[[List[float], List[float]], float],
         state_minimums: List[float],
         state_maximums: List[float],
         action_minimums: List[float],
@@ -268,7 +251,8 @@ class System:
         self.render_env = render_env
         self.has_completed = False
         self.true_dynamics = true_dynamics
-        self.cost = cost
+        self.koopman_model = koopman_model
+        self.reward = reward
 
         self.x_dim = len(state_minimums)
         self.u_dim = len(action_minimums)
@@ -286,7 +270,8 @@ class System:
         self.action_maximums = action_maximums
 
         self.agent = Agent(
-            state_dim=self.x_dim,
+            koopman_model=koopman_model,
+            reward=reward,
             action_minimums=action_minimums,
             action_maximums=action_maximums,
             memory_capacity=memory_capacity,
@@ -302,9 +287,6 @@ class System:
         self.rng = np.random.default_rng()
 
         self.latest_state = None
-
-    def reward(self, x, u):
-        return -self.cost(x, u)
     
     def reset_env(self):
         if self.is_gym_env:
