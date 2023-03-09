@@ -173,7 +173,7 @@ class QNetwork(nn.Module):
         self.loss_func = nn.MSELoss()
         self.optimizer = optim.Adam(self.parameters(), lr=learning_rate)
 
-    def forward(self, state, action):
+    def forward(self, observable, action):
         """
             Calculates output for the given input.
 
@@ -185,12 +185,9 @@ class QNetwork(nn.Module):
                 Number that represents the approximate quality of the input state-action pair.
         """
 
-        phi_x_primes = self.phi_f(state.T, action.T)
-        phi_x_prime = torch.zeros((phi_x_primes.shape[0], phi_x_primes.shape[1]))
-        for i in range(phi_x_primes.shape[0]):
-            phi_x_prime[i] = phi_x_primes[i, :, i]
-        x = self.w(phi_x_prime) # E [ V(x') ] = w^T @ K @ phi(x)
-        rewards = torch.Tensor(self.reward(state.T, action.T))
+        x = self.w(observable) # E [ V(x') ] = w^T @ K @ phi(x)
+        state = self.koopman_model.B.T @ observable.T.numpy()
+        rewards = torch.Tensor(self.reward(state, action.T))
         reward = torch.diag(rewards)
 
         return reward + x # r(x, u) + E [ V(x') ]

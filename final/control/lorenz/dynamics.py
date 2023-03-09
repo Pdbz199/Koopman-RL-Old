@@ -33,6 +33,13 @@ state_maximums = np.array([
     [50.0]
 ])
 
+def get_random_initial_conditions(num_samples=1):
+    return np.random.uniform(
+        state_minimums,
+        state_maximums,
+        [state_dim, num_samples]
+    ).T
+
 action_range = 75.0
 action_minimums = np.ones([action_dim,1]) * -action_range
 action_maximums = np.ones([action_dim,1]) * action_range

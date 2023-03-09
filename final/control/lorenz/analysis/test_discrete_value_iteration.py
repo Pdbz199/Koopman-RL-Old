@@ -214,7 +214,7 @@ def watch_agent(num_episodes, num_steps_per_episode, specified_episode):
     ax.plot(np.load(f"{koopman_policy.save_data_path}/training_data/bellman_errors.npy"))
 
     # Show/save plots
-    save_figure("fluid_flow_dynamics_with_value_iteration_vs_lqr")
+    save_figure("lorenz_dynamics_with_value_iteration_vs_lqr")
     # show_plot()
 
 if __name__ == '__main__':

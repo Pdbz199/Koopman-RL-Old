@@ -14,14 +14,14 @@ class DiscreteKoopmanPolicyIterationPolicy:
         true_dynamics,
         gamma,
         regularization_lambda,
-        dynamics_model: KoopmanTensor,
+        koopman_model: KoopmanTensor,
         state_minimums,
         state_maximums,
         all_actions,
         cost,
         save_data_path,
         dt=1.0,
-        learning_rate=0.003,
+        learning_rate=0.003, # 3e-3
         w_hat_batch_size=2**12,
         seed=123,
         load_model=False,
@@ -57,7 +57,7 @@ class DiscreteKoopmanPolicyIterationPolicy:
         self.true_dynamics = true_dynamics
         self.gamma = gamma
         self.regularization_lambda = regularization_lambda
-        self.dynamics_model = dynamics_model
+        self.dynamics_model = koopman_model
         self.phi = self.dynamics_model.phi
         self.psi = self.dynamics_model.psi
         self.state_minimums = state_minimums
@@ -78,18 +78,18 @@ class DiscreteKoopmanPolicyIterationPolicy:
             self.policy_model = torch.load(f"{self.save_data_path}/policy.pt")
             self.value_function_weights = np.load(f"{self.save_data_path}/{self.value_function_weights_file_name}")
         else:
-            # self.policy_model = nn.Sequential(
-            #     nn.Linear(self.dynamics_model.x_dim, self.all_actions.shape[1]),
-            #     nn.Softmax(dim=-1)
-            # )
             self.policy_model = nn.Sequential(
-                nn.Linear(self.dynamics_model.x_dim, self.layer_1_dim),
-                nn.ReLU(),
-                nn.Linear(self.layer_1_dim, self.layer_2_dim),
-                nn.ReLU(),
-                nn.Linear(self.layer_2_dim, self.all_actions.shape[1]),
+                nn.Linear(self.dynamics_model.x_dim, self.all_actions.shape[1]),
                 nn.Softmax(dim=-1)
             )
+            # self.policy_model = nn.Sequential(
+            #     nn.Linear(self.dynamics_model.x_dim, self.layer_1_dim),
+            #     nn.ReLU(),
+            #     nn.Linear(self.layer_1_dim, self.layer_2_dim),
+            #     nn.ReLU(),
+            #     nn.Linear(self.layer_2_dim, self.all_actions.shape[1]),
+            #     nn.Softmax(dim=-1)
+            # )
 
             # self.value_function_weights = torch.zeros(self.dynamics_model.phi_column_dim, requires_grad=True)
             self.value_function_weights = np.zeros(self.dynamics_model.phi_column_dim)
