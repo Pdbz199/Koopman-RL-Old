@@ -23,7 +23,7 @@ def linear_continuous_f(t, x, u):
     return continuous_A @ x + continuous_B @ u
 
 if __name__ == "__main__":
-    num_paths = 10
+    num_paths = 100
     num_time_units = 10
     num_steps_per_path = int(num_time_units / dt)
 
@@ -67,24 +67,26 @@ if __name__ == "__main__":
             linearized_states[path_num, step_num] = linearized_state
 
             # Get new action
-            # action = zero_policy(nonlinearized_state)
-            action = lqr_policy.get_action(nonlinearized_state)
+            # nonlinearized_action = zero_policy(nonlinearized_state)
+            # linearized_action = zero_policy(linearized_state)
+            nonlinearized_action = lqr_policy.get_action(nonlinearized_state)
+            linearized_action = lqr_policy.get_action(linearized_state)
 
             # x_dot from true dynamics
-            state_dot = continuous_f(action[0, 0])(0, nonlinearized_state[:, 0])
+            state_dot = continuous_f(nonlinearized_action[0, 0])(0, nonlinearized_state[:, 0])
             state_dots[path_num, step_num] = state_dot
 
             # x_dot_hat from linearized dynamics
-            state_dot_hat = linear_continuous_f(0, linearized_state, action)
+            state_dot_hat = linear_continuous_f(0, linearized_state, linearized_action)
             state_dot_hats[path_num, step_num] = state_dot_hat[:, 0]
 
             # Apply action to both systems
-            nonlinearized_state = f(nonlinearized_state, action)
+            nonlinearized_state = f(nonlinearized_state, nonlinearized_action)
             linearized_state = odeint(
                 linear_continuous_f,
                 linearized_state,
                 t=[0, dt],
-                args=(action[:, 0],),
+                args=(linearized_action[:, 0],),
                 tfirst=True
             )[-1]
 
