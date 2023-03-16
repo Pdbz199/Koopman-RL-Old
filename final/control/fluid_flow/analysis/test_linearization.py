@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import pickle
 from scipy.integrate import odeint#, solve_ivp
 import sys
 
@@ -22,7 +23,7 @@ def linear_continuous_f(t, x, u):
     return continuous_A @ x + continuous_B @ u
 
 if __name__ == "__main__":
-    num_paths = 100
+    num_paths = 10
     num_time_units = 10
     num_steps_per_path = int(num_time_units / dt)
 
@@ -43,21 +44,49 @@ if __name__ == "__main__":
     #     [state_dim, num_paths]
     # ).T
 
-    # Compute state_dots and state_dot_hats
+    #%% Load LQR policy
+    with open('./analysis/tmp/lqr/policy.pickle', 'rb') as handle:
+        lqr_policy = pickle.load(handle)
+
+    # Arrays for storing state derivatives
     state_dots = np.zeros((num_paths, num_steps_per_path, state_dim))
     state_dot_hats = np.zeros((num_paths, num_steps_per_path, state_dim))
+
+    # Arrays for storing states
+    nonlinearized_states = np.zeros((num_paths, num_steps_per_path, state_dim))
+    linearized_states = np.zeros((num_paths, num_steps_per_path, state_dim))
+
     for path_num in range(num_paths):
-        state = np.vstack(initial_states[path_num])
+        # Get initial states
+        nonlinearized_state = np.vstack(initial_states[path_num])
+        linearized_state = initial_states[path_num]
+
         for step_num in range(num_steps_per_path):
-            zero_action = zero_policy(state)
+            # Store state data
+            nonlinearized_states[path_num, step_num] = nonlinearized_state[:, 0]
+            linearized_states[path_num, step_num] = linearized_state
+
+            # Get new action
+            # action = zero_policy(nonlinearized_state)
+            action = lqr_policy.get_action(nonlinearized_state)
 
             # x_dot from true dynamics
-            state_dot = continuous_f(zero_action[0, 0])(0, state[:, 0])
+            state_dot = continuous_f(action[0, 0])(0, nonlinearized_state[:, 0])
             state_dots[path_num, step_num] = state_dot
 
             # x_dot_hat from linearized dynamics
-            state_dot_hat = linear_continuous_f(0, state, zero_action)
+            state_dot_hat = linear_continuous_f(0, linearized_state, action)
             state_dot_hats[path_num, step_num] = state_dot_hat[:, 0]
+
+            # Apply action to both systems
+            nonlinearized_state = f(nonlinearized_state, action)
+            linearized_state = odeint(
+                linear_continuous_f,
+                linearized_state,
+                t=[0, dt],
+                args=(action[:, 0],),
+                tfirst=True
+            )[-1]
 
     # Compute norms between derivative estimates
     state_dot_difference_norms = np.linalg.norm(state_dots - state_dot_hats, axis=2) # (path by step)
@@ -72,28 +101,6 @@ if __name__ == "__main__":
         "Average (state_dot - state_dot_hat) norm normalized by average state_dot norm:",
         average_state_dot_difference_norm / average_state_dot_norm
     )
-
-    """ x_0 to x_t """
-
-    nonlinearized_states = np.zeros((num_paths, num_steps_per_path, state_dim))
-    linearized_states = np.zeros((num_paths, num_steps_per_path, state_dim))
-
-    for path_num in range(num_paths):
-        nonlinearized_state = np.vstack(initial_states[path_num])
-
-        zero_action = np.array([[0]])
-
-        for step_num in range(num_steps_per_path):
-            nonlinearized_states[path_num, step_num] = nonlinearized_state[:, 0]
-            nonlinearized_state = f(nonlinearized_state, zero_action)
-
-        linearized_states[path_num] = odeint(
-            linear_continuous_f,
-            initial_states[path_num],
-            t=np.arange(0, num_time_units, dt),
-            args=(zero_action[:, 0],),
-            tfirst=True
-        )
 
     # Compute norms between true states and estimated states
     state_difference_norms = np.linalg.norm(nonlinearized_states - linearized_states, axis=2)
