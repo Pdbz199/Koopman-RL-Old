@@ -48,6 +48,10 @@ if __name__ == "__main__":
     with open('./analysis/tmp/lqr/policy.pickle', 'rb') as handle:
         lqr_policy = pickle.load(handle)
 
+    W, V = np.linalg.eig(continuous_A - continuous_B @ lqr_policy.C)
+    print(f"Eigenvalues of continuous (A - BC):\n{W}\n")
+    print(f"Eigenvectors of continuous (A - BC):\n{V}\n")
+
     # Arrays for storing state derivatives
     state_dots = np.zeros((num_paths, num_steps_per_path, state_dim))
     state_dot_hats = np.zeros((num_paths, num_steps_per_path, state_dim))

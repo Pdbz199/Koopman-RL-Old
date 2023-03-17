@@ -118,14 +118,17 @@ class DiscreteKoopmanValueIterationPolicy:
         """
 
         # Get random sample of xs and phi(x)s from dataset
+        # TODO: This seems fine, is there a way to confirm?
         x_batch_indices = np.random.choice(self.dynamics_model.X.shape[1], batch_size, replace=False)
         x_batch = self.dynamics_model.X[:, x_batch_indices] # (X.shape[0], batch_size)
         phi_x_batch = self.dynamics_model.Phi_X[:, x_batch_indices] # (dim_phi, batch_size)
 
         # Compute V(x) for all phi(x)s
+        # TODO: This seems fine, is there a way to confirm?
         V_xs = self.value_function_weights.T @ torch.Tensor(phi_x_batch) # (batch_size, 1)
 
         # Get costs
+        # TODO: Can we figure out if these are correct or not?
         costs = torch.Tensor(self.cost(x_batch, self.all_actions)) # (all_actions.shape[0], batch_size)
 
         # Compute phi(x') for all ( phi(x), action ) pairs and compute V(x')s
@@ -133,25 +136,35 @@ class DiscreteKoopmanValueIterationPolicy:
         phi_x_primes = np.zeros([self.all_actions.shape[1], self.dynamics_model.phi_dim, batch_size])
         V_x_primes = torch.zeros([self.all_actions.shape[1], batch_size])
         for action_index in range(K_us.shape[0]):
-            # phi_x_primes[action_index] = K_us[action_index] @ phi_x_batch
+            # TODO: Check that K_us[action_index] is oriented correctly
             phi_x_prime_hat = K_us[action_index] @ phi_x_batch
-            phi_x_primes[action_index] = self.dynamics_model.phi(self.dynamics_model.B.T @ phi_x_prime_hat)
+            x_prime_hat = self.dynamics_model.B.T @ phi_x_prime_hat
+
+            # TODO: These seem fine, should we confirm? Is there a way to confirm?
+            phi_x_primes[action_index] = self.dynamics_model.phi(x_prime_hat)
             V_x_primes[action_index] = self.value_function_weights.T @ torch.Tensor(phi_x_primes[action_index])
 
         # Compute policy distribution
+        # TODO: Confirm correctness of inner_pi_us_values and inner_pi_us
         inner_pi_us_values = -(costs + self.discount_factor*V_x_primes) # all_actions.shape[1] x xs.shape[1]
-        inner_pi_us = inner_pi_us_values * (1 / self.regularization_lambda) # all_actions.shape[1] x xs.shape[1]
+        inner_pi_us = inner_pi_us_values / self.regularization_lambda # all_actions.shape[1] x xs.shape[1]
         real_inner_pi_us = torch.real(inner_pi_us) # all_actions.shape[1] x xs.shape[1]
 
         # Max trick
+        # TODO: Did we implement this correctly?
         max_inner_pi_u = torch.amax(real_inner_pi_us, axis=0) # xs.shape[1]
         diff = real_inner_pi_us - max_inner_pi_u
 
-        delta = np.finfo(np.float32).eps # 1e-25
+        # Store a tiny delta in case we have 0s in exp(diff)
+        delta = np.finfo(np.float32).eps # 1.1920929e-07
+        # delta = np.finfo(np.float64).eps # 2.220446049250313e-16
+
+        # Softmax distribution
+        # TODO: This looks fine, but is there a nice way to confirm correctness?
         pi_us = torch.exp(diff) + delta # all_actions.shape[1] x xs.shape[1]
         Z_x = torch.sum(pi_us, axis=0) # xs.shape[1]
         pis_response = pi_us / Z_x
-        
+
         # Compute log probabilities
         log_pis = torch.log(pis_response) # (all_actions.shape[1], batch_size)
 
@@ -283,7 +296,7 @@ class DiscreteKoopmanValueIterationPolicy:
                     self.value_function_optimizer.step()
 
                 # Recompute Bellman error
-                BE = self.discrete_bellman_error(batch_size * batch_scale).detach().numpy()
+                BE = self.discrete_bellman_error(batch_size = batch_size * batch_scale).detach().numpy()
                 bellman_errors.append(BE)
 
                 # Every so often, print out and save the model weights and bellman errors
