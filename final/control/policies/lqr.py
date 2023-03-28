@@ -52,12 +52,22 @@ class LQRPolicy:
         self.discounted_R = self.R / self.discount_factor
 
         if is_continuous:
-            lqr_soln = lqr(self.discounted_A, self.B, self.Q, self.discounted_R)
+            self.lqr_soln = lqr(
+                self.discounted_A,
+                self.B,
+                self.Q,
+                self.discounted_R
+            )
         else:
-            lqr_soln = dlqr(self.discounted_A, self.B, self.Q, self.discounted_R)
+            self.lqr_soln = dlqr(
+                self.discounted_A,
+                self.B,
+                self.Q,
+                self.discounted_R
+            )
 
-        self.C = lqr_soln[0]
-        self.P = lqr_soln[1]
+        self.C = self.lqr_soln[0]
+        self.P = self.lqr_soln[1]
         self.sigma_t = np.linalg.inv(self.discounted_R + self.B.T @ self.P @ self.B) * self.regularization_lambda
 
     def get_action(self, x, is_entropy_regularized=True):

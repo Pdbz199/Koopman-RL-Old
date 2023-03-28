@@ -32,6 +32,13 @@ action_order = 2
 phi_dim = int( comb( state_order+state_dim, state_order ) )
 psi_dim = int( comb( state_order+state_dim, state_order ) )
 
+def get_random_initial_conditions(num_samples=1):
+    return np.random.uniform(
+        state_minimums,
+        state_maximums,
+        [state_dim, num_samples]
+    ).T
+
 # Dynamics
 max_eigen_factor = np.random.uniform(0.7, 1)
 print(f"max eigen factor: {max_eigen_factor}")
