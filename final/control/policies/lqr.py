@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.stats import norm 
 
 from control import dlqr, lqr
 
@@ -69,6 +70,24 @@ class LQRPolicy:
         self.C = self.lqr_soln[0]
         self.P = self.lqr_soln[1]
         self.sigma_t = np.linalg.inv(self.discounted_R + self.B.T @ self.P @ self.B) * self.regularization_lambda
+
+    def get_action_density(self, u, x, is_entropy_regularized=True):
+        """
+            Computes the normal density of an action givent the current state.
+
+            INPUTS:
+                u - Action as a column vector.
+                x - State of system as a column vector.
+                is_entropy_regularized - Boolean indicating whether or not to sample from a (normal) distribution.
+
+            OUTPUTS:
+                (Optimal) action conditional on x density value from max entropy LQR.
+        """
+
+        if is_entropy_regularized:
+            return norm.pdf(u, loc=-self.C @ (x - self.reference_point), scale=self.sigma_t)
+        else:
+            raise Exception("Density method is only applicable in the entropy regularized case")
 
     def get_action(self, x, is_entropy_regularized=True):
         """

@@ -18,7 +18,8 @@ sys.path.append('../../../')
 from final.control.policies.lqr import LQRPolicy
 
 #%% Variables
-gamma = 0.99
+# gamma = 0.99
+gamma = 1.0
 reg_lambda = 1.0
 
 path = './analysis/tmp'

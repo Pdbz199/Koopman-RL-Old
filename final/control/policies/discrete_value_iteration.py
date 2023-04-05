@@ -182,7 +182,7 @@ class DiscreteKoopmanValueIterationPolicy:
 
         return total # / torch.mean(torch.linalg.norm(torch.Tensor(phi_x_primes), dim=1))
 
-    def get_action(self, x, sample_size=None):
+    def get_action_and_log_prob(self, x, sample_size=None):
         """
             Compute the action given the current state.
 
@@ -199,11 +199,30 @@ class DiscreteKoopmanValueIterationPolicy:
 
         pis_response = (self.pis(x)[:, 0]).data.numpy()
 
-        return np.random.choice(
-            self.all_actions[0],
+        selected_indices = np.random.choice(
+            np.arange(len(pis_response)),
             size=sample_size,
             p=pis_response
         )
+
+        return (
+            self.all_actions[0][selected_indices],
+            np.log(pis_response[selected_indices])
+        )
+
+    def get_action(self, x, sample_size=None):
+        """
+            Compute the action given the current state.
+
+            INPUTS:
+                x - State of system as a column vector.
+                sample_size - How many actions to sample. None gives 1 sample.
+
+            OUTPUTS:
+                Action from value iteration policy.
+        """
+
+        return self.get_action_and_log_prob(x, sample_size)[0]
 
     def train(
         self,
@@ -239,7 +258,7 @@ class DiscreteKoopmanValueIterationPolicy:
         print(f"Initial Bellman error: {BE}")
 
         step = 0
-        gamma_iteration_condition = self.gamma <= 0.99
+        gamma_iteration_condition = self.gamma <= 0.99 or self.gamma == 1
         while gamma_iteration_condition:
             print(f"gamma for iteration #{step+1}: {self.gamma}")
             self.discount_factor = self.gamma**self.dt

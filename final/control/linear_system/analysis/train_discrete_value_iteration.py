@@ -23,7 +23,8 @@ with open('./analysis/tmp/path_based_tensor.pickle', 'rb') as handle:
     tensor = pickle.load(handle)
 
 # Variables
-gamma = 0.99
+# gamma = 0.99
+gamma = 1.0
 reg_lambda = 1.0
 
 # Koopman value iteration policy
