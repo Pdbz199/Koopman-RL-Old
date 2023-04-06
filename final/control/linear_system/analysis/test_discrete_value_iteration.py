@@ -97,19 +97,21 @@ def watch_agent(num_episodes, num_steps_per_episode, specified_episode):
             value_iteration_states[episode_num,step_num] = value_iteration_state[:, 0]
 
             # Get actions for current state and save them
-            lqr_action = lqr_policy.get_action(lqr_state)
+            lqr_action = lqr_policy.get_action(lqr_state, is_entropy_regularized=False)
             lqr_actions[episode_num, step_num] = lqr_action[:, 0]
-            lqr_action_conditional_densities[episode_num, step_num] = lqr_policy.get_action_density(lqr_action, lqr_state)[:, 0]
+            # lqr_action_conditional_densities[episode_num, step_num] = lqr_policy.get_action_density(lqr_action, lqr_state)[:, 0]
 
             # value_iteration_action = koopman_policy.get_action(value_iteration_state)
             value_iteration_action, value_iteration_log_prob = koopman_policy.get_action_and_log_prob(value_iteration_state)
             value_iteration_actions[episode_num, step_num] = value_iteration_action[:, 0]
 
             # Compute costs
-            lqr_costs[episode_num,step_num] = cost(lqr_state, lqr_action)[0, 0] + \
-                                                np.log(lqr_action_conditional_densities[episode_num, step_num, 0])
-            value_iteration_costs[episode_num,step_num] = cost(value_iteration_state, value_iteration_action)[0, 0] + \
-                                                            value_iteration_log_prob
+            lqr_costs[episode_num,step_num] = cost(lqr_state, lqr_action)[0, 0]
+            # lqr_costs[episode_num,step_num] = cost(lqr_state, lqr_action)[0, 0] + \
+            #                                     np.log(lqr_action_conditional_densities[episode_num, step_num, 0])
+            value_iteration_costs[episode_num,step_num] = cost(value_iteration_state, value_iteration_action)[0, 0]
+            # value_iteration_costs[episode_num,step_num] = cost(value_iteration_state, value_iteration_action)[0, 0] + \
+            #                                                 value_iteration_log_prob
 
             # Compute next states
             lqr_state = f(lqr_state, lqr_action)
