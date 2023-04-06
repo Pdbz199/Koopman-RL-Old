@@ -199,8 +199,8 @@ class DiscreteKoopmanValueIterationPolicy:
         # Compute expectation
         expectation_u = torch.sum(
             (costs + \
-                self.regularization_lambda * log_pis + \
-                    self.discount_factor * V_x_primes) * pis_response,
+                self.regularization_lambda*log_pis + \
+                    self.discount_factor*V_x_primes) * pis_response,
             axis=0
         ).reshape(1, -1) # (1, batch_size)
 
@@ -340,8 +340,8 @@ class DiscreteKoopmanValueIterationPolicy:
                 # Compute expectations
                 expectation_term_1 = torch.sum(
                     (costs + \
-                        self.regularization_lambda * log_pis + \
-                            self.discount_factor * V_x_primes) * pis_response,
+                        self.regularization_lambda*log_pis + \
+                            self.discount_factor*V_x_primes) * pis_response,
                     dim=0
                 ).reshape(1, -1) # (1, batch_size)
 
@@ -366,7 +366,7 @@ class DiscreteKoopmanValueIterationPolicy:
                 bellman_errors.append(BE)
 
                 # Every so often, print out and save the model weights and bellman errors
-                if (epoch+1) % 250 == 0:
+                if (epoch+1) % 250 == 0: # or True:
                     torch.save(self.value_function_weights, f"{self.save_data_path}/policy.pt")
                     np.save(f"{self.save_data_path}/training_data/bellman_errors.npy", np.array(bellman_errors))
                     print(f"Bellman error at epoch {epoch+1}: {BE}")

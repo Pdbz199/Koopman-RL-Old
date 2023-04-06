@@ -152,7 +152,7 @@ def watch_agent(num_episodes, num_steps_per_episode, specified_episode):
 
     # Plot dynamics over time for all state dimensions
     ax = fig.add_subplot(3, 3, 2)
-    ax.set_title("Dynamics Over Time")
+    ax.set_title(f"Dynamics Over Time (Episode #{specified_episode})")
     ax.set_xlabel("Timestep")
     ax.set_ylabel("State value")
     # Create and assign labels as a function of number of dimensions of state
@@ -166,7 +166,7 @@ def watch_agent(num_episodes, num_steps_per_episode, specified_episode):
 
     # Plot dynamics over time for all state dimensions
     ax = fig.add_subplot(3, 3, 3)
-    ax.set_title("Dynamics Over Time")
+    ax.set_title(f"Dynamics Over Time (Episode #{specified_episode})")
     ax.set_xlabel("Timestep")
     ax.set_ylabel("State value")
     # Create and assign labels as a function of number of dimensions of state
