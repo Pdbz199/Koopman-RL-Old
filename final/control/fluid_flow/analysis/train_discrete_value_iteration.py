@@ -26,6 +26,7 @@ with open('./analysis/tmp/path_based_tensor.pickle', 'rb') as handle:
 # gamma = 0.99
 gamma = 1.0
 reg_lambda = 1.0
+# reg_lambda = 0.5
 
 # Koopman value iteration policy
 koopman_policy = DiscreteKoopmanValueIterationPolicy(
@@ -42,4 +43,4 @@ koopman_policy = DiscreteKoopmanValueIterationPolicy(
 
 # Train Koopman policy
 # koopman_policy.train(training_epochs=2_000, batch_size=2**12)
-koopman_policy.train(training_epochs=2_000, batch_size=2**14)
+koopman_policy.train(training_epochs=500, batch_size=2**14)

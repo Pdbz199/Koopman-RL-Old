@@ -35,8 +35,7 @@ action_maximums = np.array([
 state_order = 2
 action_order = 2
 
-# step_size = 0.1
-step_size = 1.0
+step_size = 0.1
 all_actions = np.arange(-action_range, action_range+step_size, step_size)
 all_actions = np.round(all_actions, decimals=2)
 all_actions = np.array([all_actions])

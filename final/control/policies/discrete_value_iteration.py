@@ -210,7 +210,7 @@ class DiscreteKoopmanValueIterationPolicy:
 
         return mean_squared_error
 
-    def get_action_and_log_prob(self, x, sample_size=None):
+    def get_action_and_log_prob(self, x, sample_size=None, is_greedy=False):
         """
             Compute the action given the current state.
 
@@ -227,12 +227,14 @@ class DiscreteKoopmanValueIterationPolicy:
 
         pis_response = (self.pis(x)[:, 0]).data.numpy()
 
-        selected_indices = np.random.choice(
-            np.arange(len(pis_response)),
-            size=sample_size,
-            p=pis_response
-        )
-        # selected_indices = np.ones(sample_size, dtype=np.int8) * np.argmax(pis_response)
+        if is_greedy:
+            selected_indices = np.ones(sample_size, dtype=np.int8) * np.argmax(pis_response)
+        else:
+            selected_indices = np.random.choice(
+                np.arange(len(pis_response)),
+                size=sample_size,
+                p=pis_response
+            )
 
         return (
             self.all_actions[0][selected_indices],
