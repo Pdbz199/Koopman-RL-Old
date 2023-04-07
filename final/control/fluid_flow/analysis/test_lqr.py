@@ -139,7 +139,7 @@ def watch_agent(num_episodes, num_steps_per_episode, specified_episode=None):
 
     # Plot dynamics over time for all state dimensions for both controllers
     ax = fig.add_subplot(2, 3, 2)
-    ax.set_title("Uncontrolled Dynamics Over Time")
+    ax.set_title(f"Uncontrolled Dynamics Over Time (Episode #{specified_episode})")
     ax.set_xlabel("Timestamp")
     ax.set_ylabel("State value")
     # Create and assign labels as a function of number of dimensions of uncontrolled state
@@ -152,7 +152,7 @@ def watch_agent(num_episodes, num_steps_per_episode, specified_episode=None):
         ax.scatter(step_range, uncontrolled_states[specified_episode, :, i])
 
     ax = fig.add_subplot(2, 3, 3)
-    ax.set_title("Controlled Dynamics Over Time")
+    ax.set_title(f"Controlled Dynamics Over Time (Episode #{specified_episode})")
     ax.set_xlabel("Timestamp")
     ax.set_ylabel("State value")
     # Create and assign labels as a function of number of dimensions of controlled state

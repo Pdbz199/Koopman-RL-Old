@@ -111,7 +111,7 @@ def watch_agent(num_episodes, num_steps_per_episode, specified_episode):
             value_iteration_states[episode_num,step_num] = value_iteration_state[:, 0]
 
             # Get actions for current state and save them
-            lqr_action = lqr_policy.get_action(lqr_state)
+            lqr_action = lqr_policy.get_action(lqr_state, is_entropy_regularized=False)
             lqr_actions[episode_num, step_num] = lqr_action[:, 0]
             value_iteration_action = koopman_policy.get_action(value_iteration_state)
             value_iteration_actions[episode_num, step_num] = value_iteration_action[:, 0]
@@ -159,7 +159,7 @@ def watch_agent(num_episodes, num_steps_per_episode, specified_episode):
 
     # Plot dynamics over time for all state dimensions
     ax = fig.add_subplot(3, 3, 2)
-    ax.set_title("Dynamics Over Time")
+    ax.set_title(f"Dynamics Over Time (Episode #{specified_episode})")
     ax.set_xlabel("Timestep")
     ax.set_ylabel("State value")
     # Create and assign labels as a function of number of dimensions of state
@@ -173,7 +173,7 @@ def watch_agent(num_episodes, num_steps_per_episode, specified_episode):
 
     # Plot dynamics over time for all state dimensions
     ax = fig.add_subplot(3, 3, 3)
-    ax.set_title("Dynamics Over Time")
+    ax.set_title(f"Dynamics Over Time (Episode #{specified_episode})")
     ax.set_xlabel("Timestep")
     ax.set_ylabel("State value")
     # Create and assign labels as a function of number of dimensions of state
