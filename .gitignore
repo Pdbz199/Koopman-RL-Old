@@ -21,6 +21,8 @@ cs4789-Cartpole-Solution/
 *.svg
 *.png
 *.txt
+!pip-requirements.txt
+!conda-requirements.txt
 !lambda-labs-requirements.txt
 *.sh
 *.zip
