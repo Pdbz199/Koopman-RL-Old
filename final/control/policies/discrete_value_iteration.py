@@ -109,12 +109,12 @@ class DiscreteKoopmanValueIterationPolicy:
         # delta = np.finfo(np.float64).eps # 2.220446049250313e-16
         pi_us = torch.exp(diff) + delta # (all_actions.shape[1], xs.shape[1])
         Z_x = torch.sum(pi_us, axis=0) # xs.shape[1]
-        
+
         return pi_us / Z_x # (all_actions.shape[1], xs.shape[1])
 
     def V_phi_x(self, phi_x):
         """
-            Compute V(x).
+            Compute V(phi_x).
 
             INPUTS:
                 phi_x - Column vector of the observable of the state.
