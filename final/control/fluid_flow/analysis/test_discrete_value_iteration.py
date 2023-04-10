@@ -20,6 +20,7 @@ from dynamics import (
     all_actions,
     continuous_f,
     dt,
+    get_random_initial_conditions,
     f,
     state_column_shape,
     state_dim,
@@ -89,13 +90,8 @@ def watch_agent(num_episodes, num_steps_per_episode, specified_episode):
     #     [state_dim, num_episodes]
     # ).T
 
-    # Starting on the limit cycle
-    initial_states = np.zeros([num_episodes, state_dim])
-    for episode in range(num_episodes):
-        x = np.random.random(state_column_shape) * 0.5 * np.random.choice([-1,1], size=state_column_shape)
-        u = np.array([[0]])
-        soln = solve_ivp(fun=continuous_f(u), t_span=[0, 30.0], y0=x[:, 0], method='RK45')
-        initial_states[episode] = soln.y[:,-1]
+    # Generating initial conditions
+    initial_states = get_random_initial_conditions(num_samples=num_episodes, on_limit_cycle=False)
 
     for episode_num in range(num_episodes):
         # Extract initial state
@@ -111,7 +107,7 @@ def watch_agent(num_episodes, num_steps_per_episode, specified_episode):
             value_iteration_states[episode_num,step_num] = value_iteration_state[:, 0]
 
             # Get actions for current state and save them
-            lqr_action = lqr_policy.get_action(lqr_state, is_entropy_regularized=False)
+            lqr_action = lqr_policy.get_action(lqr_state, is_entropy_regularized=True)
             lqr_actions[episode_num, step_num] = lqr_action[:, 0]
             value_iteration_action = koopman_policy.get_action(value_iteration_state)
             value_iteration_actions[episode_num, step_num] = value_iteration_action[:, 0]

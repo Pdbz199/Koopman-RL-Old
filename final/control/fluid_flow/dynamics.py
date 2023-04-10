@@ -46,14 +46,21 @@ action_order = 2
 phi_dim = int( comb( state_order+state_dim, state_order ) )
 psi_dim = int( comb( state_order+state_dim, state_order ) )
 
-def get_random_initial_conditions(num_samples=1):
-    initial_states = np.zeros([num_samples, state_dim])
-    for episode in range(num_samples):
-        x = np.random.random(state_column_shape) * 0.5 * np.random.choice([-1,1], size=state_column_shape)
-        u = np.array([[0]])
-        soln = solve_ivp(fun=continuous_f(u), t_span=[0, 30.0], y0=x[:, 0], method='RK45')
-        initial_states[episode] = soln.y[:,-1]
-    return initial_states
+def get_random_initial_conditions(num_samples=1, on_limit_cycle=True):
+    if on_limit_cycle:
+        initial_states = np.zeros([num_samples, state_dim])
+        for episode in range(num_samples):
+            x = np.random.random(state_column_shape) * 0.5 * np.random.choice([-1,1], size=state_column_shape)
+            u = np.array([[0]])
+            soln = solve_ivp(fun=continuous_f(u), t_span=[0, 30.0], y0=x[:, 0], method='RK45')
+            initial_states[episode] = soln.y[:,-1]
+        return initial_states
+
+    return np.random.uniform(
+        state_minimums,
+        state_maximums,
+        [state_dim, num_samples]
+    ).T
 
 # Default basic policies
 def zero_policy(x=None):

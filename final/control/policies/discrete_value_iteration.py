@@ -241,7 +241,7 @@ class DiscreteKoopmanValueIterationPolicy:
             np.log(pis_response[selected_indices])
         )
 
-    def get_action(self, x, sample_size=None):
+    def get_action(self, x, sample_size=None, is_greedy=False):
         """
             Compute the action given the current state.
 
@@ -253,7 +253,7 @@ class DiscreteKoopmanValueIterationPolicy:
                 Action from value iteration policy.
         """
 
-        return self.get_action_and_log_prob(x, sample_size)[0]
+        return self.get_action_and_log_prob(x, sample_size, is_greedy)[0]
 
     def train(
         self,
