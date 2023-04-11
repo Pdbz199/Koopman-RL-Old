@@ -91,7 +91,9 @@ def watch_agent(num_episodes, num_steps_per_episode, specified_episode):
     # ).T
 
     # Generating initial conditions
-    initial_states = get_random_initial_conditions(num_samples=num_episodes, on_limit_cycle=False)
+    initial_states = get_random_initial_conditions(num_samples=num_episodes, on_limit_cycle=True)
+    # initial_states = get_random_initial_conditions(num_samples=num_episodes, on_limit_cycle=False)
+    # initial_states = np.array([[0, 0, 1]])
 
     for episode_num in range(num_episodes):
         # Extract initial state
@@ -109,7 +111,7 @@ def watch_agent(num_episodes, num_steps_per_episode, specified_episode):
             # Get actions for current state and save them
             lqr_action = lqr_policy.get_action(lqr_state, is_entropy_regularized=True)
             lqr_actions[episode_num, step_num] = lqr_action[:, 0]
-            value_iteration_action = koopman_policy.get_action(value_iteration_state)
+            value_iteration_action = koopman_policy.get_action(value_iteration_state, is_greedy=False)
             value_iteration_actions[episode_num, step_num] = value_iteration_action[:, 0]
 
             # Compute costs
@@ -227,4 +229,5 @@ def watch_agent(num_episodes, num_steps_per_episode, specified_episode):
 
 if __name__ == '__main__':
     print("\nTesting learned policy...\n")
-    watch_agent(num_episodes=100, num_steps_per_episode=int(20 / dt), specified_episode=42)
+    # watch_agent(num_episodes=100, num_steps_per_episode=int(20 / dt), specified_episode=42)
+    watch_agent(num_episodes=1, num_steps_per_episode=int(20 / dt), specified_episode=0)
