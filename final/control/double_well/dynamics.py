@@ -119,6 +119,10 @@ def f(state, action):
         [0, 0.5]
     ])
     # sigma_x = np.array([
+    #     [0.7, 0],
+    #     [0, 0.5]
+    # ])
+    # sigma_x = np.array([
     #     [0, 0],
     #     [0, 0]
     # ])
