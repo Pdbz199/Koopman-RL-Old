@@ -21,12 +21,13 @@ action_range = 25.0
 action_minimums = np.ones([action_dim,1]) * -action_range
 action_maximums = np.ones([action_dim,1]) * action_range
 
-state_order = 2
-action_order = 2
+state_order = 4
+action_order = 4
 
 phi_dim = int( comb( state_order+state_dim, state_order ) )
 
-step_size = 1.0
+# step_size = 1.0
+step_size = 0.5
 all_actions = np.arange(-action_range, action_range+step_size, step_size)
 all_actions = np.round(all_actions, decimals=2)
 all_actions = np.array([all_actions])
@@ -42,8 +43,22 @@ def get_random_initial_conditions(num_samples=1):
 def zero_policy(x=None):
     return np.zeros(action_column_shape)
 
+# Random policy
 def random_policy(x=None):
     return np.random.choice(all_actions[0], size=action_column_shape)
+
+def potential(x):
+    """
+        Compute the potential energy of a given state.
+
+        INPUTS:
+            x - Column vector of state.
+
+        OUTPUTS:
+            Float representing the potential energy.
+    """
+
+    return (x[0]**2 - 1)**2 + x[1]**2
 
 # Dynamics
 dt = 0.01
