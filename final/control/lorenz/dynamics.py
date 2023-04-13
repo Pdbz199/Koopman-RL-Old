@@ -40,7 +40,8 @@ def get_random_initial_conditions(num_samples=1):
         [state_dim, num_samples]
     ).T
 
-action_range = 75.0
+# action_range = 75.0
+action_range = 500.0
 action_minimums = np.ones([action_dim,1]) * -action_range
 action_maximums = np.ones([action_dim,1]) * action_range
 
@@ -78,8 +79,8 @@ def continuous_f(action=None):
     def f_u(t, input):
         """
             INPUTS:
-                input - State vector.
                 t - Timestep.
+                input - State vector.
         """
 
         x, y, z = input
@@ -112,11 +113,11 @@ def f(state, action):
             State column vector pushed forward in time.
     """
 
-    u = action[:,0]
+    u = action[:, 0]
 
-    soln = solve_ivp(fun=continuous_f(u), t_span=[0, dt], y0=state[:,0], method='RK45')
+    soln = solve_ivp(fun=continuous_f(u), t_span=[0, dt], y0=state[:, 0], method='RK45')
     
-    return np.vstack(soln.y[:,-1])
+    return np.vstack(soln.y[:, -1])
 
 # Compute continuous A and B for LQR policy
 x_bar = x_e

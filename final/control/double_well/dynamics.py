@@ -12,7 +12,7 @@ action_dim = 1
 state_column_shape = [state_dim, 1]
 action_column_shape = [action_dim, 1]
 
-state_range = 1.0
+state_range = 2.0
 state_minimums = np.ones([state_dim,1]) * -state_range
 state_maximums = np.ones([state_dim,1]) * state_range
 
@@ -30,6 +30,13 @@ step_size = 1.0
 all_actions = np.arange(-action_range, action_range+step_size, step_size)
 all_actions = np.round(all_actions, decimals=2)
 all_actions = np.array([all_actions])
+
+def get_random_initial_conditions(num_samples=1):
+    return np.random.uniform(
+        state_minimums,
+        state_maximums,
+        [state_dim, num_samples]
+    ).T
 
 # Policy that only returns 0
 def zero_policy(x=None):
@@ -96,6 +103,10 @@ def f(state, action):
         [0.7, state[0,0]],
         [0, 0.5]
     ])
+    # sigma_x = np.array([
+    #     [0, 0],
+    #     [0, 0]
+    # ])
 
     drift = np.vstack(continuous_f(u)(0, state[:,0])) * dt
     diffusion = sigma_x @ np.random.normal(loc=0, scale=1, size=(2,1)) * np.sqrt(dt)

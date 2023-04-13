@@ -262,7 +262,8 @@ class DiscreteKoopmanValueIterationPolicy:
         batch_scale=1,
         epsilon=1e-2,
         gammas=[],
-        gamma_increment_amount=0.0
+        gamma_increment_amount=0.0,
+        how_often_to_chkpt=250
     ):
         """
             Train the value iteration model. This updates the class parameters without returning anything.
@@ -275,6 +276,7 @@ class DiscreteKoopmanValueIterationPolicy:
                 epsilon - End the training process if the Bellman error < epsilon.
                 gammas - Array of gammas to try in case of iterating on the discounting factors.
                 gamma_increment_amount - Amount by which to increment gamma until it reaches 0.99. If 0.0, no incrementing.
+                how_often_to_chkpt - Number of training iterations to do before saving model weights and training data.
         """
 
         # Save original gamma and set gamma to first in array
@@ -371,19 +373,13 @@ class DiscreteKoopmanValueIterationPolicy:
                 print(f"Epoch number: {epoch+1}")
 
                 # Every so often, print out and save the model weights and bellman errors
-                # how_often_to_chkpt = 250
-                how_often_to_chkpt = 20
-                if (epoch+1) % how_often_to_chkpt == 0: # or True:
+                if (epoch+1) % how_often_to_chkpt == 0:
                     torch.save(self.value_function_weights, f"{self.save_data_path}/policy.pt")
                     np.save(f"{self.save_data_path}/training_data/bellman_errors.npy", np.array(bellman_errors))
                     print(f"Bellman error at epoch {epoch+1}: {BE}")
 
-                # If the bellman error is less than or equal to epsilon, save the model weights and bellman errors
-                if BE <= epsilon:
-                    torch.save(self.value_function_weights, f"{self.save_data_path}/policy.pt")
-                    np.save(f"{self.save_data_path}/training_data/bellman_errors.npy", np.array(bellman_errors))
-                    print(f"Bellman error at epoch {epoch+1}: {BE}")
-                    break
+                    if BE <= epsilon:
+                        break
 
             step += 1
 
