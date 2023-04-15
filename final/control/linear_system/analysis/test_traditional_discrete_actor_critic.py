@@ -24,7 +24,7 @@ from dynamics import (
 )
 
 sys.path.append('../../../')
-from final.control.policies.discrete_value_iteration import DiscreteKoopmanValueIterationPolicy
+from final.control.policies.traditional_discrete_actor_critic import DiscretePolicyIterationPolicy
 
 #%% Load Koopman tensor with pickle
 with open('./analysis/tmp/path_based_tensor.pickle', 'rb') as handle:
@@ -39,14 +39,16 @@ gamma = 0.99
 reg_lambda = 1.0
 
 #%% Koopman value iteration policy
-koopman_policy = DiscreteKoopmanValueIterationPolicy(
+koopman_policy = DiscretePolicyIterationPolicy(
     f,
     gamma,
     reg_lambda,
     tensor,
+    state_minimums,
+    state_maximums,
     all_actions,
     cost,
-    save_data_path="./analysis/tmp/discrete_value_iteration",
+    save_data_path="./analysis/tmp/traditional_discrete_actor_critic",
     seed=seed,
     load_model=True
 )
@@ -56,7 +58,7 @@ def show_plot():
     plt.tight_layout()
     plt.show()
 
-path = "./analysis/tmp/discrete_value_iteration/plots"
+path = "./analysis/tmp/traditional_discrete_actor_critic/plots"
 plot_file_extensions = ['png', 'svg']
 def save_figure(title: str):
     plt.tight_layout()
@@ -71,12 +73,11 @@ def watch_agent(num_episodes, num_steps_per_episode, specified_episode):
 
     lqr_states = np.zeros((num_episodes, num_steps_per_episode, state_dim))
     lqr_actions = np.zeros((num_episodes, num_steps_per_episode, action_dim))
-    lqr_action_conditional_densities = np.zeros((num_episodes, num_steps_per_episode, action_dim))
     lqr_costs = np.zeros((num_episodes, num_steps_per_episode))
 
-    value_iteration_states = np.zeros_like(lqr_states)
-    value_iteration_actions = np.zeros_like(lqr_actions)
-    value_iteration_costs = np.zeros_like(lqr_costs)
+    actor_critic_states = np.zeros_like(lqr_states)
+    actor_critic_actions = np.zeros_like(lqr_actions)
+    actor_critic_costs = np.zeros_like(lqr_costs)
 
     initial_states = np.random.uniform(
         state_minimums,
@@ -88,34 +89,28 @@ def watch_agent(num_episodes, num_steps_per_episode, specified_episode):
         # Extract initial state
         state = np.vstack(initial_states[episode_num])
 
+        # Set initial states to be equal
         lqr_state = state
-        value_iteration_state = state
+        actor_critic_state = state
 
         for step_num in range(num_steps_per_episode):
             # Save latest states
             lqr_states[episode_num,step_num] = lqr_state[:, 0]
-            value_iteration_states[episode_num,step_num] = value_iteration_state[:, 0]
+            actor_critic_states[episode_num,step_num] = actor_critic_state[:, 0]
 
             # Get actions for current state and save them
             lqr_action = lqr_policy.get_action(lqr_state, is_entropy_regularized=True)
             lqr_actions[episode_num, step_num] = lqr_action[:, 0]
-            # lqr_action_conditional_densities[episode_num, step_num] = lqr_policy.get_action_density(lqr_action, lqr_state)[:, 0]
-
-            # value_iteration_action = koopman_policy.get_action(value_iteration_state)
-            value_iteration_action, value_iteration_log_prob = koopman_policy.get_action_and_log_prob(value_iteration_state, is_greedy=False)
-            value_iteration_actions[episode_num, step_num] = value_iteration_action[:, 0]
+            actor_critic_action, _ = koopman_policy.get_action(actor_critic_state)
+            actor_critic_actions[episode_num, step_num] = actor_critic_action[:, 0]
 
             # Compute costs
             lqr_costs[episode_num,step_num] = cost(lqr_state, lqr_action)[0, 0]
-            # lqr_costs[episode_num,step_num] = cost(lqr_state, lqr_action)[0, 0] + \
-            #                                     np.log(lqr_action_conditional_densities[episode_num, step_num, 0])
-            value_iteration_costs[episode_num,step_num] = cost(value_iteration_state, value_iteration_action)[0, 0]
-            # value_iteration_costs[episode_num,step_num] = cost(value_iteration_state, value_iteration_action)[0, 0] + \
-            #                                                 value_iteration_log_prob
+            actor_critic_costs[episode_num,step_num] = cost(actor_critic_state, actor_critic_action)[0, 0]
 
             # Compute next states
             lqr_state = f(lqr_state, lqr_action)
-            value_iteration_state = f(value_iteration_state, value_iteration_action)
+            actor_critic_state = f(actor_critic_state, actor_critic_action)
 
     # Make figure for plots
     fig = plt.figure(figsize=(16,9))
@@ -128,27 +123,27 @@ def watch_agent(num_episodes, num_steps_per_episode, specified_episode):
     ax.set_xlabel("Episode #")
     ax.set_ylabel("Total Cost")
     lqr_costs_per_episode = lqr_costs.sum(axis=1)
-    value_iteration_costs_per_episode = value_iteration_costs.sum(axis=1)
+    actor_critic_costs_per_episode = actor_critic_costs.sum(axis=1)
     ax.plot(lqr_costs_per_episode)
-    ax.plot(value_iteration_costs_per_episode)
+    ax.plot(actor_critic_costs_per_episode)
     ax.scatter(episode_range, lqr_costs_per_episode)
-    ax.scatter(episode_range, value_iteration_costs_per_episode)
+    ax.scatter(episode_range, actor_critic_costs_per_episode)
 
     print(f"Mean of total LQR costs per episode over {num_episodes} episode(s): {lqr_costs_per_episode.mean()}")
     print(f"Standard deviation of total LQR costs per episode over {num_episodes} episode(s): {lqr_costs_per_episode.std()}")
-    print(f"Mean of total value iteration costs per episode over {num_episodes} episode(s): {value_iteration_costs_per_episode.mean()}")
-    print(f"Standard deviation of total value iteration costs per episode over {num_episodes} episode(s): {value_iteration_costs_per_episode.std()}\n")
+    print(f"Mean of total discrete actor critic costs per episode over {num_episodes} episode(s): {actor_critic_costs_per_episode.mean()}")
+    print(f"Standard deviation of total discrete actor critic costs per episode over {num_episodes} episode(s): {actor_critic_costs_per_episode.std()}\n")
 
     print(f"Initial state of episode #{specified_episode}: {lqr_states[specified_episode, 0]}")
     print(f"Final LQR state of episode #{specified_episode}: {lqr_states[specified_episode, -1]}")
-    print(f"Final value iteration state of episode #{specified_episode}: {value_iteration_states[specified_episode, -1]}\n")
+    print(f"Final discrete actor critic state of episode #{specified_episode}: {actor_critic_states[specified_episode, -1]}\n")
 
     print(f"Reference state: {reference_point[:, 0]}\n")
 
     print(f"Difference between final LQR state of episode #{specified_episode} and reference state: {np.abs(lqr_states[specified_episode, -1] - reference_point[:, 0])}")
     print(f"Norm between final LQR state of episode #{specified_episode} and reference state: {np.linalg.norm(lqr_states[specified_episode, -1] - reference_point[:, 0])}")
-    print(f"Difference between final value iteration state of episode #{specified_episode} and reference state: {np.abs(value_iteration_states[specified_episode, -1] - reference_point[:, 0])}")
-    print(f"Norm between final value iteration state of episode #{specified_episode} and reference state: {np.linalg.norm(value_iteration_states[specified_episode, -1] - reference_point[:, 0])}\n")
+    print(f"Difference between final discrete actor critic state of episode #{specified_episode} and reference state: {np.abs(actor_critic_states[specified_episode, -1] - reference_point[:, 0])}")
+    print(f"Norm between final discrete actor critic state of episode #{specified_episode} and reference state: {np.linalg.norm(actor_critic_states[specified_episode, -1] - reference_point[:, 0])}\n")
 
     # Plot dynamics over time for all state dimensions
     ax = fig.add_subplot(3, 3, 2)
@@ -173,10 +168,10 @@ def watch_agent(num_episodes, num_steps_per_episode, specified_episode):
     labels = []
     for i in range(state_dim):
         labels.append(f"x_{i}")
-        ax.plot(value_iteration_states[specified_episode, :, i])
+        ax.plot(actor_critic_states[specified_episode, :, i])
     ax.legend(labels)
     for i in range(state_dim):
-        ax.scatter(step_range, value_iteration_states[specified_episode, :, i])
+        ax.scatter(step_range, actor_critic_states[specified_episode, :, i])
 
     # Plot x_0 vs x_1 vs x_2
     ax = fig.add_subplot(3, 3, 4, projection='3d')
@@ -190,9 +185,9 @@ def watch_agent(num_episodes, num_steps_per_episode, specified_episode):
         lqr_states[specified_episode, :, 2]
     )
     ax.plot3D(
-        value_iteration_states[specified_episode, :, 0],
-        value_iteration_states[specified_episode, :, 1],
-        value_iteration_states[specified_episode, :, 2]
+        actor_critic_states[specified_episode, :, 0],
+        actor_critic_states[specified_episode, :, 1],
+        actor_critic_states[specified_episode, :, 2]
     )
 
     # Plot histogram of actions over time
@@ -201,7 +196,7 @@ def watch_agent(num_episodes, num_steps_per_episode, specified_episode):
     ax.set_xlabel("Action Value")
     ax.set_ylabel("Frequency")
     ax.hist(lqr_actions[specified_episode, :, 0])
-    ax.hist(value_iteration_actions[specified_episode, :, 0])
+    ax.hist(actor_critic_actions[specified_episode, :, 0])
 
     # Plot scatter plot of actions over time
     ax = fig.add_subplot(3, 3, 6)
@@ -209,17 +204,19 @@ def watch_agent(num_episodes, num_steps_per_episode, specified_episode):
     ax.set_xlabel("Step #")
     ax.set_ylabel("Action Value")
     ax.scatter(step_range, lqr_actions[specified_episode, :, 0], s=5)
-    ax.scatter(step_range, value_iteration_actions[specified_episode, :, 0], s=5)
+    ax.scatter(step_range, actor_critic_actions[specified_episode, :, 0], s=5)
 
-    # Plot bellman errors over time
+    # Plot total cost per episode during training
     ax = fig.add_subplot(3, 3, 8)
-    ax.set_title(f"Bellman Errors During Policy Training")
-    ax.set_xlabel("Epoch #")
-    ax.set_ylabel("Bellman Error")
-    ax.plot(np.load(f"{koopman_policy.save_data_path}/training_data/bellman_errors.npy"))
+    ax.set_title("Total Cost Per Episode During Training")
+    ax.set_xlabel("Episode #")
+    ax.set_ylabel("Cost")
+    costs = -np.load(f"./analysis/tmp/traditional_discrete_actor_critic/training_data/rewards.npy")
+    total_cost_per_episode = costs.sum(axis=1)
+    ax.plot(total_cost_per_episode)
 
     # Show/save plots
-    save_figure(f"{system_name}_dynamics_with_value_iteration_vs_lqr")
+    save_figure(f"{system_name}_dynamics_with_actor_critic_vs_lqr")
     # show_plot()
 
 if __name__ == '__main__':

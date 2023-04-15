@@ -42,4 +42,4 @@ koopman_policy = DiscreteKoopmanValueIterationPolicy(
 
 # Train Koopman policy
 # koopman_policy.train(training_epochs=2_000, batch_size=2**12)
-koopman_policy.train(training_epochs=10, batch_size=2**14)
+koopman_policy.train(training_epochs=10, batch_size=2**14, how_often_to_chkpt=5)

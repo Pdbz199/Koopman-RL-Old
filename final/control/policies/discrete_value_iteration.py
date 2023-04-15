@@ -84,20 +84,20 @@ class DiscreteKoopmanValueIterationPolicy:
 
         # Compute phi(x') for all ( phi(x), action ) pairs and compute V(x')s
         K_us = self.dynamics_model.K_(self.all_actions) # (all_actions.shape[1], phi_dim, phi_dim)
-        phi_x_primes = np.zeros([self.all_actions.shape[1], self.dynamics_model.phi_dim, xs.shape[1]])
-        V_x_primes = torch.zeros([self.all_actions.shape[1], xs.shape[1]])
+        phi_x_prime_batch = np.zeros([self.all_actions.shape[1], self.dynamics_model.phi_dim, xs.shape[1]])
+        V_x_prime_batch = torch.zeros([self.all_actions.shape[1], xs.shape[1]])
         for action_index in range(K_us.shape[0]):
-            phi_x_primes_hat = K_us[action_index] @ phi_xs # (dim_phi, batch_size)
-            x_primes_hat = self.dynamics_model.B.T @ phi_x_primes_hat # (X.shape[0], batch_size)
-            # phi_x_primes[action_index] = phi_x_prime_hat
-            phi_x_primes[action_index] = self.dynamics_model.phi(x_primes_hat) # (dim_phi, batch_size)
-            V_x_primes[action_index] = self.V_phi_x(phi_x_primes[action_index]) # (1, batch_size)
+            phi_x_prime_hat_batch = K_us[action_index] @ phi_xs # (dim_phi, batch_size)
+            # x_primes_hat = self.dynamics_model.B.T @ phi_x_primes_hat # (X.shape[0], batch_size)
+            phi_x_prime_batch[action_index] = phi_x_prime_hat_batch
+            # phi_x_prime_batch[action_index] = self.dynamics_model.phi(x_primes_hat) # (dim_phi, batch_size)
+            V_x_prime_batch[action_index] = self.V_phi_x(phi_x_prime_batch[action_index]) # (1, batch_size)
 
         # Get costs indexed by the action and the state
         costs = torch.Tensor(self.cost(xs, self.all_actions)) # (all_actions.shape[1], batch_size)
 
         # Compute policy distribution
-        inner_pi_us_values = -(costs + self.discount_factor*V_x_primes) # (all_actions.shape[1], xs.shape[1])
+        inner_pi_us_values = -(costs + self.discount_factor*V_x_prime_batch) # (all_actions.shape[1], xs.shape[1])
         inner_pi_us = inner_pi_us_values / self.regularization_lambda # (all_actions.shape[1], xs.shape[1])
         real_inner_pi_us = torch.real(inner_pi_us) # (all_actions.shape[1], xs.shape[1])
 
@@ -166,17 +166,17 @@ class DiscreteKoopmanValueIterationPolicy:
 
         # Compute phi(x') for all ( phi(x), action ) pairs and compute V(x')s
         K_us = self.dynamics_model.K_(self.all_actions) # (all_actions.shape[1], phi_dim, phi_dim)
-        phi_x_primes = np.zeros([self.all_actions.shape[1], self.dynamics_model.phi_dim, batch_size])
-        V_x_primes = torch.zeros([self.all_actions.shape[1], batch_size])
+        phi_x_prime_batch = np.zeros([self.all_actions.shape[1], self.dynamics_model.phi_dim, batch_size])
+        V_x_prime_batch = torch.zeros([self.all_actions.shape[1], batch_size])
         for action_index in range(K_us.shape[0]):
-            phi_x_primes_hat = K_us[action_index] @ phi_x_batch # (dim_phi, batch_size)
-            x_primes_hat = self.dynamics_model.B.T @ phi_x_primes_hat # (X.shape[0], batch_size)
-            # phi_x_primes[action_index] = phi_x_prime_hat
-            phi_x_primes[action_index] = self.dynamics_model.phi(x_primes_hat) # (dim_phi, batch_size)
-            V_x_primes[action_index] = self.V_phi_x(phi_x_primes[action_index]) # (1, batch_size)
+            phi_x_prime_hat_batch = K_us[action_index] @ phi_x_batch # (dim_phi, batch_size)
+            # x_prime_hat_batch = self.dynamics_model.B.T @ phi_x_prime_hat_batch # (X.shape[0], batch_size)
+            phi_x_prime_batch[action_index] = phi_x_prime_hat_batch
+            # phi_x_prime_batch[action_index] = self.dynamics_model.phi(x_primes_hat) # (dim_phi, batch_size)
+            V_x_prime_batch[action_index] = self.V_phi_x(phi_x_prime_batch[action_index]) # (1, batch_size)
 
         # Compute policy distribution
-        inner_pi_us_values = -(costs + self.discount_factor*V_x_primes) # (all_actions.shape[1], batch_size)
+        inner_pi_us_values = -(costs + self.discount_factor*V_x_prime_batch) # (all_actions.shape[1], batch_size)
         inner_pi_us = inner_pi_us_values / self.regularization_lambda # (all_actions.shape[1], batch_size)
         real_inner_pi_us = torch.real(inner_pi_us) # (all_actions.shape[1], batch_size)
 
@@ -200,7 +200,7 @@ class DiscreteKoopmanValueIterationPolicy:
         expectation_u = torch.sum(
             (costs + \
                 self.regularization_lambda*log_pis + \
-                    self.discount_factor*V_x_primes) * pis_response,
+                    self.discount_factor*V_x_prime_batch) * pis_response,
             axis=0
         ).reshape(1, -1) # (1, batch_size)
 
@@ -311,17 +311,17 @@ class DiscreteKoopmanValueIterationPolicy:
 
                 # Compute V(x')s
                 K_us = self.dynamics_model.K_(self.all_actions) # (all_actions.shape[1], phi_dim, phi_dim)
-                phi_x_primes = np.zeros((self.all_actions.shape[1], self.dynamics_model.phi_dim, batch_size))
-                V_x_primes = torch.zeros((self.all_actions.shape[1], batch_size))
-                for action_index in range(phi_x_primes.shape[0]):
-                    phi_x_primes_hat = K_us[action_index] @ phi_x_batch # (phi_dim, batch_size)
-                    x_primes_hat = self.dynamics_model.B.T @ phi_x_primes_hat # (X.shape[0], batch_size)
-                    # phi_x_primes[action_index] = phi_x_prime_hat
-                    phi_x_primes[action_index] = self.dynamics_model.phi(x_primes_hat) # (dim_phi, batch_size)
-                    V_x_primes[action_index] = self.V_phi_x(phi_x_primes[action_index]) # (1, batch_size)
+                phi_x_prime_batch = np.zeros((self.all_actions.shape[1], self.dynamics_model.phi_dim, batch_size))
+                V_x_prime_batch = torch.zeros((self.all_actions.shape[1], batch_size))
+                for action_index in range(phi_x_prime_batch.shape[0]):
+                    phi_x_prime_hat_batch = K_us[action_index] @ phi_x_batch # (phi_dim, batch_size)
+                    # x_primes_hat = self.dynamics_model.B.T @ phi_x_primes_hat # (X.shape[0], batch_size)
+                    phi_x_prime_batch[action_index] = phi_x_prime_hat_batch
+                    # phi_x_primes[action_index] = self.dynamics_model.phi(x_primes_hat) # (dim_phi, batch_size)
+                    V_x_prime_batch[action_index] = self.V_phi_x(phi_x_prime_batch[action_index]) # (1, batch_size)
 
                 # Compute policy distribution
-                inner_pi_us_values = -(costs + self.discount_factor*V_x_primes) # (all_actions.shape[1], batch_size)
+                inner_pi_us_values = -(costs + self.discount_factor*V_x_prime_batch) # (all_actions.shape[1], batch_size)
                 inner_pi_us = inner_pi_us_values / self.regularization_lambda # (all_actions.shape[1], batch_size)
                 real_inner_pi_us = torch.real(inner_pi_us) # (all_actions.shape[1], batch_size)
 
@@ -345,7 +345,7 @@ class DiscreteKoopmanValueIterationPolicy:
                 expectation_term_1 = torch.sum(
                     (costs + \
                         self.regularization_lambda*log_pis + \
-                            self.discount_factor*V_x_primes) * pis_response,
+                            self.discount_factor*V_x_prime_batch) * pis_response,
                     dim=0
                 ).reshape(1, -1) # (1, batch_size)
 
@@ -358,7 +358,7 @@ class DiscreteKoopmanValueIterationPolicy:
                     ).solution
                 else:
                     # Compute loss
-                    loss = torch.pow(V_x_primes - expectation_term_1, 2).mean()
+                    loss = torch.pow(V_x_prime_batch - expectation_term_1, 2).mean()
 
                     # Backpropogation for value function weights
                     self.value_function_optimizer.zero_grad()
