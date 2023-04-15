@@ -27,7 +27,8 @@ with open('./analysis/tmp/path_based_tensor.pickle', 'rb') as handle:
     tensor = pickle.load(handle)
 
 # Variables
-gamma = 0.99
+# gamma = 0.99
+gamma = 1.0
 reg_lambda = 1.0
 
 # Koopman value iteration policy
@@ -43,6 +44,7 @@ koopman_policy = DiscreteKoopmanPolicyIterationPolicy(
     save_data_path="./analysis/tmp/discrete_actor_critic",
     seed=seed,
     learning_rate=0.003
+    # learning_rate=0.03
 )
 print(f"\nLearning rate: {koopman_policy.learning_rate}\n")
 

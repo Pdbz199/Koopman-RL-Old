@@ -258,7 +258,7 @@ class DiscreteKoopmanValueIterationPolicy:
     def train(
         self,
         training_epochs,
-        batch_size=2**12,
+        batch_size=2**14,
         batch_scale=1,
         epsilon=1e-2,
         gammas=[],

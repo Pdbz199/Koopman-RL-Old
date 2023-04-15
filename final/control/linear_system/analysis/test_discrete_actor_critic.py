@@ -19,7 +19,8 @@ from dynamics import (
     f,
     state_dim,
     state_maximums,
-    state_minimums
+    state_minimums,
+    system_name
 )
 
 sys.path.append('../../../')
@@ -98,7 +99,7 @@ def watch_agent(num_episodes, num_steps_per_episode, specified_episode):
             actor_critic_states[episode_num,step_num] = actor_critic_state[:, 0]
 
             # Get actions for current state and save them
-            lqr_action = lqr_policy.get_action(lqr_state)
+            lqr_action = lqr_policy.get_action(lqr_state, is_entropy_regularized=True)
             lqr_actions[episode_num, step_num] = lqr_action[:, 0]
             actor_critic_action, _ = koopman_policy.get_action(actor_critic_state)
             actor_critic_actions[episode_num, step_num] = actor_critic_action[:, 0]
@@ -210,10 +211,12 @@ def watch_agent(num_episodes, num_steps_per_episode, specified_episode):
     ax.set_title("Total Cost Per Episode During Training")
     ax.set_xlabel("Episode #")
     ax.set_ylabel("Cost")
-    ax.plot(-np.load(f"./analysis/tmp/discrete_actor_critic/training_data/total_reward_per_episode.npy"))
+    costs = -np.load(f"./analysis/tmp/discrete_actor_critic/training_data/rewards.npy")
+    total_cost_per_episode = costs.sum(axis=1)
+    ax.plot(total_cost_per_episode)
 
     # Show/save plots
-    save_figure("linear_system_dynamics_with_actor_critic_vs_lqr")
+    save_figure(f"{system_name}_dynamics_with_actor_critic_vs_lqr")
     # show_plot()
 
 if __name__ == '__main__':
