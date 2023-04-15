@@ -1,23 +1,14 @@
 #%% Imports
-import importlib
-import gym
-import numpy as np
-import numba as nb
 import matplotlib.pyplot as plt
-import scipy as sp
+import numpy as np
+
 from control import lqr
 from scipy import integrate
-from sklearn.kernel_approximation import RBFSampler
-
-import sys
-sys.path.append("../../")
-import estimate_L
-import auxiliaries
-import algorithmsv2
 
 #%% System variable definitions
 mu = -0.1
-lamb = -0.5
+# lamb = -0.5
+lamb = 1.0
 
 A = np.array([
     [mu, 0   ],
@@ -66,11 +57,13 @@ print("Koopman LQR:", C2)
 # u = ((-C[:2] @ x) - (C[2] * x[0]**2))[0]
 
 def vf(tau, x, u):
-    returnVal = ((A @ x.reshape(-1,1)) + np.array([[0], [-lamb * x[0]**2]]) + (B @ u.reshape(-1,1)))
-    return returnVal[:,0]
+    x = np.vstack(x)
+    u = u.reshape(1, -1)
+
+    return ((A @ x) + np.array([[0], [-lamb * x[0, 0]**2]]) + B @ u)[:, 0]
 
 def C2_func(x):
-    np.random.seed( np.abs( int( hash(str(x)) / (10**10) ) ) )
+    # np.random.seed( np.abs( int( hash(str(x)) / (10**10) ) ) )
     return np.array([
         np.random.uniform(-100,100),
         np.random.uniform(-100,100),
@@ -92,13 +85,40 @@ def U_builder(X):
 
 #%% Standard LQR controlled system
 X_opt = integrate.solve_ivp(
-    func=lambda tau, x: vf(tau, x, ((-C2[:2] @ x) - (C2[2] * x[0]**2))),
+    fun=lambda tau, x: vf(tau, x, (-C @ x)),
     t_span=(0, 50),
     y0=initial_x[:, 0],
     first_step=0.05,
     max_step=0.05
 )
-X_opt = X_opt.y
+X_opt = X_opt.y # (2, 1001)
 Y_opt = np.roll(X_opt, -1, axis=1)[:,:-1]
 X_opt = X_opt[:,:-1]
-U_opt = (-C @ X_opt).reshape(1,-1)
+U_opt = (-C @ X_opt).reshape(1, -1)
+
+#%% Koopman LQR controlled system
+X2_opt = integrate.solve_ivp(
+    fun=lambda tau, x: vf(tau, x, ((-C2[:2] @ x) - (C2[2] * x[0]**2))),
+    t_span=(0, 50),
+    y0=initial_x[:, 0],
+    first_step=0.05,
+    max_step=0.05
+)
+X2_opt = X2_opt.y # (2, 1001)
+Y2_opt = np.roll(X2_opt, -1, axis=1)[:,:-1]
+X2_opt = X2_opt[:,:-1]
+U2_opt = (-C @ X2_opt).reshape(1, -1)
+
+#%% Plot the trajectories
+fig = plt.figure()
+plt.suptitle("Slow Manifold Dynamics")
+
+ax = fig.add_subplot(1, 1, 1)
+ax.set_title("Standard LQR v. KRONIC")
+ax.set_xlabel('x_1')
+ax.set_ylabel('x_2')
+ax.plot(X_opt[0], X_opt[1])
+ax.plot(X2_opt[0], X2_opt[1])
+
+plt.tight_layout()
+plt.show()
