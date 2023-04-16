@@ -43,8 +43,8 @@ koopman_policy = DiscretePolicyIterationPolicy(
     cost,
     save_data_path="./analysis/tmp/traditional_discrete_actor_critic",
     seed=seed,
-    learning_rate=0.003
-    # learning_rate=0.03
+    # learning_rate=0.003
+    learning_rate=0.03
 )
 print(f"\nLearning rate: {koopman_policy.learning_rate}\n")
 

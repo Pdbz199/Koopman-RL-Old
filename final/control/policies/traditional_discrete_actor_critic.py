@@ -169,11 +169,6 @@ class DiscretePolicyIterationPolicy:
 
         for episode_num in range(num_training_episodes):
             # Create arrays to save training data
-            # V_xs_per_episode = torch.zeros(num_steps_per_episode)
-            # V_x_primes_per_episode = torch.zeros_like(V_xs_per_episode)
-            # actions_per_episode = torch.zeros((num_steps_per_episode, self.all_actions.shape[1]))
-            # log_probs_per_episode = torch.zeros_like(V_xs_per_episode)
-            # rewards_per_episode = torch.zeros_like(V_xs_per_episode)
             V_xs_per_episode = []
             V_x_primes_per_episode = []
             actions_per_episode = []
@@ -186,73 +181,62 @@ class DiscretePolicyIterationPolicy:
             for step_num in range(num_steps_per_episode):
                 # Compute V_x
                 # with torch.no_grad():
-                V_x = self.value_function(
-                    torch.Tensor(state.T)
-                )
-                # V_xs_per_episode[step_num] = V_x[0, 0]
-                V_xs_per_episode.append(V_x[0])
+                V_x = self.value_function(torch.Tensor(state.T))
+                V_xs_per_episode.append(V_x)
 
                 # Get action and action probabilities for current state
                 action, log_prob = self.get_action(state)
-                # actions_per_episode[step_num] = torch.Tensor(action[:, 0])
-                # log_probs_per_episode[step_num] = log_prob
-                actions_per_episode.append(torch.tensor(action[:, 0]))
+                actions_per_episode.append(action[:, 0])
                 log_probs_per_episode.append(log_prob)
 
                 # Take action A, observe S', R
                 next_state = self.true_dynamics(state, action)
                 curr_reward = -self.cost(state, action)[0, 0]
-                # rewards_per_episode[step_num] = curr_reward
-                rewards_per_episode.append(torch.tensor([curr_reward], dtype=torch.float))
+                rewards_per_episode.append(curr_reward)
 
                 # Compute V_x_prime
-                V_x_prime = self.value_function(
-                    torch.Tensor(next_state.T)
-                )
-                # V_x_primes_per_episode[step_num] = V_x_prime[0, 0]
-                V_x_primes_per_episode.append(V_x_prime[0])
+                V_x_prime = self.value_function(torch.Tensor(next_state.T))
+                V_x_primes_per_episode.append(V_x_prime)
 
                 # Update state for next loop
                 state = next_state
 
-            # TODO: Fix problem where V_x and V_x_prime is not updating
-
-            # Convert per_episode arrays to torch tensors
-            V_xs_per_episode = torch.cat(V_xs_per_episode)
-            V_x_primes_per_episode = torch.cat(V_x_primes_per_episode)
+            # Convert arrays to tensors that maintain gradient computations
+            V_xs_per_episode = torch.stack(V_xs_per_episode)[:, 0, 0]
+            V_x_primes_per_episode = torch.stack(V_x_primes_per_episode)[:, 0, 0]
             actions_per_episode = torch.tensor(actions_per_episode)
-            log_probs_per_episode = torch.cat(log_probs_per_episode)
+            log_probs_per_episode = torch.stack(log_probs_per_episode)[:, 0]
             rewards_per_episode = torch.tensor(rewards_per_episode)
 
-            # Append data to arrays
+            # Append to stored data arrays
             V_xs.append(V_xs_per_episode.detach().numpy())
             V_x_primes.append(V_x_primes_per_episode.detach().numpy())
-            actions.append(actions_per_episode.detach().numpy())
+            actions.append(actions_per_episode.numpy())
             log_probs.append(log_probs_per_episode.detach().numpy())
-            rewards.append(rewards_per_episode.detach().numpy())
+            rewards.append(rewards_per_episode.numpy())
 
-            # def compute_returns():
-            #     """
-            #         Compute returns for each step of an episode.
+            def compute_returns():
+                """
+                    Compute returns for each step of an episode.
 
-            #         INPUTS:
-            #             None.
+                    INPUTS:
+                        None.
 
-            #         OUTPUTS:
-            #             Returns for each step of an episode.
-            #     """
+                    OUTPUTS:
+                        Returns for each step of an episode.
+                """
 
-            #     R = V_x_primes_per_episode[-1]
-            #     returns = torch.zeros_like(rewards_per_episode)
-            #     for step_num in reversed(range(len(rewards_per_episode))):
-            #         R = rewards_per_episode[step_num] + self.discount_factor*R
-            #         returns[step_num] = R
-            #     return returns
+                R = V_x_primes_per_episode[-1]
+                returns = torch.zeros_like(rewards_per_episode)
+                for step_num in reversed(range(len(rewards_per_episode))):
+                    R = rewards_per_episode[step_num] + self.discount_factor*R
+                    returns[step_num] = R
+                return returns
 
             # Compute advantage
-            # advantage_per_episode = compute_returns() - V_xs_per_episode
-            target_V_xs_per_episode = rewards_per_episode + (self.discount_factor * V_x_primes_per_episode)
-            advantage_per_episode = target_V_xs_per_episode - V_xs_per_episode
+            advantage_per_episode = compute_returns() - V_xs_per_episode
+            # target_V_xs_per_episode = rewards_per_episode + (self.discount_factor * V_x_primes_per_episode)
+            # advantage_per_episode = target_V_xs_per_episode - V_xs_per_episode
 
             # Compute actor and critic losses
             actor_loss = (-log_probs_per_episode * advantage_per_episode.detach()).mean()
