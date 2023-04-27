@@ -101,7 +101,9 @@ def watch_agent(num_episodes, num_steps_per_episode, specified_episode):
             # Get actions for current state and save them
             lqr_action = lqr_policy.get_action(lqr_state, is_entropy_regularized=True)
             lqr_actions[episode_num, step_num] = lqr_action[:, 0]
-            actor_critic_action, _ = koopman_policy.get_action(actor_critic_state)
+            # actor_critic_action, _ = koopman_policy.get_action(actor_critic_state)
+            actor_critic_action, _ = koopman_policy.select_action(actor_critic_state)
+            actor_critic_action = np.array([actor_critic_action])
             actor_critic_actions[episode_num, step_num] = actor_critic_action[:, 0]
 
             # Compute costs

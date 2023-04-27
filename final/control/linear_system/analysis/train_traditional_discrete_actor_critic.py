@@ -29,6 +29,7 @@ with open('./analysis/tmp/path_based_tensor.pickle', 'rb') as handle:
 # Variables
 # gamma = 0.99
 gamma = 1.0
+# gamma = 0.33
 reg_lambda = 1.0
 
 # Neural network value iteration policy
@@ -43,11 +44,11 @@ koopman_policy = DiscretePolicyIterationPolicy(
     cost,
     save_data_path="./analysis/tmp/traditional_discrete_actor_critic",
     seed=seed,
-    learning_rate=0.003,
-    layer_1_dim=16, # 128
-    layer_2_dim=32  # 256
+    learning_rate=0.01,
+    layer_1_dim=16, # 128,
+    layer_2_dim=32 # 256
 )
 print(f"\nLearning rate: {koopman_policy.learning_rate}\n")
 
 # Train Koopman policy
-koopman_policy.train(num_training_episodes=20_000, num_steps_per_episode=200, how_often_to_chkpt=200)
+koopman_policy.train(num_training_episodes=50_000, num_steps_per_episode=200, how_often_to_chkpt=200)
