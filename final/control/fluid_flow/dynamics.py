@@ -5,6 +5,8 @@ from scipy.integrate import solve_ivp
 from scipy.special import comb
 
 # Variables
+system_name = "fluid_flow"
+
 state_dim = 3
 action_dim = 1
 

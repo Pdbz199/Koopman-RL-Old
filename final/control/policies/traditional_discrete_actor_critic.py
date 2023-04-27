@@ -1,8 +1,11 @@
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from final.tensor import KoopmanTensor
+
+epsilon = np.finfo(np.float32).eps.item()
 
 class DiscretePolicyIterationPolicy:
     """
@@ -153,7 +156,6 @@ class DiscretePolicyIterationPolicy:
                 how_often_to_chkpt - Number of training iterations to do before saving model weights and training data.
         """
 
-        # epsilon = np.finfo(np.float32).eps.item()
         # V_xs = []
         # V_x_primes = []
         # actions = []
@@ -169,10 +171,10 @@ class DiscretePolicyIterationPolicy:
 
         for episode_num in range(num_training_episodes):
             # Create arrays to save training data
-            # V_xs_per_episode = []
-            # V_x_primes_per_episode = []
-            # actions_per_episode = []
-            # log_probs_per_episode = []
+            V_xs_per_episode = []
+            V_x_primes_per_episode = []
+            actions_per_episode = []
+            log_probs_per_episode = []
             rewards_per_episode = []
 
             # Extract initial state
@@ -181,6 +183,8 @@ class DiscretePolicyIterationPolicy:
             for step_num in range(num_steps_per_episode):
                 # Get action and action probability for current state
                 action, log_prob = self.get_action(state)
+                actions_per_episode.append(action)
+                log_probs_per_episode.append(log_prob)
 
                 # Take action A, observe S', R
                 next_state = self.true_dynamics(state, action)
@@ -189,25 +193,47 @@ class DiscretePolicyIterationPolicy:
 
                 # Compute V_x and V_x_prime
                 V_x = self.value_function(torch.Tensor(state.T))
+                V_xs_per_episode.append(V_x)
                 V_x_prime = self.value_function(torch.Tensor(next_state.T))
-
-                # Compute advantage
-                advantage = reward + self.discount_factor*V_x_prime - V_x
-
-                # Compute loss
-                actor_loss = -log_prob * advantage.detach()
-                critic_loss = advantage.pow(2)
-                total_loss = actor_loss + critic_loss
-
-                # Backpropagation
-                self.policy_model_optimizer.zero_grad()
-                self.value_function_optimizer.zero_grad()
-                total_loss.backward()
-                self.policy_model_optimizer.step()
-                self.value_function_optimizer.step()
+                V_x_primes_per_episode.append(V_x_prime)
 
                 # Update state for next loop
                 state = next_state
+
+            # returns_per_episode = []
+            # R = 0
+            # for r in rewards_per_episode[::-1]:
+            #     # Calculate the discounted value
+            #     R = r + self.discount_factor * R
+            #     returns_per_episode.insert(0, R)
+
+            # returns_per_episode = torch.tensor(returns_per_episode)
+            # returns_per_episode = (returns_per_episode - returns_per_episode.mean()) / (returns_per_episode.std() + epsilon)
+
+            policy_losses = []
+            value_losses = []
+            # for R, V_x, log_prob in zip(returns_per_episode, V_xs_per_episode, log_probs_per_episode):
+            #     advantage = R - V_x.item()
+            #     policy_losses.append(-log_prob * advantage)
+            #     value_losses.append(F.mse_loss(V_x, torch.Tensor([[R]])))
+
+            for reward, V_x_prime, V_x, log_prob in zip(rewards_per_episode, V_x_primes_per_episode, V_xs_per_episode, log_probs_per_episode):
+                advantage = reward + self.discount_factor*V_x_prime - V_x
+                policy_losses.append(-log_prob * advantage.detach())
+                value_losses.append(advantage.pow(2))
+
+            # Reset gradients
+            self.policy_model_optimizer.zero_grad()
+            self.value_function_optimizer.zero_grad()
+
+            # Compute total loss
+            # total_loss = torch.stack(policy_losses).sum() + torch.stack(value_losses).sum()
+            total_loss = torch.stack(policy_losses).mean() + torch.stack(value_losses).mean()
+
+            # Backpropagation
+            total_loss.backward()
+            self.policy_model_optimizer.step()
+            self.value_function_optimizer.step()
 
             # Append episode rewards array to rewards data matrix
             rewards.append(rewards_per_episode)

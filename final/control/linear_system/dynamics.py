@@ -22,9 +22,9 @@ action_range = 10.0
 action_minimums = np.ones([action_dim,1]) * -action_range
 action_maximums = np.ones([action_dim,1]) * action_range
 
-# step_size = 0.1
+step_size = 0.1
 # step_size = 0.5
-step_size = 0.25
+# step_size = 0.25
 # step_size = 1.0
 all_actions = np.arange(-action_range, action_range+step_size, step_size)
 all_actions = np.round(all_actions, decimals=2)
