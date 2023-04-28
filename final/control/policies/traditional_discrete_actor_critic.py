@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from final.tensor import KoopmanTensor
-from torch.distributions import Categorical
+from torch.distributions import Categorical, Normal
 
 epsilon = np.finfo(np.float32).eps.item()
 
@@ -91,30 +91,44 @@ class DiscretePolicyIterationPolicy:
             self.policy_model = nn.Sequential(
                 nn.Linear(self.dynamics_model.x_dim, self.layer_1_dim),
                 nn.ReLU(),
-                nn.Linear(self.layer_1_dim, self.layer_2_dim),
-                nn.ReLU(),
-                nn.Linear(self.layer_2_dim, self.all_actions.shape[1]),
+                # nn.Linear(self.layer_1_dim, self.layer_2_dim),
+                # nn.ReLU(),
+                nn.Linear(self.layer_1_dim, self.all_actions.shape[1]),
+                # nn.Linear(self.layer_2_dim, 2), # Continuous action policy
                 nn.Softmax(dim=-1)
             )
             self.value_function = nn.Sequential(
                 nn.Linear(self.dynamics_model.x_dim, self.layer_1_dim),
                 nn.ReLU(),
-                nn.Linear(self.layer_1_dim, self.layer_2_dim),
-                nn.ReLU(),
-                nn.Linear(self.layer_2_dim, 1)
+                # nn.Linear(self.layer_1_dim, self.layer_2_dim),
+                # nn.ReLU(),
+                nn.Linear(self.layer_1_dim, 1)
             )
 
-            def init_weights(m):
-                if type(m) == torch.nn.Linear:
-                    m.weight.data.fill_(0.0)
+            # def init_weights(m):
+            #     if type(m) == torch.nn.Linear:
+            #         m.weight.data.fill_(0.0)
 
-            self.policy_model.apply(init_weights)
-            self.value_function.apply(init_weights)
+            # self.policy_model.apply(init_weights)
+            # self.value_function.apply(init_weights)
 
         self.policy_model_optimizer = torch.optim.Adam(self.policy_model.parameters(), lr=self.learning_rate)
         self.value_function_optimizer = torch.optim.Adam(self.value_function.parameters(), lr=self.learning_rate)
 
     def select_action(self, state, num_samples=1):
+        # Continuous action policy
+        # torch_state = torch.from_numpy(state[:, 0]).float()
+        # action_probabilities = self.policy_model(torch_state)
+
+        # mu, log_sigma = self.policy_model(torch_state)
+        # action_distribution = Normal(mu, log_sigma.exp())
+
+        # actions = action_distribution.sample(sample_shape=[self.all_actions.shape[0], num_samples])
+        # log_probs = action_distribution.log_prob(actions)
+
+        # return actions, log_probs
+
+        # Discrete action policy
         torch_state = torch.from_numpy(state[:, 0]).float()
         action_probabilities = self.policy_model(torch_state)
 
@@ -219,6 +233,7 @@ class DiscretePolicyIterationPolicy:
                 # action, log_prob = self.get_action(state, is_training=True)
                 action, log_prob = self.select_action(state)
                 action = np.array([action])
+                # action = action.numpy()
                 actions_per_episode.append(action)
                 log_probs_per_episode.append(log_prob)
 
@@ -236,27 +251,27 @@ class DiscretePolicyIterationPolicy:
                 # Update state for next loop
                 state = next_state
 
-            # returns_per_episode = []
-            # R = 0
-            # for r in rewards_per_episode[::-1]:
-            #     # Calculate the discounted value
-            #     R = r + self.discount_factor * R
-            #     returns_per_episode.insert(0, R)
+            returns_per_episode = []
+            R = 0
+            for r in rewards_per_episode[::-1]:
+                # Calculate the discounted value
+                R = r + self.discount_factor * R
+                returns_per_episode.insert(0, R)
 
-            # returns_per_episode = torch.tensor(returns_per_episode)
-            # returns_per_episode = (returns_per_episode - returns_per_episode.mean()) / (returns_per_episode.std() + epsilon)
+            returns_per_episode = torch.tensor(returns_per_episode)
+            returns_per_episode = (returns_per_episode - returns_per_episode.mean()) / (returns_per_episode.std() + epsilon)
 
             policy_losses = []
             value_losses = []
-            # for R, V_x, log_prob in zip(returns_per_episode, V_xs_per_episode, log_probs_per_episode):
-            #     advantage = R - V_x.item()
-            #     policy_losses.append(-log_prob * advantage)
-            #     value_losses.append(F.mse_loss(V_x, torch.Tensor([[R]])))
+            for R, V_x, log_prob in zip(returns_per_episode, V_xs_per_episode, log_probs_per_episode):
+                advantage = R - V_x.item()
+                policy_losses.append(-log_prob * advantage)
+                value_losses.append(F.mse_loss(V_x, torch.Tensor([[R]])))
 
-            for reward, V_x_prime, V_x, log_prob in zip(rewards_per_episode, V_x_primes_per_episode, V_xs_per_episode, log_probs_per_episode):
-                advantage = reward/1000 + self.discount_factor*V_x_prime - V_x
-                policy_losses.append(-log_prob * advantage.detach())
-                value_losses.append(advantage.pow(2))
+            # for reward, V_x_prime, V_x, log_prob in zip(rewards_per_episode, V_x_primes_per_episode, V_xs_per_episode, log_probs_per_episode):
+            #     advantage = reward + self.discount_factor*V_x_prime - V_x
+            #     policy_losses.append(-log_prob * advantage.detach())
+            #     value_losses.append(advantage.pow(2))
 
             # Reset gradients
             self.policy_model_optimizer.zero_grad()

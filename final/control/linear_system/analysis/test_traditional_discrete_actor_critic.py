@@ -104,6 +104,7 @@ def watch_agent(num_episodes, num_steps_per_episode, specified_episode):
             # actor_critic_action, _ = koopman_policy.get_action(actor_critic_state)
             actor_critic_action, _ = koopman_policy.select_action(actor_critic_state)
             actor_critic_action = np.array([actor_critic_action])
+            # actor_critic_action = actor_critic_action.numpy()
             actor_critic_actions[episode_num, step_num] = actor_critic_action[:, 0]
 
             # Compute costs
