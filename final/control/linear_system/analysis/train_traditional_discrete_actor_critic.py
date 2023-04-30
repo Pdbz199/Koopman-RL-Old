@@ -46,7 +46,7 @@ koopman_policy = DiscretePolicyIterationPolicy(
     seed=seed,
     learning_rate=0.01,
     layer_1_dim=128,
-    # layer_2_dim=256
+    layer_2_dim=256
 )
 print(f"\nLearning rate: {koopman_policy.learning_rate}\n")
 

@@ -90,27 +90,29 @@ class DiscretePolicyIterationPolicy:
             # )
             self.policy_model = nn.Sequential(
                 nn.Linear(self.dynamics_model.x_dim, self.layer_1_dim),
+                nn.Dropout(),
                 nn.ReLU(),
-                # nn.Linear(self.layer_1_dim, self.layer_2_dim),
-                # nn.ReLU(),
-                nn.Linear(self.layer_1_dim, self.all_actions.shape[1]),
+                nn.Linear(self.layer_1_dim, self.layer_2_dim),
+                nn.ReLU(),
+                nn.Linear(self.layer_2_dim, self.all_actions.shape[1]),
                 # nn.Linear(self.layer_2_dim, 2), # Continuous action policy
                 nn.Softmax(dim=-1)
             )
             self.value_function = nn.Sequential(
                 nn.Linear(self.dynamics_model.x_dim, self.layer_1_dim),
                 nn.ReLU(),
-                # nn.Linear(self.layer_1_dim, self.layer_2_dim),
-                # nn.ReLU(),
-                nn.Linear(self.layer_1_dim, 1)
+                nn.Dropout(),
+                nn.Linear(self.layer_1_dim, self.layer_2_dim),
+                nn.ReLU(),
+                nn.Linear(self.layer_2_dim, 1)
             )
 
-            # def init_weights(m):
-            #     if type(m) == torch.nn.Linear:
-            #         m.weight.data.fill_(0.0)
+            def init_weights(m):
+                if type(m) == torch.nn.Linear:
+                    m.weight.data.fill_(0.0)
 
-            # self.policy_model.apply(init_weights)
-            # self.value_function.apply(init_weights)
+            self.policy_model.apply(init_weights)
+            self.value_function.apply(init_weights)
 
         self.policy_model_optimizer = torch.optim.Adam(self.policy_model.parameters(), lr=self.learning_rate)
         self.value_function_optimizer = torch.optim.Adam(self.value_function.parameters(), lr=self.learning_rate)
