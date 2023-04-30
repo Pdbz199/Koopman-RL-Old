@@ -45,8 +45,8 @@ koopman_policy = DiscretePolicyIterationPolicy(
     save_data_path="./analysis/tmp/traditional_discrete_actor_critic",
     seed=seed,
     learning_rate=0.01,
-    layer_1_dim=16, # 128,
-    layer_2_dim=32 # 256
+    layer_1_dim=128,
+    # layer_2_dim=256
 )
 print(f"\nLearning rate: {koopman_policy.learning_rate}\n")
 

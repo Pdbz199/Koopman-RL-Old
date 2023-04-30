@@ -115,78 +115,30 @@ class DiscretePolicyIterationPolicy:
         self.policy_model_optimizer = torch.optim.Adam(self.policy_model.parameters(), lr=self.learning_rate)
         self.value_function_optimizer = torch.optim.Adam(self.value_function.parameters(), lr=self.learning_rate)
 
-    def select_action(self, state, num_samples=1):
-        # Continuous action policy
-        # torch_state = torch.from_numpy(state[:, 0]).float()
-        # action_probabilities = self.policy_model(torch_state)
-
-        # mu, log_sigma = self.policy_model(torch_state)
-        # action_distribution = Normal(mu, log_sigma.exp())
-
-        # actions = action_distribution.sample(sample_shape=[self.all_actions.shape[0], num_samples])
-        # log_probs = action_distribution.log_prob(actions)
-
-        # return actions, log_probs
-
-        # Discrete action policy
+    def get_action(self, state, num_samples=1, is_training=False, epsilon=5):
+        # Get action probabilities from policy model
         torch_state = torch.from_numpy(state[:, 0]).float()
         action_probabilities = self.policy_model(torch_state)
+        # mu, log_sigma = self.policy_model(torch_state)
 
         # Create a categorical distribution over the list of probabilities of actions
-        action_distribution = Categorical(action_probabilities)
+        policy_distribution = Categorical(action_probabilities)
+        # action_distribution = Normal(mu, log_sigma.exp())
 
-        # Sample an action using the distribution
-        action_indices = action_distribution.sample(sample_shape=[num_samples])
-
-        # The action to take
-        return (
-            self.all_actions[:, action_indices],
-            action_distribution.log_prob(action_indices)
-        )
-
-    def get_action(self, x, num_samples=1, is_training=False, epsilon=0):
-        """
-            Estimate the policy distribution, sample actions, and compute the log probabilities of sampled actions.
-            
-            INPUTS:
-                x - State column vector.
-                num_samples - Number of samples to draw from the policy distribution.
-                is_training - Boolean indicating whether or not the policy is being trained.
-                epsilon - Probability of choosing a random action as a percent.
-                
-            OUTPUTS:
-                The selected actions and log probabilities.
-        """
-
-        # Choose action uniformly at random if random value is 0
+        # Choose action uniformly at random if random value is less than epsilon
         if is_training and torch.randint(0, 100, ()) < epsilon:
-            # Select action indices using uniform distribution
-            action_indices = np.random.choice(
-                self.all_actions.shape[1],
-                size=[num_samples]
+            uniform_distribution = Categorical(
+                torch.ones(self.all_actions.shape[1]) / self.all_actions.shape[1]
             )
+            action_indices = uniform_distribution.sample(sample_shape=[num_samples])
+        else:
+            action_indices = policy_distribution.sample(sample_shape=[num_samples])
 
-            # Compute log probabilities
-            action_probabilities = torch.ones(self.all_actions.shape[1]) / self.all_actions.shape[1]
-            log_probabilities = torch.log(action_probabilities[action_indices])
-
-            return self.all_actions[:, action_indices], log_probabilities
-
-        # Get action distribution from policy model
-        action_probabilities = self.policy_model(torch.Tensor(x[:, 0]))
-
-        # Get random index of action from distribution
-        action_indices = np.random.choice(
-            self.all_actions.shape[1],
-            p=np.squeeze(action_probabilities.detach().numpy()),
-            size=[num_samples]
-        )
-
-        # Select action and compute log probability for that action
+        # Compute log probabilities and extract actions from indices
+        log_probs = policy_distribution.log_prob(action_indices)
         actions = self.all_actions[:, action_indices]
-        log_probabilities = torch.log(action_probabilities[action_indices])
 
-        return actions, log_probabilities
+        return actions, log_probs
 
     def train(
         self,
@@ -220,7 +172,7 @@ class DiscretePolicyIterationPolicy:
         for episode_num in range(num_training_episodes):
             # Create arrays to save training data
             V_xs_per_episode = []
-            V_x_primes_per_episode = []
+            # V_x_primes_per_episode = []
             actions_per_episode = []
             log_probs_per_episode = []
             rewards_per_episode = []
@@ -230,8 +182,7 @@ class DiscretePolicyIterationPolicy:
 
             for step_num in range(num_steps_per_episode):
                 # Get action and action probability for current state
-                # action, log_prob = self.get_action(state, is_training=True)
-                action, log_prob = self.select_action(state)
+                action, log_prob = self.get_action(state, is_training=True)
                 action = np.array([action])
                 # action = action.numpy()
                 actions_per_episode.append(action)
@@ -245,8 +196,8 @@ class DiscretePolicyIterationPolicy:
                 # Compute V_x and V_x_prime
                 V_x = self.value_function(torch.Tensor(state.T))
                 V_xs_per_episode.append(V_x)
-                V_x_prime = self.value_function(torch.Tensor(next_state.T))
-                V_x_primes_per_episode.append(V_x_prime)
+                # V_x_prime = self.value_function(torch.Tensor(next_state.T))
+                # V_x_primes_per_episode.append(V_x_prime)
 
                 # Update state for next loop
                 state = next_state
@@ -264,8 +215,8 @@ class DiscretePolicyIterationPolicy:
             policy_losses = []
             value_losses = []
             for R, V_x, log_prob in zip(returns_per_episode, V_xs_per_episode, log_probs_per_episode):
-                advantage = R - V_x.item()
-                policy_losses.append(-log_prob * advantage)
+                advantage = R - V_x
+                policy_losses.append(-log_prob * advantage.detach())
                 value_losses.append(F.mse_loss(V_x, torch.Tensor([[R]])))
 
             # for reward, V_x_prime, V_x, log_prob in zip(rewards_per_episode, V_x_primes_per_episode, V_xs_per_episode, log_probs_per_episode):
@@ -280,6 +231,8 @@ class DiscretePolicyIterationPolicy:
             # Compute total loss
             # total_loss = torch.stack(policy_losses).sum() + torch.stack(value_losses).sum()
             total_loss = torch.stack(policy_losses).mean() + torch.stack(value_losses).mean()
+            # nn.utils.clip_grad_norm_(self.policy_model.parameters(), 100)
+            # nn.utils.clip_grad_norm_(self.value_function.parameters(), 100)
 
             # Backpropagation
             total_loss.backward()
