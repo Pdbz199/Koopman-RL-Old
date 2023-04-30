@@ -10,6 +10,7 @@ import gym
 
 env = gym.make('CartPole-v1')
 # env = gym.make('LunarLander-v2')
+# env = gym.make("ALE/Asteroids-v5")
 
 # seed = 1234
 seed = 123
@@ -92,6 +93,8 @@ class ProximalPolicyOptimization:
         cost=None,
         save_data_path=None,
         gamma=0.99,
+        value_beta=1.0,
+        entropy_beta=0.01,
         learning_rate=0.01,
         is_gym_env=False,
         render=False,
@@ -112,6 +115,8 @@ class ProximalPolicyOptimization:
         self.training_data_path = f"{self.save_data_path}/training_data"
         self.actor_critic_file_name = "ppo_policy.pt"
         self.gamma = gamma
+        self.value_beta = value_beta
+        self.entropy_beta = entropy_beta
         self.learning_rate = learning_rate
         self.is_gym_env = is_gym_env
         self.render = render
@@ -141,18 +146,25 @@ class ProximalPolicyOptimization:
         self.optimizer = optim.Adam(self.actor_critic.parameters(), lr=self.learning_rate)
 
     def get_action(self, state):
+        """
+            Function to get an action from the policy at inference time.
+        """
+
         # PyTorch network friendly state
         torch_state = torch.FloatTensor(state[:, 0]).unsqueeze(0)
 
-        # Don't compute gradients for inference
+        # Get action probabilities from Actor-Critic module
         with torch.no_grad():
             action_probabilities, _ = self.actor_critic(torch_state)
 
         # Construct action distribution, sample action, and get log probability
         action_distribution = distributions.Categorical(action_probabilities)
         action_index = action_distribution.sample()
+        if self.is_gym_env:
+            action = action_index
+        else:
+            action = np.array([self.all_actions[:, action_index]])
         log_prob = action_distribution.log_prob(action_index)
-        action = np.array([self.all_actions[:, action_index]])
 
         return action, log_prob
 
@@ -190,15 +202,15 @@ class ProximalPolicyOptimization:
             # Do subtraction instead of division because we are in log space
             policy_ratio = (new_log_probs - log_probs).exp()
 
-            # Compute the two policy losses that we will take the minimum of as in PPO objective
+            # Compute the two policy losses that we will take the minimum of as in PPO objective (refer to eq. 7 in PPO paper)
             policy_loss_1 = policy_ratio * advantages
             policy_loss_2 = torch.clamp(policy_ratio, min=1.0-ppo_clip, max=1.0+ppo_clip) * advantages
 
-            # Compute actor-critic loss
-            policy_loss = -torch.min(policy_loss_1, policy_loss_2).mean()
-            value_loss = 0.5 * F.mse_loss(returns, V_x)
-            entropy_loss = 0.01 * entropies.mean()
-            actor_critic_loss = policy_loss + value_loss - entropy_loss
+            # Compute actor-critic loss (refer to eq. 9 in PPO paper)
+            policy_loss = torch.min(policy_loss_1, policy_loss_2).mean()
+            value_loss = F.mse_loss(returns, V_x)
+            entropy_loss = entropies.mean()
+            actor_critic_loss = -(policy_loss - self.value_beta*value_loss + self.entropy_beta*entropy_loss)
 
             # Zero out gradients
             self.optimizer.zero_grad()
@@ -306,14 +318,19 @@ class ProximalPolicyOptimization:
                 ppo_steps,
                 ppo_clip
             )
-            print(actor_critic_loss)
             training_losses.append(actor_critic_loss)
 
             # Track training rewards
             training_rewards.append(rewards)
 
             # Compute the mean training reward over the last `num_trials` episodes
-            mean_training_rewards = np.mean(np.sum(training_rewards[-num_trials:], axis=1))
+            if self.is_gym_env:
+                mean_training_rewards = 0
+                for episode_rewards in training_rewards[-num_trials:]:
+                    mean_training_rewards += sum(episode_rewards)
+                mean_training_rewards /= len(training_rewards[-num_trials:])
+            else:
+                mean_training_rewards = np.mean(np.sum(training_rewards[-num_trials:], axis=1))
 
             # Log progress every so often
             if episode_num == 1 or episode_num % print_every == 0:
@@ -323,13 +340,13 @@ class ProximalPolicyOptimization:
                 if not self.is_gym_env:
                     torch.save(self.actor_critic, f"{self.save_data_path}/{self.actor_critic_file_name}")
 
-                # Save training data
-                # np.save(f"{self.training_data_path}/v_xs.npy", torch.Tensor(V_xs).detach().numpy())
-                # np.save(f"{self.training_data_path}/v_x_primes.npy", torch.Tensor(V_x_primes).detach().numpy())
-                # np.save(f"{self.training_data_path}/actions.npy", np.array(actions))
-                # np.save(f"{self.training_data_path}/log_probs.npy", torch.Tensor(log_probs).detach().numpy())
-                np.save(f"{self.training_data_path}/training_losses.npy", np.array(training_losses))
-                np.save(f"{self.training_data_path}/rewards.npy", np.array(training_rewards))
+                    # Save training data
+                    # np.save(f"{self.training_data_path}/v_xs.npy", torch.Tensor(V_xs).detach().numpy())
+                    # np.save(f"{self.training_data_path}/v_x_primes.npy", torch.Tensor(V_x_primes).detach().numpy())
+                    # np.save(f"{self.training_data_path}/actions.npy", np.array(actions))
+                    # np.save(f"{self.training_data_path}/log_probs.npy", torch.Tensor(log_probs).detach().numpy())
+                    np.save(f"{self.training_data_path}/training_losses.npy", np.array(training_losses))
+                    np.save(f"{self.training_data_path}/rewards.npy", np.array(training_rewards))
 
             # If we surpass reward threshold, stop training
             if mean_training_rewards >= reward_threshold:
@@ -348,8 +365,8 @@ if __name__ == "__main__":
     num_trials = 25
     ppo_steps = 10
     ppo_clip = 0.2
-    # reward_threshold = 475 # CartPole-v1
-    reward_threshold = 200 # LunarLandar-v2
+    reward_threshold = 475 # CartPole-v1
+    # reward_threshold = 200 # LunarLandar-v2
     print_every = 10
 
     ppo = ProximalPolicyOptimization(
@@ -375,8 +392,11 @@ if __name__ == "__main__":
 
     # Calculate the linear regressions
     xs = np.arange(len(training_rewards))
+    total_training_reward_per_episode = []
+    for episode_rewards in training_rewards:
+        total_training_reward_per_episode.append(sum(episode_rewards))
 
-    training_rewards_slope, training_rewards_intercept = np.polyfit(xs, training_rewards, 1)
+    training_rewards_slope, training_rewards_intercept = np.polyfit(xs, total_training_reward_per_episode, 1)
     training_rewards_line = training_rewards_slope * xs + training_rewards_intercept
 
     training_losses_slope, training_losses_intercept = np.polyfit(xs, training_losses, 1)
@@ -386,7 +406,7 @@ if __name__ == "__main__":
     ax.set_title(f'Training Rewards (Linear Fit Slope = {training_rewards_slope})')
     ax.set_xlabel('Episode')
     ax.set_ylabel('Reward')
-    ax.plot(training_rewards, label='Training Reward')
+    ax.plot(total_training_reward_per_episode, label='Training Reward')
     ax.plot(training_rewards_line, label='Linear Fit')
     ax.hlines(reward_threshold, 0, len(training_rewards), color='r', label='Reward Threshold')
     ax.legend(loc='lower right')

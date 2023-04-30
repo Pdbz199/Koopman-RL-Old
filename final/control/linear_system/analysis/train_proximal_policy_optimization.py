@@ -42,6 +42,8 @@ koopman_policy = ProximalPolicyOptimization(
     cost,
     save_data_path="./analysis/tmp/proximal_policy_optimization",
     gamma=gamma,
+    value_beta=1.0,
+    entropy_beta=0.01,
     learning_rate=0.001,
     is_gym_env=False,
     seed=seed
