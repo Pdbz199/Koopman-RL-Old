@@ -10,6 +10,10 @@ import gym
 
 env = gym.make('CartPole-v1')
 # env = gym.make('LunarLander-v2')
+# env = gym.make(
+#     'LunarLander-v2',
+#     continuous=True
+# )
 # env = gym.make("ALE/Asteroids-v5")
 
 # seed = 1234
@@ -51,42 +55,135 @@ def calculate_advantages(returns, V_xs, normalize=True):
 
     return advantages
 
-class ActorCritic(nn.Module):
-    def __init__(self, input_dim, layer_1_dim, layer_2_dim, output_dim):
-        super(ActorCritic, self).__init__()
+LOG_SIG_MAX = 2
+LOG_SIG_MIN = -20
 
-        # Policy network is a multi-layer perceptron with 2 hidden layers
-        self.policy_layer_1 = nn.Linear(input_dim, layer_1_dim)
-        self.policy_layer_2 = nn.Linear(layer_1_dim, layer_2_dim)
-        self.policy_output_layer = nn.Linear(layer_2_dim, output_dim)
+class SoftmaxPolicy(nn.Module):
+    '''
+    Simple neural network with softmax action selection
+    '''
+    def __init__(
+        self,
+        input_dim,
+        hidden_layer_1_dim,
+        hidden_layer_2_dim,
+        num_actions
+    ):
+        super(SoftmaxPolicy, self).__init__()
 
-        # Value network is a multi-layer perceptron with 2 hidden layer
-        self.value_layer_1 = nn.Linear(input_dim, layer_1_dim)
-        self.value_layer_2 = nn.Linear(layer_1_dim, layer_2_dim)
-        self.value_output_layer = nn.Linear(layer_2_dim, 1)
+        self.linear_1 = nn.Linear(input_dim, hidden_layer_1_dim)
+        self.linear_2 = nn.Linear(hidden_layer_1_dim, hidden_layer_2_dim)
+        self.linear_3 = nn.Linear(hidden_layer_2_dim, num_actions)
 
     def forward(self, x):
-        # Compute policy network output
-        _x = self.policy_layer_1(x)
-        _x = F.dropout(_x)
-        _x = F.relu(_x)
-        _x = F.relu(self.policy_layer_2(_x))
-        pi = F.softmax(self.policy_output_layer(_x), dim=-1)
+        x = self.linear_1(x)
+        x = F.tanh(x)
+        x = self.linear_2(x)
+        x = F.tanh(x)
+        x = self.linear_3(x)
+        return F.softmax(x, dim=-1)
 
-        # Compute value network output
-        _x = self.value_layer_1(x)
-        _x = F.dropout(_x)
-        _x = F.relu(_x)
-        _x = F.relu(self.value_layer_2(_x))
-        v = self.value_output_layer(_x)
+class GaussianPolicy(nn.Module):
+    """
+        Gaussian policy that consists of a neural network with 1 hidden layer that
+        outputs mean and log std dev (the params) of a gaussian policy
+    """
 
-        return pi, v
+    def __init__(
+        self,
+        input_dim,
+        hidden_layer_1_dim,
+        hidden_layer_2_dim,
+        action_dim
+    ):
+        super(GaussianPolicy, self).__init__()
+
+        self.linear_1 = nn.Linear(input_dim, hidden_layer_1_dim)
+        self.linear_2 = nn.Linear(hidden_layer_1_dim, hidden_layer_2_dim)
+
+        self.mean = nn.Linear(hidden_layer_2_dim, action_dim)
+        self.log_std = nn.Linear(hidden_layer_2_dim, action_dim)
+
+    def forward(self, x):
+        # Forward pass of NN
+        x = self.linear_1(x)
+        x = F.tanh(x)
+        x = self.linear_2(x)
+        x = F.tanh(x)
+
+        mean = self.mean(x)
+        # If more than one action this will give you the diagonal elements of a diagonal covariance matrix
+        log_std = self.log_std(x)
+        # We limit the variance by forcing within a range of -2, 20
+        log_std = torch.clamp(log_std, min=LOG_SIG_MIN, max=LOG_SIG_MAX)
+        std = log_std.exp()
+
+        return mean, std
+
+class ValueNetwork(nn.Module):
+    """
+        Value network V(s_t) = E[G_t | s_t] to use as a baseline in the reinforce
+        update. This a Neural Net with 1 hidden layer
+    """
+
+    def __init__(self, num_inputs, hidden_layer_1_dim, hidden_layer_2_dim):
+        super(ValueNetwork, self).__init__()
+
+        self.linear_1 = nn.Linear(num_inputs, hidden_layer_1_dim)
+        self.linear_2 = nn.Linear(hidden_layer_1_dim, hidden_layer_2_dim)
+        self.linear_3 = nn.Linear(hidden_layer_2_dim, 1)
+
+    def forward(self, x):
+        x = F.tanh(self.linear_1(x))
+        x = F.tanh(self.linear_2(x))
+        x = self.linear_3(x)
+
+        return x
+
+class ActorCritic(nn.Module):
+    def __init__(
+        self,
+        input_dim,
+        layer_1_dim,
+        layer_2_dim,
+        output_dim,
+        is_continuous=False
+    ):
+        super(ActorCritic, self).__init__()
+
+        if is_continuous:
+            self.policy = GaussianPolicy(
+                input_dim,
+                layer_1_dim,
+                layer_2_dim,
+                output_dim
+            )
+        else:
+            self.policy = SoftmaxPolicy(
+                input_dim,
+                layer_1_dim,
+                layer_2_dim,
+                output_dim
+            )
+
+        self.value_function = ValueNetwork(
+            input_dim,
+            layer_1_dim,
+            layer_2_dim
+        )
+
+    def forward(self, x):
+        pi = self.policy(x)
+        v_x = self.value_function(x)
+
+        return pi, v_x
 
 class ProximalPolicyOptimization:
     def __init__(
         self,
         env,
         all_actions=None,
+        is_continuous=False,
         dynamics_model=None,
         state_minimums=None,
         state_maximums=None,
@@ -107,6 +204,7 @@ class ProximalPolicyOptimization:
 
         self.env = env
         self.all_actions = all_actions
+        self.is_continuous = is_continuous
         self.dynamics_model = dynamics_model
         self.state_minimums = state_minimums
         self.state_maximums = state_maximums
@@ -124,13 +222,20 @@ class ProximalPolicyOptimization:
         if load_model:
             self.actor_critic = torch.load(f"{self.save_data_path}/{self.actor_critic_file_name}")
 
-            print("Loaded PyTorch model...")
+            print("\nLoaded PyTorch model...")
         else:
+            if is_continuous:
+                output_dim = 1
+            elif is_gym_env:
+                output_dim = env.action_space.n
+            else:
+                output_dim = all_actions.shape[1]
             self.actor_critic = ActorCritic(
                 input_dim=env.observation_space.shape[0] if is_gym_env else self.dynamics_model.X.shape[0],
                 layer_1_dim=128,
                 layer_2_dim=256,
-                output_dim=env.action_space.n if is_gym_env else all_actions.shape[1],
+                output_dim=output_dim,
+                is_continuous=is_continuous
             )
 
             # Initialize network weights to 0
@@ -140,7 +245,7 @@ class ProximalPolicyOptimization:
 
             self.actor_critic.apply(init_weights)
 
-            print("Initialized new PyTorch model...")
+            print("\nInitialized new PyTorch model...")
 
         # Initialize Actor-Critic optimizer
         self.optimizer = optim.Adam(self.actor_critic.parameters(), lr=self.learning_rate)
@@ -171,7 +276,7 @@ class ProximalPolicyOptimization:
     def update_policy(
         self,
         states,
-        action_indices,
+        actions,
         log_probs,
         entropies,
         advantages,
@@ -183,20 +288,25 @@ class ProximalPolicyOptimization:
             Compute the actor-critic loss and update the network weights.
         """
 
-        action_indices = action_indices.detach()
+        actions = actions.detach()
         log_probs = log_probs.detach()
         entropies = entropies.detach()
         advantages = advantages.detach()
 
         # Update the policy gradients `ppo_steps` times
         for _ in range(ppo_steps):
-            # Get latest action probabilities and V_x from the ActorCritic module 
-            action_probabilities, V_x = self.actor_critic(states)
-            action_distribution = distributions.Categorical(action_probabilities)
+            if self.is_continuous:
+                # Get latest action and V_x from the ActorCritic module 
+                (action_mus, action_sigmas), V_x = self.actor_critic(states)
+                action_distribution = distributions.Normal(action_mus, action_sigmas)
+            else:
+                # Get latest action probabilities and V_x from the ActorCritic module 
+                action_probabilities, V_x = self.actor_critic(states)
+                action_distribution = distributions.Categorical(action_probabilities)
             V_x = V_x.squeeze(-1)
 
             # Compute new log probabilities of actions
-            new_log_probs = action_distribution.log_prob(action_indices)
+            new_log_probs = action_distribution.log_prob(actions)
 
             # Compute policy ratio as in the PPO objective
             # Do subtraction instead of division because we are in log space
@@ -248,7 +358,10 @@ class ProximalPolicyOptimization:
 
             # Pick an initial state from the environment
             if self.is_gym_env:
-                state = np.vstack(self.env.reset())
+                try:
+                    state = np.vstack(self.env.reset())
+                except:
+                    state = np.vstack(self.env.reset()[0])
             else:
                 state = np.random.uniform(
                     self.state_minimums,
@@ -262,23 +375,47 @@ class ProximalPolicyOptimization:
                 torch_state = torch.FloatTensor(state[:, 0]).unsqueeze(0)
                 states.append(torch_state)
 
-                # Get action probabilities and V_x from the ActorCritic module and sample action index
-                action_probabilities, V_x = self.actor_critic(torch_state)
-                action_distribution = distributions.Categorical(action_probabilities)
-                action_index = action_distribution.sample()
-                log_prob = action_distribution.log_prob(action_index)
-                entropy = action_distribution.entropy()
+                if self.is_continuous:
+                    (action_mus, action_sigmas), V_x = self.actor_critic(torch_state)
+                    action_distribution = distributions.Normal(action_mus[0], action_sigmas[0])
+                    # action_distribution = distributions.MultivariateNormal(action_mus, torch.diag(action_sigmas[0]))
+                    action = action_distribution.sample()
+                    log_prob = action_distribution.log_prob(action)
+                    entropy = action_distribution.entropy()
+                else:
+                    # Get action probabilities and V_x from the ActorCritic module and sample action index
+                    action_probabilities, V_x = self.actor_critic(torch_state)
+                    action_distribution = distributions.Categorical(action_probabilities)
+                    action_index = action_distribution.sample()
+                    log_prob = action_distribution.log_prob(action_index)
+                    entropy = action_distribution.entropy()
 
-                # Push the environment one step forward using the sampled action
                 if self.is_gym_env:
-                    action = action_index.item() # Extract numerical value from object
-                    state, reward, done, _ = self.env.step(action)
+                    if not self.is_continuous:
+                        action = action_index.item() # Extract numerical value from object
+
+                    # Push the environment one step forward using the sampled action
+                    try:
+                        state, reward, done, _ = self.env.step(action)
+                    except:
+                        try:
+                            state, reward, done, _, _ = self.env.step(action)
+                        except:
+                            try:
+                                state, reward, done, _ = self.env.step(action.numpy())
+                            except:
+                                state, reward, done, _, _ = self.env.step(action.numpy())
                     state = np.vstack(state) # Column vector
 
                     if self.render:
                         self.env.render()
                 else:
-                    action = np.array([self.all_actions[:, action_index]])
+                    if not self.is_continuous:
+                        action = np.array([self.all_actions[:, action_index]])
+                    else:
+                        action = np.array([[action]])
+
+                    # Push the environment one step forward using the sampled action
                     reward = -self.cost(state, action)[0, 0]
                     state = self.env(state, action)
                     done = step_num == num_steps_per_episode
@@ -287,7 +424,10 @@ class ProximalPolicyOptimization:
                 episode_reward += reward
 
                 # Track data over time
-                action_indices.append(action_index)
+                try:
+                    action_indices.append(action_index)
+                except:
+                    pass
                 actions.append(action)
                 log_probs.append(log_prob)
                 entropies.append(entropy)
@@ -297,7 +437,10 @@ class ProximalPolicyOptimization:
                 step_num += 1
 
             states = torch.cat(states)
-            action_indices = torch.cat(action_indices)
+            try:
+                action_indices = torch.cat(action_indices)
+            except:
+                pass
             actions = torch.FloatTensor(np.array(actions))
             log_probs = torch.cat(log_probs)
             entropies = torch.cat(entropies)
@@ -310,7 +453,7 @@ class ProximalPolicyOptimization:
             # Update network weights and output the loss
             actor_critic_loss = self.update_policy(
                 states,
-                action_indices,
+                actions if self.is_continuous else action_indices,
                 log_probs,
                 entropies,
                 advantages,
@@ -375,6 +518,7 @@ if __name__ == "__main__":
         learning_rate=0.001,
         gamma=0.99,
         is_gym_env=True,
+        is_continuous=False,
         render=False,
         seed=seed
     )

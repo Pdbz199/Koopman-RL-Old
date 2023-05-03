@@ -34,12 +34,13 @@ reg_lambda = 1.0
 
 # Neural network value iteration policy
 koopman_policy = ProximalPolicyOptimization(
-    f,
-    all_actions,
-    tensor,
-    state_minimums,
-    state_maximums,
-    cost,
+    env=f,
+    all_actions=all_actions,
+    is_continuous=True,
+    dynamics_model=tensor,
+    state_minimums=state_minimums,
+    state_maximums=state_maximums,
+    cost=cost,
     save_data_path="./analysis/tmp/proximal_policy_optimization",
     gamma=gamma,
     value_beta=1.0,
