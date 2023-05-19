@@ -35,25 +35,26 @@ reg_lambda = 1.0
 
 # Neural network value iteration policy
 koopman_policy = ProximalPolicyOptimization(
-    f,
-    all_actions,
-    tensor,
-    state_minimums,
-    state_maximums,
-    cost,
+    env=f,
+    all_actions=all_actions,
+    is_continuous=False,
+    dynamics_model=tensor,
+    state_minimums=state_minimums,
+    state_maximums=state_maximums,
+    cost=cost,
     save_data_path="./analysis/tmp/proximal_policy_optimization",
     gamma=gamma,
-    value_beta=1.0,
+    value_beta=0.5,
     entropy_beta=0.01,
-    learning_rate=0.001,
+    learning_rate=3e-4,
     is_gym_env=False,
     seed=seed
 )
 print(f"\nLearning rate: {koopman_policy.learning_rate}\n")
 
 # Train Koopman policy
-num_episodes = 50_000
-num_trials = 25
+num_episodes = 100_000
+num_trials = 250
 ppo_steps = 5
 ppo_clip = 0.2
 reward_threshold = 200
@@ -66,5 +67,6 @@ koopman_policy.train(
     ppo_clip,
     reward_threshold,
     print_every,
+    # num_steps_per_episode=int(5 / dt)
     num_steps_per_episode=int(20 / dt)
 )

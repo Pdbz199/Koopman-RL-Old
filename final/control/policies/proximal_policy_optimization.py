@@ -76,10 +76,13 @@ class SoftmaxPolicy(nn.Module):
         self.linear_3 = nn.Linear(hidden_layer_2_dim, num_actions)
 
     def forward(self, x):
+        # x = F.dropout(x, p=0.2)
         x = self.linear_1(x)
         x = F.tanh(x)
+        # x = F.relu(x)
         x = self.linear_2(x)
         x = F.tanh(x)
+        # x = F.relu(x)
         x = self.linear_3(x)
         return F.softmax(x, dim=-1)
 
@@ -105,11 +108,13 @@ class GaussianPolicy(nn.Module):
         self.log_std = nn.Linear(hidden_layer_2_dim, action_dim)
 
     def forward(self, x):
-        # Forward pass of NN
+        # x = F.dropout(x, p=0.2)
         x = self.linear_1(x)
         x = F.tanh(x)
+        # x = F.relu(x)
         x = self.linear_2(x)
         x = F.tanh(x)
+        # x = F.relu(x)
 
         mean = self.mean(x)
         # If more than one action this will give you the diagonal elements of a diagonal covariance matrix
@@ -134,8 +139,13 @@ class ValueNetwork(nn.Module):
         self.linear_3 = nn.Linear(hidden_layer_2_dim, 1)
 
     def forward(self, x):
-        x = F.tanh(self.linear_1(x))
-        x = F.tanh(self.linear_2(x))
+        # x = F.dropout(x, p=0.2)
+        x = self.linear_1(x)
+        x = F.tanh(x)
+        # x = F.relu(x)
+        x = self.linear_2(x)
+        x = F.tanh(x)
+        # x = F.relu(x)
         x = self.linear_3(x)
 
         return x
@@ -211,7 +221,8 @@ class ProximalPolicyOptimization:
         self.cost = cost
         self.save_data_path = save_data_path
         self.training_data_path = f"{self.save_data_path}/training_data"
-        self.actor_critic_file_name = "ppo_policy.pt"
+        self.controller_type = "continuous" if self.is_continuous else "discrete"
+        self.actor_critic_file_name = f"{self.controller_type}_ppo_policy.pt"
         self.gamma = gamma
         self.value_beta = value_beta
         self.entropy_beta = entropy_beta
@@ -232,8 +243,8 @@ class ProximalPolicyOptimization:
                 output_dim = all_actions.shape[1]
             self.actor_critic = ActorCritic(
                 input_dim=env.observation_space.shape[0] if is_gym_env else self.dynamics_model.X.shape[0],
-                layer_1_dim=128,
-                layer_2_dim=256,
+                layer_1_dim=64,
+                layer_2_dim=64,
                 output_dim=output_dim,
                 is_continuous=is_continuous
             )
@@ -247,8 +258,8 @@ class ProximalPolicyOptimization:
 
             print("\nInitialized new PyTorch model...")
 
-        # Initialize Actor-Critic optimizer
-        self.optimizer = optim.Adam(self.actor_critic.parameters(), lr=self.learning_rate)
+        # Initialize Actor-Critic optimizer and lr scheduler
+        self.optimizer = optim.Adam(self.actor_critic.parameters(), lr=self.learning_rate, eps=1e-5)
 
     def get_action(self, state):
         """
@@ -260,11 +271,16 @@ class ProximalPolicyOptimization:
 
         # Get action probabilities from Actor-Critic module
         with torch.no_grad():
-            action_probabilities, _ = self.actor_critic(torch_state)
+            # Construct action distribution, sample action, and get log probability
+            if self.is_continuous:
+                (action_mus, action_sigmas), _ = self.actor_critic(torch_state)
+                action_distribution = distributions.Normal(action_mus, action_sigmas)
+            else:
+                action_probabilities, _ = self.actor_critic(torch_state)
+                action_distribution = distributions.Categorical(action_probabilities)
 
-        # Construct action distribution, sample action, and get log probability
-        action_distribution = distributions.Categorical(action_probabilities)
-        action_index = action_distribution.sample()
+            action_index = action_distribution.sample()
+
         if self.is_gym_env:
             action = action_index
         else:
@@ -282,7 +298,8 @@ class ProximalPolicyOptimization:
         advantages,
         returns,
         ppo_steps,
-        ppo_clip
+        ppo_clip,
+        episode_num
     ):
         """
             Compute the actor-critic loss and update the network weights.
@@ -317,17 +334,29 @@ class ProximalPolicyOptimization:
             policy_loss_2 = torch.clamp(policy_ratio, min=1.0-ppo_clip, max=1.0+ppo_clip) * advantages
 
             # Compute actor-critic loss (refer to eq. 9 in PPO paper)
-            policy_loss = torch.min(policy_loss_1, policy_loss_2).mean()
+            policy_loss = -torch.min(policy_loss_1, policy_loss_2).mean()
             value_loss = F.mse_loss(returns, V_x)
             entropy_loss = entropies.mean()
-            actor_critic_loss = -(policy_loss - self.value_beta*value_loss + self.entropy_beta*entropy_loss)
+            actor_critic_loss = policy_loss + self.value_beta*value_loss
+            ppo_loss = actor_critic_loss - self.entropy_beta*entropy_loss
 
             # Zero out gradients
             self.optimizer.zero_grad()
 
             # Backpropagation
-            actor_critic_loss.backward()
+            # actor_critic_loss.backward()
+            ppo_loss.backward()
+
+            # Clip gradient norms
+            torch.nn.utils.clip_grad_norm_(self.actor_critic.parameters(), 0.5)
+
+            # Step gradients forward
             self.optimizer.step()
+
+        # Step linear annealing process forward
+        frac = 1.0 - (episode_num - 1.0) / 100_000
+        lrnow = frac * self.learning_rate
+        self.optimizer.param_groups[0]["lr"] = lrnow
 
         # Return the loss value
         return actor_critic_loss.item()
@@ -459,7 +488,8 @@ class ProximalPolicyOptimization:
                 advantages,
                 returns,
                 ppo_steps,
-                ppo_clip
+                ppo_clip,
+                episode_num
             )
             training_losses.append(actor_critic_loss)
 
@@ -484,12 +514,12 @@ class ProximalPolicyOptimization:
                     torch.save(self.actor_critic, f"{self.save_data_path}/{self.actor_critic_file_name}")
 
                     # Save training data
-                    # np.save(f"{self.training_data_path}/v_xs.npy", torch.Tensor(V_xs).detach().numpy())
-                    # np.save(f"{self.training_data_path}/v_x_primes.npy", torch.Tensor(V_x_primes).detach().numpy())
-                    # np.save(f"{self.training_data_path}/actions.npy", np.array(actions))
-                    # np.save(f"{self.training_data_path}/log_probs.npy", torch.Tensor(log_probs).detach().numpy())
-                    np.save(f"{self.training_data_path}/training_losses.npy", np.array(training_losses))
-                    np.save(f"{self.training_data_path}/rewards.npy", np.array(training_rewards))
+                    # np.save(f"{self.training_data_path}/{self.controller_type}_v_xs.npy", torch.Tensor(V_xs).detach().numpy())
+                    # np.save(f"{self.training_data_path}/{self.controller_type}_v_x_primes.npy", torch.Tensor(V_x_primes).detach().numpy())
+                    # np.save(f"{self.training_data_path}/{self.controller_type}_actions.npy", np.array(actions))
+                    # np.save(f"{self.training_data_path}/{self.controller_type}_log_probs.npy", torch.Tensor(log_probs).detach().numpy())
+                    np.save(f"{self.training_data_path}/{self.controller_type}_training_losses.npy", np.array(training_losses))
+                    np.save(f"{self.training_data_path}/{self.controller_type}_rewards.npy", np.array(training_rewards))
 
             # If we surpass reward threshold, stop training
             if mean_training_rewards >= reward_threshold:

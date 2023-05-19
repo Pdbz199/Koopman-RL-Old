@@ -41,12 +41,12 @@ reg_lambda = 1.0
 
 #%% Koopman value iteration policy
 koopman_policy = ProximalPolicyOptimization(
-    f,
-    all_actions,
-    tensor,
-    state_minimums,
-    state_maximums,
-    cost,
+    env=f,
+    all_actions=all_actions,
+    dynamics_model=tensor,
+    state_minimums=state_minimums,
+    state_maximums=state_maximums,
+    cost=cost,
     save_data_path="./analysis/tmp/proximal_policy_optimization",
     gamma=gamma,
     learning_rate=0.003,
@@ -208,12 +208,14 @@ def watch_agent(num_episodes, num_steps_per_episode, specified_episode):
     ax.scatter(step_range, lqr_actions[specified_episode, :, 0], s=5)
     ax.scatter(step_range, actor_critic_actions[specified_episode, :, 0], s=5)
 
+    data_file_prefix = "continuous" if koopman_policy.is_continuous else "discrete"
+
     # Plot total cost per episode during training
     ax = fig.add_subplot(3, 3, 8)
     ax.set_title("Total Cost Per Episode During Training")
     ax.set_xlabel("Episode #")
     ax.set_ylabel("Cost")
-    costs = -np.load(f"./analysis/tmp/proximal_policy_optimization/training_data/rewards.npy")
+    costs = -np.load(f"./analysis/tmp/proximal_policy_optimization/training_data/{data_file_prefix}_rewards.npy")
     total_cost_per_episode = costs.sum(axis=1)
     ax.plot(total_cost_per_episode)
 
@@ -222,7 +224,7 @@ def watch_agent(num_episodes, num_steps_per_episode, specified_episode):
     ax.set_title("Total Loss Per Episode During Training")
     ax.set_xlabel("Episode #")
     ax.set_ylabel("Loss")
-    total_losses_per_episode = np.load(f"./analysis/tmp/proximal_policy_optimization/training_data/training_losses.npy")
+    total_losses_per_episode = np.load(f"./analysis/tmp/proximal_policy_optimization/training_data/{data_file_prefix}_training_losses.npy")
     ax.plot(total_losses_per_episode)
 
     # Show/save plots

@@ -2,7 +2,7 @@
 import gym
 import numpy as np
 import pickle
-import pybullet_envs
+# import pybullet_envs
 import sys
 
 # Set seed
@@ -36,21 +36,21 @@ gamma = 0.99
 reg_lambda = 1.0
 
 # Koopman soft actor-critic policy
-# koopman_policy = System(
-#     is_gym_env=False,
-#     true_dynamics=f,
-#     cost=cost,
-#     state_minimums=state_minimums,
-#     state_maximums=state_maximums,
-#     action_minimums=action_minimums,
-#     action_maximums=action_maximums,
-#     environment_steps=200,
-#     gradient_steps=1,
-#     init_steps=256,
-#     reward_scale=10,
-#     batch_size=256,
-#     is_episodic=True
-# )
+koopman_policy = System(
+    is_gym_env=False,
+    true_dynamics=f,
+    cost=cost,
+    state_minimums=state_minimums,
+    state_maximums=state_maximums,
+    action_minimums=action_minimums,
+    action_maximums=action_maximums,
+    environment_steps=200,
+    gradient_steps=1,
+    init_steps=256,
+    reward_scale=10,
+    batch_size=256,
+    is_episodic=True
+)
 
 # koopman_policy = System(
 #     is_gym_env=True,
@@ -89,25 +89,25 @@ reg_lambda = 1.0
 #     learning_rate=3e-4
 # )
 
-koopman_policy = System(
-    is_gym_env=True,
-    true_dynamics=gym.make('InvertedPendulumBulletEnv-v0'),
-    cost=cost,
-    state_minimums=np.vstack([0.0 for _ in range(5)]),
-    state_maximums=-np.vstack([0.0 for _ in range(5)]),
-    action_minimums=np.vstack([-1.0, -1.0, -1.0, -1.0]),
-    action_maximums=np.vstack([1.0, 1.0, 1.0, 1.0]),
-    environment_steps=10_000,
-    memory_capacity=1_000_000,
-    gradient_steps=1,
-    init_steps=10_000,
-    reward_scale=2,
-    batch_size=256,
-    is_episodic=True,
-    render_env=False,
-    tau=5e-3,
-    learning_rate=3e-4
-)
+# koopman_policy = System(
+#     is_gym_env=True,
+#     true_dynamics=gym.make('InvertedPendulumBulletEnv-v0'),
+#     cost=cost,
+#     state_minimums=np.vstack([0.0 for _ in range(5)]),
+#     state_maximums=-np.vstack([0.0 for _ in range(5)]),
+#     action_minimums=np.vstack([-1.0, -1.0, -1.0, -1.0]),
+#     action_maximums=np.vstack([1.0, 1.0, 1.0, 1.0]),
+#     environment_steps=10_000,
+#     memory_capacity=1_000_000,
+#     gradient_steps=1,
+#     init_steps=10_000,
+#     reward_scale=2,
+#     batch_size=256,
+#     is_episodic=True,
+#     render_env=False,
+#     tau=5e-3,
+#     learning_rate=3e-4
+# )
 
 # Train Koopman policy
 num_training_iterations = 2_000

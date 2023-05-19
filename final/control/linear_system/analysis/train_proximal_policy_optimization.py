@@ -36,7 +36,7 @@ reg_lambda = 1.0
 koopman_policy = ProximalPolicyOptimization(
     env=f,
     all_actions=all_actions,
-    is_continuous=True,
+    is_continuous=False,
     dynamics_model=tensor,
     state_minimums=state_minimums,
     state_maximums=state_maximums,
@@ -45,19 +45,19 @@ koopman_policy = ProximalPolicyOptimization(
     gamma=gamma,
     value_beta=1.0,
     entropy_beta=0.01,
-    learning_rate=0.001,
+    learning_rate=3e-4,
     is_gym_env=False,
     seed=seed
 )
 print(f"\nLearning rate: {koopman_policy.learning_rate}\n")
 
 # Train Koopman policy
-num_episodes = 50_000
-num_trials = 25
-ppo_steps = 10
+num_episodes = 100_000
+ppo_steps = 5
 ppo_clip = 0.2
 reward_threshold = 200
 print_every = 250
+num_trials = print_every
 
 koopman_policy.train(
     num_episodes,
