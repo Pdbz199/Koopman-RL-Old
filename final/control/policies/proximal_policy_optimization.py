@@ -449,6 +449,8 @@ class ProximalPolicyOptimization:
                     state = self.env(state, action)
                     done = step_num == num_steps_per_episode
 
+                state = (state - states.mean()) / (states.std() + epsilon)
+                    
                 # Add to running episode reward
                 episode_reward += reward
 
