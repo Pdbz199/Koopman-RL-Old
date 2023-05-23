@@ -78,10 +78,12 @@ class SoftmaxPolicy(nn.Module):
     def forward(self, x):
         # x = F.dropout(x, p=0.2)
         x = self.linear_1(x)
-        x = F.tanh(x)
+        # x = F.tanh(x)
+        x = torch.tanh(x)
         # x = F.relu(x)
         x = self.linear_2(x)
-        x = F.tanh(x)
+        # x = F.tanh(x)
+        x = torch.tanh(x)
         # x = F.relu(x)
         x = self.linear_3(x)
         return F.softmax(x, dim=-1)
@@ -110,10 +112,12 @@ class GaussianPolicy(nn.Module):
     def forward(self, x):
         # x = F.dropout(x, p=0.2)
         x = self.linear_1(x)
-        x = F.tanh(x)
+        # x = F.tanh(x)
+        x = torch.tanh(x)
         # x = F.relu(x)
         x = self.linear_2(x)
-        x = F.tanh(x)
+        # x = F.tanh(x)
+        x = torch.tanh(x)
         # x = F.relu(x)
 
         mean = self.mean(x)
@@ -141,10 +145,12 @@ class ValueNetwork(nn.Module):
     def forward(self, x):
         # x = F.dropout(x, p=0.2)
         x = self.linear_1(x)
-        x = F.tanh(x)
+        # x = F.tanh(x)
+        x = torch.tanh(x)
         # x = F.relu(x)
         x = self.linear_2(x)
-        x = F.tanh(x)
+        # x = F.tanh(x)
+        x = torch.tanh(x)
         # x = F.relu(x)
         x = self.linear_3(x)
 
@@ -448,9 +454,7 @@ class ProximalPolicyOptimization:
                     reward = -self.cost(state, action)[0, 0]
                     state = self.env(state, action)
                     done = step_num == num_steps_per_episode
-
-                state = (state - states.mean()) / (states.std() + epsilon)
-                    
+ 
                 # Add to running episode reward
                 episode_reward += reward
 
@@ -468,6 +472,8 @@ class ProximalPolicyOptimization:
                 step_num += 1
 
             states = torch.cat(states)
+            # Normalization of state observation
+            # states = (states - states.mean(dim=0))  / (states.std(dim=0) + epsilon)
             try:
                 action_indices = torch.cat(action_indices)
             except:
