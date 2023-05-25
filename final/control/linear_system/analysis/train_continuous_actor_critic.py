@@ -49,7 +49,8 @@ koopman_policy = System(
     init_steps=256,
     reward_scale=10,
     batch_size=256,
-    is_episodic=True
+    is_episodic=True,
+    learning_rate=3e-4
 )
 
 # koopman_policy = System(
@@ -110,10 +111,10 @@ koopman_policy = System(
 # )
 
 # Train Koopman policy
-num_training_iterations = 2_000
+num_training_iterations = 200_000
 initialization = False
 # initialization = True
-koopman_policy.train_agent(num_training_iterations, initialization)
+koopman_policy.train_agent(num_training_iterations, initialization, how_often_to_print=250)
 
 # Save koopman policy
 with open('./analysis/tmp/continuous_actor_critic/policy.pkl', 'wb') as file:

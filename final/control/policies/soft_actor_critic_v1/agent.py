@@ -186,6 +186,7 @@ class Agent:
         # Backprop
         self.baseline.optimizer.zero_grad()
         v_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.baseline.parameters(), 0.01)
         self.baseline.optimizer.step()
 
         """ Optimize Q networks """
@@ -210,6 +211,8 @@ class Agent:
         self.critic1.optimizer.zero_grad()
         self.critic2.optimizer.zero_grad()
         q_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.critic1.parameters(), 0.01)
+        torch.nn.utils.clip_grad_norm_(self.critic2.parameters(), 0.01)
         self.critic1.optimizer.step()
         self.critic2.optimizer.step()
 
@@ -230,6 +233,7 @@ class Agent:
         # Backprop
         self.actor.optimizer.zero_grad()
         pi_loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 0.01)
         self.actor.optimizer.step()
 
         """ Update V target network  """
@@ -308,7 +312,7 @@ class System:
     
     def reset_env(self):
         if self.is_gym_env:
-            self.latest_state = self.true_dynamics.reset()
+            self.latest_state, _ = self.true_dynamics.reset()
         else:
             self.latest_state = (0.5 * (self.rng.random((self.x_dim,1))*2-1) * (self.state_maximums-self.state_minimums))[:, 0]
 
@@ -329,8 +333,8 @@ class System:
 
             if self.is_gym_env:
                 # Get next state, reward, and more from true dynamics
-                # next_state, reward, self.has_completed, _ = self.true_dynamics.step(int(action[0])) # Cartpole
-                next_state, reward, self.has_completed, _ = self.true_dynamics.step(action) # Bipedal Walker
+                # next_state, reward, self.has_completed, _, __ = self.true_dynamics.step(int(action[0])) # Cartpole
+                next_state, reward, self.has_completed, _, __ = self.true_dynamics.step(action) # Bipedal Walker
             else:
                 numpy_action = np.vstack(action.numpy())
 
@@ -376,8 +380,8 @@ class System:
 
             if self.is_gym_env:
                 # Get next state, reward, and more from true dynamics
-                # next_state, reward, self.has_completed, __ = self.true_dynamics.step(int(numpy_action[0,0])) # Cartpole
-                next_state, reward, self.has_completed, __ = self.true_dynamics.step(numpy_action[0]) # BipedalWalker
+                # next_state, reward, self.has_completed, _, __ = self.true_dynamics.step(int(numpy_action[0,0])) # Cartpole
+                next_state, reward, self.has_completed, _, __ = self.true_dynamics.step(numpy_action[0]) # BipedalWalker
                 if self.render_env:
                     self.true_dynamics.render()
             else:
@@ -419,7 +423,8 @@ class System:
     def train_agent(
         self,
         num_training_iterations,
-        initialization=True
+        initialization=True,
+        how_often_to_print=250
     ):
         # Track rewards per iteration
         min_reward_per_iteration = 10e10
@@ -463,10 +468,11 @@ class System:
             total_rewards_per_iteration.append(total_reward)
 
             # Print out reward details for the episode
-            print(
-                "Finished episode %i, min reward = %.4f, max reward = %.4f, average reward per step = %.4f, total reward = %.4f\nmin total reward across iterations = %.4f, max total reward across iterations = %.4f, average total reward over the iterations = %.4f\n" %
-                ((training_episode_num+1), min_reward, max_reward, mean_reward, total_reward, min_reward_per_iteration, max_reward_per_iteration, np.mean(total_rewards_per_iteration))
-            )
+            if training_episode_num+1 == 1 or (training_episode_num+1) % how_often_to_print == 0:
+                print(
+                    "Finished episode %i, min reward = %.4f, max reward = %.4f, average reward per step = %.4f, total reward = %.4f\nmin total reward across iterations = %.4f, max total reward across iterations = %.4f, average total reward over the iterations = %.4f\n" %
+                    ((training_episode_num+1), min_reward, max_reward, mean_reward, total_reward, min_reward_per_iteration, max_reward_per_iteration, np.mean(total_rewards_per_iteration))
+                )
         print()
 
         # Scatter plot of reward earned per iteration
