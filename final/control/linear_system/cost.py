@@ -1,7 +1,7 @@
 # Imports
 import numpy as np
 
-from dynamics import action_dim, state_dim
+from linear_system.dynamics import action_dim, state_dim
 
 # Define cost/reward
 Q = np.eye(state_dim)

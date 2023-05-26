@@ -1,7 +1,7 @@
 # Imports
 import numpy as np
 
-from dynamics import state_dim #, action_dim
+from fluid_flow.dynamics import state_dim #, action_dim
 
 # Define cost/reward
 Q = np.eye(state_dim)

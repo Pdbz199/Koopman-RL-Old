@@ -3,11 +3,12 @@ import numpy as np
 
 from gym import spaces
 
-from linear_system.cost import cost
-from linear_system.dynamics import (
+from fluid_flow.cost import cost
+from fluid_flow.dynamics import (
     action_dim,
     action_minimums,
     action_maximums,
+    dt,
     f,
     state_dim,
     state_maximums,
@@ -15,15 +16,15 @@ from linear_system.dynamics import (
 )
 from gym.envs.registration import register
 
-max_episode_steps = 200
+max_episode_steps = int(20 / dt)
 
 register(
-    id='LinearSystem-v0',
-    entry_point='linear_system.dynamics_env:LinearSystem',
+    id='FluidFlow-v0',
+    entry_point='fluid_flow.dynamics_env:FluidFlow',
     max_episode_steps=max_episode_steps
 )
 
-class LinearSystem(gym.Env):
+class FluidFlow(gym.Env):
     def __init__(self):
         # Observations are 3-dimensional vectors indicating spatial location.
         self.observation_space = spaces.Box(low=state_minimums[:, 0], high=state_maximums[:, 0], shape=(state_dim,))

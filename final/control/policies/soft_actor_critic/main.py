@@ -11,6 +11,9 @@ from replay_memory import ReplayMemory
 import sys
 sys.path.append('../../')
 from linear_system.dynamics_env import LinearSystem
+from lorenz.dynamics_env import Lorenz
+from fluid_flow.dynamics_env import FluidFlow
+from double_well.dynamics_env import DoubleWell
 
 parser = argparse.ArgumentParser(description='PyTorch Soft Actor-Critic Args')
 # parser.add_argument('--env-name', default="HalfCheetah-v2",
@@ -63,9 +66,9 @@ np.random.seed(args.seed)
 
 # Agent
 agent = SAC(env.observation_space.shape[0], env.action_space, args)
-agent.load_checkpoint(ckpt_path=f"checkpoints/sac_checkpoint_{args.env_name}_", evaluate=True)
+# agent.load_checkpoint(ckpt_path=f"checkpoints/sac_checkpoint_{args.env_name}_", evaluate=True)
 
-#Tesnorboard
+# Tensorboard
 writer = SummaryWriter('runs/{}_SAC_{}_{}_{}'.format(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), args.env_name,
                                                              args.policy, "autotune" if args.automatic_entropy_tuning else ""))
 
@@ -121,7 +124,7 @@ for i_episode in itertools.count(1):
     print("Episode: {}, total numsteps: {}, episode steps: {}, reward: {}".format(i_episode, total_numsteps, episode_steps, round(episode_reward, 2)))
 
     if i_episode % 10 == 0 and args.eval is True:
-        avg_reward = 0.
+        avg_reward = 0
         episodes = 200
         for _  in range(episodes):
             state, _ = env.reset()
@@ -139,7 +142,7 @@ for i_episode in itertools.count(1):
 
         writer.add_scalar('avg_reward/test', avg_reward, i_episode)
 
-        # agent.save_checkpoint(args.env_name)
+        agent.save_checkpoint(args.env_name)
 
         print("----------------------------------------")
         print("Test Episodes: {}, Avg. Reward: {}".format(episodes, round(avg_reward, 2)))
