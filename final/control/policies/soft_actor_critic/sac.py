@@ -93,9 +93,8 @@ class SAC(object):
             self.alpha = self.log_alpha.exp()
             alpha_tlogs = self.alpha.clone() # For TensorboardX logs
         else:
-            alpha_loss = torch.tensor(0.).to(self.device)
+            alpha_loss = torch.tensor(0).to(self.device)
             alpha_tlogs = torch.tensor(self.alpha) # For TensorboardX logs
-
 
         if updates % self.target_update_interval == 0:
             soft_update(self.critic_target, self.critic, self.tau)

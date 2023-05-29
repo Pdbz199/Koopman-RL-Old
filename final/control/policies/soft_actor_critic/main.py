@@ -66,7 +66,7 @@ np.random.seed(args.seed)
 
 # Agent
 agent = SAC(env.observation_space.shape[0], env.action_space, args)
-# agent.load_checkpoint(ckpt_path=f"checkpoints/sac_checkpoint_{args.env_name}_", evaluate=True)
+agent.load_checkpoint(ckpt_path=f"checkpoints/sac_checkpoint_{args.env_name}_")
 
 # Tensorboard
 writer = SummaryWriter('runs/{}_SAC_{}_{}_{}'.format(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), args.env_name,
@@ -78,6 +78,7 @@ memory = ReplayMemory(args.replay_size, args.seed)
 # Training Loop
 total_numsteps = 0
 updates = 0
+eval_steps = 0
 
 for i_episode in itertools.count(1):
     episode_reward = 0
@@ -117,32 +118,38 @@ for i_episode in itertools.count(1):
 
         state = next_state
 
-    if total_numsteps > args.num_steps:
-        break
+    # if total_numsteps > args.num_steps:
+    #     break
 
     writer.add_scalar('reward/train', episode_reward, i_episode)
     print("Episode: {}, total numsteps: {}, episode steps: {}, reward: {}".format(i_episode, total_numsteps, episode_steps, round(episode_reward, 2)))
 
-    if i_episode % 10 == 0 and args.eval is True:
-        avg_reward = 0
-        episodes = 200
-        for _  in range(episodes):
-            state, _ = env.reset()
-            episode_reward = 0
-            done = False
-            while not done:
-                action = agent.select_action(state, evaluate=True)
+    if i_episode % 10 == 0:
+        # agent.save_checkpoint(args.env_name)
 
-                next_state, reward, done, _, __ = env.step(action)
-                episode_reward += reward
+        if args.eval is True:
+            avg_reward = 0
+            episodes = 200
+            # episodes = 1
 
-                state = next_state
-            avg_reward += episode_reward
-        avg_reward /= episodes
+            for _  in range(episodes):
+                state, _ = env.reset()
+                episode_reward = 0
+                done = False
 
-        writer.add_scalar('avg_reward/test', avg_reward, i_episode)
+                while not done:
+                    action = agent.select_action(state, evaluate=True)
 
-        agent.save_checkpoint(args.env_name)
+                    next_state, reward, done, _, __ = env.step(action)
+                    # env.render()
+                    episode_reward += reward
+
+                    state = next_state
+                avg_reward += episode_reward
+            avg_reward /= episodes
+
+            writer.add_scalar('avg_reward/test', avg_reward, eval_steps)
+            eval_steps += 1
 
         print("----------------------------------------")
         print("Test Episodes: {}, Avg. Reward: {}".format(episodes, round(avg_reward, 2)))
