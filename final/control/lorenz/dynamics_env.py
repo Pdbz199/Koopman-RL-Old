@@ -47,12 +47,12 @@ class Lorenz(gym.Env):
 
         self.render_has_been_called = False
 
-    def reset(self, seed=None, options={}):
+    def reset(self, seed=None, options={"state": None}):
         # We need the following line to seed self.np_random
         super().reset(seed=seed)
 
         # Choose the initial state uniformly at random
-        self.state = self.observation_space.sample()
+        self.state = self.observation_space.sample() if options['state'] is None else options['state']
         self.states = [self.state]
 
         # Track number of steps taken

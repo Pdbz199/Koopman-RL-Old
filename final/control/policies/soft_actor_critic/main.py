@@ -1,14 +1,16 @@
 import argparse
 import datetime
 import gym
-import numpy as np
 import itertools
+import numpy as np
+import pickle
+import sys
 import torch
+
 from sac import SAC
 from torch.utils.tensorboard import SummaryWriter
 from replay_memory import ReplayMemory
 
-import sys
 sys.path.append('../../')
 from linear_system.dynamics_env import LinearSystem
 from lorenz.dynamics_env import Lorenz
@@ -59,14 +61,23 @@ args = parser.parse_args()
 # env = NormalizedActions(gym.make(args.env_name))
 env = gym.make(args.env_name)
 # env.seed(args.seed)
-env.action_space.seed(args.seed)
+# env.action_space.seed(args.seed)
+sac_env = gym.make(args.env_name)
+# sac_env.action_space.seed(args.seed)
+lqr_env = gym.make(args.env_name)
+# lqr_env.action_space.seed(args.seed)
 
 torch.manual_seed(args.seed)
 np.random.seed(args.seed)
 
 # Agent
-agent = SAC(env.observation_space.shape[0], env.action_space, args)
+agent = SAC(sac_env.observation_space.shape[0], sac_env.action_space, args)
 agent.load_checkpoint(ckpt_path=f"checkpoints/sac_checkpoint_{args.env_name}_")
+
+#%% Load LQR policy
+sys.path.append('../../../../')
+with open('../../lorenz/analysis/tmp/lqr/policy.pickle', 'rb') as handle:
+    lqr_policy = pickle.load(handle)
 
 # Tensorboard
 writer = SummaryWriter('runs/{}_SAC_{}_{}_{}'.format(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), args.env_name,
@@ -85,6 +96,7 @@ for i_episode in itertools.count(1):
     episode_steps = 0
     done = False
     state, _ = env.reset()
+    # done = True
 
     while not done:
         if args.start_steps > total_numsteps:
@@ -124,35 +136,64 @@ for i_episode in itertools.count(1):
     writer.add_scalar('reward/train', episode_reward, i_episode)
     print("Episode: {}, total numsteps: {}, episode steps: {}, reward: {}".format(i_episode, total_numsteps, episode_steps, round(episode_reward, 2)))
 
-    if i_episode % 10 == 0:
+    if i_episode % 10 == 0: # or True
         # agent.save_checkpoint(args.env_name)
 
         if args.eval is True:
-            avg_reward = 0
+            # avg_reward = 0
+            sac_avg_reward = 0
+            lqr_avg_reward = 0
             episodes = 200
             # episodes = 1
 
             for _  in range(episodes):
-                state, _ = env.reset()
-                episode_reward = 0
+                # initial_state = np.array([0, 0, 0])
+
+                # sac_env.reset(options={"state": initial_state})
+                sac_env.reset()
+                sac_state = sac_env.state
+                sac_episode_reward = 0
+
+                # lqr_env.reset(options={"state": initial_state})
+                # lqr_env.reset(options={"state": sac_state})
+                # lqr_state = lqr_env.state
+                # lqr_episode_reward = 0
+
                 done = False
 
                 while not done:
-                    action = agent.select_action(state, evaluate=True)
+                    sac_action = agent.select_action(sac_state, evaluate=True)
+                    # lqr_action = lqr_policy.get_action(np.vstack(lqr_state))[0]
 
-                    next_state, reward, done, _, __ = env.step(action)
+                    # next_state, reward, done, _, __ = env.step(action)
                     # env.render()
-                    episode_reward += reward
+                    # episode_reward += reward
 
-                    state = next_state
-                avg_reward += episode_reward
-            avg_reward /= episodes
+                    sac_state, sac_reward, done, _, __ = sac_env.step(sac_action)
+                    # sac_env.render()
+                    sac_episode_reward += sac_reward
 
-            writer.add_scalar('avg_reward/test', avg_reward, eval_steps)
+                    # lqr_state, lqr_reward, done, _, __ = lqr_env.step(lqr_action)
+                    # lqr_env.render()
+                    # lqr_episode_reward += lqr_reward
+
+                # print("SAC Reward:", sac_episode_reward)
+                # print("LQR Reward", lqr_episode_reward, "\n")
+                sac_avg_reward += sac_episode_reward
+                # lqr_avg_reward += lqr_episode_reward
+            sac_avg_reward /= episodes
+            # lqr_avg_reward /= episodes
+
+            # print("SAC Average Reward:", sac_avg_reward)
+            # print("LQR Average Reward:", lqr_avg_reward, "\n")
+
+            writer.add_scalar('avg_reward/test', sac_avg_reward, eval_steps)
             eval_steps += 1
 
         print("----------------------------------------")
-        print("Test Episodes: {}, Avg. Reward: {}".format(episodes, round(avg_reward, 2)))
+        print("Test Episodes: {}, Avg. Reward: {}".format(episodes, round(sac_avg_reward, 2)))
         print("----------------------------------------")
+
+    # break
 
 env.close()
