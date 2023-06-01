@@ -5,15 +5,14 @@ codebase at https://github.com/sklus/d3s
 
 import math
 import numpy as np
+import torch
 from scipy.spatial import distance
-
 
 def identity(x):
     '''
     Identity function.
     '''
     return x
-
 
 class monomials(object):
     '''
@@ -34,11 +33,13 @@ class monomials(object):
         c = allMonomialPowers(d, self.p) # matrix containing all powers for the monomials
         n = c.shape[1] # number of monomials
         y = np.ones([n, m])
+        # y = torch.ones([n, m])
         for i in range(n):
             for j in range(d):
                 y[i, :] = y[i, :] * np.power(x[j, :], c[j, i])
+                # y[i, :] = y[i, :] * torch.pow(x[j, :], c[j, i])
         return y
-    
+
     def diff(self, x):
         '''
         Compute partial derivatives for all data points in x.
@@ -47,20 +48,24 @@ class monomials(object):
         c = allMonomialPowers(d, self.p) # matrix containing all powers for the monomials
         n = c.shape[1] # number of monomials
         y = np.zeros([n, d, m])
+        # y = torch.zeros([n, d, m])
         for i in range(n): # for all monomials
             for j in range(d): # for all dimensions
                 e = c[:, i].copy() # exponents of ith monomial
                 a = e[j]
                 e[j] = e[j] - 1 # derivative w.r.t. j
-                
+
                 if np.any(e < 0):
+                # if torch.any(e < 0):
                     continue # nothing to do, already zero
-                
+
                 y[i, j, :] = a*np.ones([1, m])
+                # y[i, j, :] = a*torch.ones([1, m])
                 for k in range(d):
                     y[i, j, :] = y[i, j, :] * np.power(x[k, :], e[k])
+                    # y[i, j, :] = y[i, j, :] * torch.pow(x[k, :], e[k])
         return y
-    
+
     def ddiff(self, x):
         '''
         Compute second order derivatives for all data points in x.
@@ -69,6 +74,7 @@ class monomials(object):
         c = allMonomialPowers(d, self.p) # matrix containing all powers for the monomials
         n = c.shape[1] # number of monomials
         y = np.zeros([n, d, d, m])
+        # y = torch.zeros([n, d, d, m])
         for i in range(n): # for all monomials
             for j1 in range(d): # for all dimensions
                 for j2 in range(d): # for all dimensions
@@ -77,33 +83,37 @@ class monomials(object):
                     e[j1] = e[j1] - 1 # derivative w.r.t. j1
                     a *= e[j2]
                     e[j2] = e[j2] - 1 # derivative w.r.t. j2
-                    
+
                     if np.any(e < 0):
+                    # if torch.any(e < 0):
                         continue # nothing to do, already zero
-                    
+
                     y[i, j1, j2, :] = a*np.ones([1, m])
+                    # y[i, j1, j2, :] = a*torch.ones([1, m])
                     for k in range(d):
                         y[i, j1, j2, :] = y[i, j1, j2, :] * np.power(x[k, :], e[k])
+                        # y[i, j1, j2, :] = y[i, j1, j2, :] * torch.pow(x[k, :], e[k])
         return y
-        
+
     def __repr__(self):
         return 'Monomials of order up to %d.' % self.p
-    
+
     def display(self, alpha, d, name = None, eps = 1e-6):
         '''
         Display the polynomial with coefficients alpha.
         '''
         c = allMonomialPowers(d, self.p) # matrix containing all powers for the monomials
-        
+
         if name != None: print(name + ' = ', end = '')
-        
+
         ind, = np.where(abs(alpha) > eps)
+        # ind, = torch.where(abs(alpha) > eps)
         k = ind.shape[0]
-        
+
         if k == 0: # no nonzero coefficients
             print('0')
             return
-        
+
         for i in range(k):
             if i == 0:
                 print('%.5f' % alpha[ind[i]], end = '')
@@ -115,15 +125,16 @@ class monomials(object):
                         
             self._displayMonomial(c[:, ind[i]])
         print('')
-        
+
     def _displayMonomial(self, p):
         d = p.shape[0]
         if np.all(p == 0):
+        # if torch.all(p == 0):
             print('1', end = '')
         else:
             for j in range(d):
                 if p[j] == 0:
-                    continue;
+                    continue
                 if p[j] == 1:
                     print(' x_%d' % (j+1), end = '')
                 else:
@@ -257,5 +268,6 @@ def allMonomialPowers(d, p):
     c = np.zeros([d, n]) # matrix containing all powers for the monomials
     for i in range(1, n):
         c[:, i] = nextMonomialPowers(x)
-    c = np.flipud(c) # flip array in the up/down direction
+    # c = np.flipud(c) # flip array in the up/down direction
+    # return torch.tensor(c)
     return c

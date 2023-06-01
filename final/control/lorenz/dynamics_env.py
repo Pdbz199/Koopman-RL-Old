@@ -63,12 +63,16 @@ class Lorenz(gym.Env):
 
         return self.state, {}
 
-    def step(self, action):
-        # Compute reward of system
-        reward = -cost(
-            np.vstack(self.state),
+    @staticmethod
+    def reward(state, action):
+        return -cost(
+            np.vstack(state),
             np.vstack(action)
         )[0, 0]
+
+    def step(self, action):
+        # Compute reward of system
+        reward = Lorenz.reward(self.state, action)
 
         # Update state
         self.state = f(

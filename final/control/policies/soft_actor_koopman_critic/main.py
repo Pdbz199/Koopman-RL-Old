@@ -7,7 +7,7 @@ import pickle
 import sys
 import torch
 
-from sac import SAC
+from sac import SAKC
 from torch.utils.tensorboard import SummaryWriter
 from replay_memory import ReplayMemory
 
@@ -60,12 +60,8 @@ args = parser.parse_args()
 # Environment
 # env = NormalizedActions(gym.make(args.env_name))
 training_env = gym.make(args.env_name)
-# env.seed(args.seed)
-# env.action_space.seed(args.seed)
 sac_env = gym.make(args.env_name)
-# sac_env.action_space.seed(args.seed)
 lqr_env = gym.make(args.env_name)
-# lqr_env.action_space.seed(args.seed)
 
 torch.manual_seed(args.seed)
 np.random.seed(args.seed)
@@ -73,6 +69,9 @@ np.random.seed(args.seed)
 # Append to sys path for loading tensor and LQR policy
 sys.path.append('../../../../')
 system_name = "linear_system"
+# system_name = "fluid_flow"
+# system_name = "lorenz"
+# system_name = "double_well"
 
 # Load LQR policy
 with open(f'../../{system_name}/analysis/tmp/lqr/policy.pickle', 'rb') as handle:
@@ -80,15 +79,21 @@ with open(f'../../{system_name}/analysis/tmp/lqr/policy.pickle', 'rb') as handle
 
 # Load Koopman tensor with pickle
 with open(f'../../{system_name}/analysis/tmp/path_based_tensor.pickle', 'rb') as handle:
-    tensor = pickle.load(handle)
+    koopman_tensor = pickle.load(handle)
 
 # Agent
-agent = SAC(training_env, args)
+agent = SAKC(training_env, args, koopman_tensor=koopman_tensor)
 # agent.load_checkpoint(ckpt_path=f"checkpoints/sac_checkpoint_{args.env_name}_")
 
 # Tensorboard
-writer = SummaryWriter('runs/{}_SAC_{}_{}_{}'.format(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), args.env_name,
-                                                             args.policy, "autotune" if args.automatic_entropy_tuning else ""))
+writer = SummaryWriter(
+    'runs/{}_SAC_{}_{}_{}'.format(
+        datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
+        args.env_name,
+        args.policy,
+        "autotune" if args.automatic_entropy_tuning else ""
+    )
+)
 
 # Memory
 memory = ReplayMemory(args.replay_size, args.seed)
@@ -102,12 +107,12 @@ for i_episode in itertools.count(1):
     episode_reward = 0
     episode_steps = 0
     done = False
-    state, _ = sac_env.reset()
+    state, _ = training_env.reset()
     # done = True
 
     while not done:
         if args.start_steps > total_numsteps:
-            action = sac_env.action_space.sample()  # Sample random action
+            action = training_env.action_space.sample()  # Sample random action
         else:
             action = agent.select_action(state)  # Sample action from policy
 
@@ -124,14 +129,14 @@ for i_episode in itertools.count(1):
                 writer.add_scalar('entropy_temprature/alpha', alpha, updates)
                 updates += 1
 
-        next_state, reward, done, _, __ = sac_env.step(action) # Step
+        next_state, reward, done, _, __ = training_env.step(action) # Step
         episode_steps += 1
         total_numsteps += 1
         episode_reward += reward
 
         # Ignore the "done" signal if it comes from hitting the time horizon.
         # (https://github.com/openai/spinningup/blob/master/spinup/algos/sac/sac.py)
-        mask = 1 if episode_steps == sac_env._max_episode_steps else float(not done)
+        mask = 1 if episode_steps == training_env._max_episode_steps else float(not done)
 
         memory.push(state, action, reward, next_state, mask) # Append transition to memory
 

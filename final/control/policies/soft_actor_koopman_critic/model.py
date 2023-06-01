@@ -32,42 +32,21 @@ class ValueNetwork(nn.Module):
         x = self.linear3(x)
         return x
 
-class QNetwork(nn.Module):
-    def __init__(self, state_dim, action_dim, hidden_dim):
-        super(QNetwork, self).__init__()
+class KoopmanQFunction():
+    def __init__(self, tensor):
+        self.tensor = tensor
+        # self.w = torch.zeros((self.tensor.Phi_X.shape[0], 1), requires_grad=True)
+        self.w = torch.zeros((self.tensor.Phi_X.shape[0], 1))
 
-        # Q1 architecture
-        self.linear1 = nn.Linear(state_dim + action_dim, hidden_dim)
-        self.linear2 = nn.Linear(hidden_dim, hidden_dim)
-        self.linear3 = nn.Linear(hidden_dim, 1)
-
-        # Q2 architecture
-        self.linear4 = nn.Linear(state_dim + action_dim, hidden_dim)
-        self.linear5 = nn.Linear(hidden_dim, hidden_dim)
-        self.linear6 = nn.Linear(hidden_dim, 1)
-
-        self.apply(weights_init_)
-
-    def forward(self, state, action):
-        xu = torch.cat([state, action], 1)
-
-        x1 = self.linear1(xu)
-        x1 = F.relu(x1)
-        x1 = self.linear2(x1)
-        x1 = F.relu(x1)
-        x1 = self.linear3(x1)
-
-        x2 = self.linear4(xu)
-        x2 = F.relu(x2)
-        x2 = self.linear5(x2)
-        x2 = F.relu(x2)
-        x2 = self.linear6(x2)
-        return x1, x2
+    def __call__(self, reward, state, action):
+        x = np.vstack(state.detach().numpy())
+        u = np.vstack(action.detach().numpy())
+        return reward + self.w.T @ self.tensor.phi_f(x, u)
 
 class GaussianPolicy(nn.Module):
     def __init__(self, num_inputs, num_actions, hidden_dim, action_space=None):
         super(GaussianPolicy, self).__init__()
-        
+
         self.mean_linear1 = nn.Linear(num_inputs, hidden_dim)
         self.mean_linear2 = nn.Linear(hidden_dim, hidden_dim)
         self.mean_linear3 = nn.Linear(hidden_dim, num_actions)
