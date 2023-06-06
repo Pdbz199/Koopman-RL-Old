@@ -82,7 +82,7 @@ with open(f'../../{system_name}/analysis/tmp/path_based_tensor.pickle', 'rb') as
     koopman_tensor = pickle.load(handle)
 
 # Agent
-agent = SAKC(training_env, args, koopman_tensor=koopman_tensor)
+agent = SAKC(env=training_env, args=args, koopman_tensor=koopman_tensor)
 # agent.load_checkpoint(ckpt_path=f"checkpoints/sac_checkpoint_{args.env_name}_")
 
 # Tensorboard
@@ -120,10 +120,10 @@ for i_episode in itertools.count(1):
             # Number of updates per step in environment
             for i in range(args.updates_per_step):
                 # Update parameters of all the networks
-                critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha = agent.update_parameters(memory, args.batch_size, updates)
+                policy_loss, ent_loss, alpha = agent.update_parameters(memory, args.batch_size, updates)
 
-                writer.add_scalar('loss/critic_1', critic_1_loss, updates)
-                writer.add_scalar('loss/critic_2', critic_2_loss, updates)
+                # writer.add_scalar('loss/critic_1', critic_1_loss, updates)
+                # writer.add_scalar('loss/critic_2', critic_2_loss, updates)
                 writer.add_scalar('loss/policy', policy_loss, updates)
                 writer.add_scalar('loss/entropy_loss', ent_loss, updates)
                 writer.add_scalar('entropy_temprature/alpha', alpha, updates)

@@ -1,7 +1,8 @@
 import numpy as np
 import os
 import torch
-import torch.nn.functional as F
+# import torch.nn.functional as F
+from torch.distributions import Normal
 from torch.optim import Adam
 from utils import soft_update, hard_update
 from model import (
@@ -11,12 +12,19 @@ from model import (
 )
 
 class SAKC(object):
-    def __init__(self, env, args, koopman_tensor=None):
-
+    def __init__(self, env, args, koopman_tensor):
         self.env = env
 
         state_dim = env.observation_space.shape[0]
         action_space = env.action_space
+        step_size = 0.1
+        self.all_actions = np.array([
+            np.arange(
+                action_space.low[0],
+                action_space.high[0]+step_size,
+                step=step_size
+            )
+        ])
 
         self.gamma = args.gamma
         self.tau = args.tau
@@ -63,56 +71,30 @@ class SAKC(object):
             _, _, action = self.policy.sample(state)
         return action.detach().cpu().numpy()[0]
     
-    def update_critic_weights(self):
+    def update_critic_weights(self, x_batch, u_batch, reward_batch):
         """
             Update the weights for the value function in the dictionary space.
         """
 
-        # TODO: CHECK SHAPES OF ALL THINGS
+        # For use with numpy functions
+        x_batch = x_batch.detach().numpy().T # (state_dim, batch_size)
+        u_batch = u_batch.detach().numpy().T # (1, batch_size)
+        reward_batch = reward_batch.detach().numpy().T # (1, batch_size)
 
-        # Take state sample from dataset
-        x_batch_indices = np.random.choice(
-            self.koopman_tensor.X.shape[1],
-            self.w_hat_batch_size,
-            replace=False
-        )
-        x_batch = self.koopman_tensor.X[:, x_batch_indices]
-        phi_x_batch = self.koopman_tensor.Phi_X[:, x_batch_indices]
-
-        # Compute policy probabilities for each state in the batch
-        with torch.no_grad():
-            _, log_pi_response = self.policy.sample(torch.Tensor(x_batch.T)).T.numpy()
-            pi_response = np.exp(log_pi_response)
-
-        # Compute phi_x_prime for all states in the batch using all actions in the action space
-        K_us = self.koopman_tensor.K_(self.all_actions)
-        phi_x_prime_batch = K_us @ phi_x_batch
+        # Compute phi states for given batch
+        phi_x_batch = self.koopman_tensor.phi(x_batch) # (phi_dim, batch_size)
 
         # Compute expected phi(x')
-        phi_x_prime_batch_prob = np.einsum(
-            'upw,uw->upw',
-            phi_x_prime_batch,
-            pi_response
-        )
-        expectation_term_1 = phi_x_prime_batch_prob.sum(axis=0)
-
-        # Compute expected reward
-        rewards_batch = -self.env.reward(x_batch, self.all_actions)
-        reward_batch_prob = np.einsum(
-            'uw,uw->uw',
-            rewards_batch,
-            pi_response
-        )
-        expectation_term_2 = np.array([
-            reward_batch_prob.sum(axis=0)
-        ])
+        expected_phi_x_prime_batch = np.zeros_like(phi_x_batch) # (phi_dim, batch_size)
+        for i in range(phi_x_batch.shape[1]):
+            K_u = self.koopman_tensor.K_(np.vstack(u_batch[:, i])) # (phi_dim, phi_dim)
+            expected_phi_x_prime_batch[:, i] = (K_u @ np.vstack(phi_x_batch[:, i]))[:, 0] # (batch_size, phi_dim, batch_size)
 
         # Update value function weights
         self.critic.w = torch.linalg.lstsq(
-            torch.Tensor((phi_x_batch - (self.discount_factor * expectation_term_1)).T),
-            torch.Tensor(expectation_term_2.T)
+            torch.Tensor((phi_x_batch - (self.gamma * expected_phi_x_prime_batch)).T),
+            torch.Tensor(reward_batch.T)
         ).solution
-        
 
     def update_parameters(self, memory, batch_size, updates):
         # Sample a batch from memory
@@ -148,7 +130,7 @@ class SAKC(object):
             alpha_tlogs = torch.tensor(self.alpha) # For TensorboardX logs
 
         # OLS to update weight vector for critic
-        self.update_critic_weights()
+        self.update_critic_weights(state_batch, action_batch, reward_batch)
 
         # Occasionally update critic target
         if updates % self.target_update_interval == 0:

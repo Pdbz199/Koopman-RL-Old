@@ -67,11 +67,11 @@ class LinearSystem(gym.Env):
         return -cost(
             np.vstack(state),
             np.vstack(action)
-        )[0, 0]
+        )
 
     def step(self, action):
         # Compute reward of system
-        reward = LinearSystem.reward(self.state, action)
+        reward = LinearSystem.reward(self.state, action)[0, 0]
 
         # Update state
         self.state = f(

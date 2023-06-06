@@ -39,9 +39,13 @@ class KoopmanQFunction():
         self.w = torch.zeros((self.tensor.Phi_X.shape[0], 1))
 
     def __call__(self, reward, state, action):
-        x = np.vstack(state.detach().numpy())
-        u = np.vstack(action.detach().numpy())
-        return reward + self.w.T @ self.tensor.phi_f(x, u)
+        # Assuming the incoming values are batches of data
+        x = state.detach().numpy().T
+        u = action.detach().numpy().T
+        qs = torch.zeros(1, x.shape[1])
+        for i in range(x.shape[1]):
+            qs[:, i] = reward[i, 0] + (self.w.T @ self.tensor.phi_f(np.vstack(x[:, i]), np.vstack(u[:, i])))[0, 0]
+        return qs
 
 class GaussianPolicy(nn.Module):
     def __init__(self, num_inputs, num_actions, hidden_dim, action_space=None):
