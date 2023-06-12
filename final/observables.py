@@ -268,6 +268,5 @@ def allMonomialPowers(d, p):
     c = np.zeros([d, n]) # matrix containing all powers for the monomials
     for i in range(1, n):
         c[:, i] = nextMonomialPowers(x)
-    # c = np.flipud(c) # flip array in the up/down direction
-    # return torch.tensor(c)
+    c = np.flipud(c) # flip array in the up/down direction
     return c
