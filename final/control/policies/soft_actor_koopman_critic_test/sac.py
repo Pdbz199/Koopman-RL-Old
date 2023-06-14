@@ -83,7 +83,7 @@ class SAKC(object):
 
         return action
 
-    def update_critic_weights(self, reward_batch, x_batch, x_prime_batch):
+    def update_critic_weights(self, x_batch, reward_batch, x_prime_batch):
         """
             Update the weights for the value function in the dictionary space.
         """
@@ -92,35 +92,42 @@ class SAKC(object):
         # x_batch = (x_batch - np.vstack(x_batch.mean(axis=1))) / (np.vstack(x_batch.std(axis=1)) + epsilon)
         # reward_batch = (reward_batch - reward_batch.mean()) / (reward_batch.std() + epsilon)
 
+        # Prepare batches for numpy functions
+        numpy_x_batch = x_batch.detach().numpy().T # (state_dim, batch_size)
+        numpy_x_prime_batch = x_batch.detach().numpy().T # (state_dim, batch_size)
+        numpy_reward_batch = reward_batch.detach().numpy().T # (1, batch_size)
+
+        # Compute phi(x)s and phi(x')s
+        phi_x_batch = self.koopman_tensor.phi(numpy_x_batch) # (phi_dim, batch_size)
+        phi_x_prime_batch = self.koopman_tensor.phi(numpy_x_prime_batch) # (phi_dim, batch_size)
+
         with torch.no_grad():
             # Sample actions and log probabilities from current policy
-            u_prime_batch, log_prob_prime_batch, __ = self.policy.sample(x_prime_batch) # Both are (batch_size, 1)
+            num_samples = 100
+            u_batch = torch.zeros((x_batch.shape[0], num_samples)) # (batch_size, num_samples)
+            log_prob_batch = torch.zeros((x_batch.shape[0], num_samples)) # (batch_size, num_samples)
+            for i in range(num_samples):
+                u_batch_sample, log_prob_batch_sample, __ = self.policy.sample(x_batch) # Both are (batch_size, 1)
+
+                u_batch[:, i] = u_batch_sample[:, 0]
+                log_prob_batch[:, i] = log_prob_batch_sample[:, 0]
+
+            # Compute target V(x')s
+            target_V_x_prime_batch = self.critic_target.w.T @ phi_x_prime_batch # (1, batch_size)
 
             # Compute rewards for x_prime_batch and u_prime_batch
-            reward_prime_batch = torch.zeros((x_batch.shape[0], 1))
+            expectation_term = np.zeros((1, x_batch.shape[0])) # (1, batch_size)
             for i in range(x_batch.shape[0]):
-                reward_prime_batch[i] = self.env.reward(x_prime_batch[i], u_prime_batch[i])[0, 0]
-
-            # Reward normalization
-            # reward_batch = (reward_batch - reward_batch.mean()) / (reward_batch.std() + epsilon)
-
-            # Compute Q values using rewards and actions from current policy
-            target_Q_value_batch = self.critic_target(reward_prime_batch, x_prime_batch, u_prime_batch) # (1, batch_size)
-
-        # For use with numpy functions
-        reward_batch = reward_batch.detach().numpy().T # (1, batch_size)
-        x_batch = x_batch.detach().numpy().T # (state_dim, batch_size)
-        log_prob_prime_batch = log_prob_prime_batch.detach().numpy().T # (1, batch_size)
-        target_Q_value_batch = target_Q_value_batch.detach().numpy() # (1, batch_size)
-
-        # Compute phi states for given batch
-        phi_x_batch = self.koopman_tensor.phi(x_batch) # (phi_dim, batch_size)
+                for j in range(num_samples):
+                    expectation_term[:, i] = (-numpy_reward_batch[0, i] + \
+                        self.alpha*log_prob_batch[i, j] + \
+                            self.gamma*target_V_x_prime_batch[:, i]) / num_samples
 
         # Update value function weights
         self.critic.w = torch.linalg.lstsq(
             torch.Tensor(phi_x_batch.T),
-            torch.Tensor((reward_batch - self.alpha*log_prob_prime_batch + self.gamma*target_Q_value_batch).T)
-        ).solution / 100
+            torch.Tensor(expectation_term.T)
+        ).solution
 
     def update_parameters(self, memory, batch_size, updates):
         # Sample a batch from memory
@@ -140,7 +147,7 @@ class SAKC(object):
         """ UPDATE CRITIC """
 
         # OLS to update weight vector for critic
-        self.update_critic_weights(reward_batch, state_batch, next_state_batch)
+        self.update_critic_weights(state_batch, reward_batch, next_state_batch)
 
         # with torch.no_grad():
         #     next_state_action, next_state_log_pi, _ = self.policy.sample(next_state_batch)
