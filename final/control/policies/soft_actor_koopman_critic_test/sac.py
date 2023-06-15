@@ -94,8 +94,8 @@ class SAKC(object):
 
         # Prepare batches for numpy functions
         numpy_x_batch = x_batch.detach().numpy().T # (state_dim, batch_size)
-        numpy_x_prime_batch = x_batch.detach().numpy().T # (state_dim, batch_size)
         numpy_reward_batch = reward_batch.detach().numpy().T # (1, batch_size)
+        numpy_x_prime_batch = x_prime_batch.detach().numpy().T # (state_dim, batch_size)
 
         # Compute phi(x)s and phi(x')s
         phi_x_batch = self.koopman_tensor.phi(numpy_x_batch) # (phi_dim, batch_size)
@@ -113,7 +113,8 @@ class SAKC(object):
                 log_prob_batch[:, i] = log_prob_batch_sample[:, 0]
 
             # Compute target V(x')s
-            target_V_x_prime_batch = self.critic_target.w.T @ phi_x_prime_batch # (1, batch_size)
+            # target_V_x_prime_batch = self.critic_target.w.T @ phi_x_prime_batch # (1, batch_size)
+            V_x_prime_batch = self.critic.w.T @ phi_x_prime_batch # (1, batch_size)
 
             # Compute rewards for x_prime_batch and u_prime_batch
             expectation_term = np.zeros((1, x_batch.shape[0])) # (1, batch_size)
@@ -121,13 +122,13 @@ class SAKC(object):
                 for j in range(num_samples):
                     expectation_term[:, i] = (-numpy_reward_batch[0, i] + \
                         self.alpha*log_prob_batch[i, j] + \
-                            self.gamma*target_V_x_prime_batch[:, i]) / num_samples
+                            self.gamma*V_x_prime_batch[:, i]) / num_samples
 
-        # Update value function weights
-        self.critic.w = torch.linalg.lstsq(
-            torch.Tensor(phi_x_batch.T),
-            torch.Tensor(expectation_term.T)
-        ).solution
+            # Update value function weights
+            self.critic.w = torch.linalg.lstsq(
+                torch.Tensor(phi_x_batch.T),
+                torch.Tensor(expectation_term.T)
+            ).solution
 
     def update_parameters(self, memory, batch_size, updates):
         # Sample a batch from memory
