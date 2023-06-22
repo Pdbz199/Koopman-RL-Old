@@ -65,24 +65,26 @@ class QNetwork(nn.Module):
         return x1, x2
 
 class KoopmanQFunction():
-    def __init__(self, tensor):
+    def __init__(self, tensor, gamma):
         self.tensor = tensor
-        # self.w = torch.zeros((self.tensor.Phi_X.shape[0], 1), requires_grad=True)
-        self.w = torch.zeros((self.tensor.Phi_X.shape[0], 1))
+        self.gamma = gamma
+        self.w = torch.zeros((self.tensor.Phi_X.shape[0], 1)) # (phi_dim, 1)
 
     def __call__(self, reward, state, action):
         # Assuming the incoming values are batches of data
-        x = state.detach().numpy().T
-        u = action.detach().numpy().T
-        qs = torch.zeros(1, x.shape[1])
-        for i in range(x.shape[1]):
-            phi_x_prime = self.tensor.phi_f(
-                np.vstack(x[:, i]),
-                np.vstack(u[:, i])
-            )
-            expected_V_x_prime = (self.w.T @ phi_x_prime)[0, 0]
-            qs[:, i] = reward[i, 0] + expected_V_x_prime
-        return qs
+        with torch.no_grad():
+            r = reward.numpy().T
+            x = state.numpy().T
+            u = action.numpy().T
+            qs = torch.zeros(1, x.shape[1])
+            for i in range(x.shape[1]):
+                expected_phi_x_prime = self.tensor.phi_f(
+                    np.vstack(x[:, i]),
+                    np.vstack(u[:, i])
+                ) # (phi_dim, 1)
+                expected_V_x_prime = (self.w.T @ expected_phi_x_prime)[0, 0]
+                qs[0, i] = r[0, i] + self.gamma*expected_V_x_prime
+            return qs
 
 class GaussianPolicy(nn.Module):
     def __init__(self, num_inputs, num_actions, hidden_dim, action_space=None):

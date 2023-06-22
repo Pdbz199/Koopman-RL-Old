@@ -114,11 +114,13 @@ for i_episode in itertools.count(1):
 
     while not done:
         if args.start_steps > total_numsteps:
-            action = sac_env.action_space.sample()  # Sample random action
-            log_prob = 0
+            action = sac_env.action_space.sample() # Sample random action
+            log_prob = -np.log( sac_env.action_space.high - sac_env.action_space.low )[0]
         else:
-            # action = agent.select_action(state)  # Sample action from policy
-            action, log_prob = agent.select_action(state, return_log_prob=True)  # Sample action from policy
+            # action = agent.select_action(state) # Sample action from policy
+            action, log_prob = agent.select_action(state, return_log_prob=True) # Sample action from policy
+            # action = lqr_policy.get_action(np.vstack(state), is_entropy_regularized=True)[0]
+            # log_prob = lqr_policy.get_action_density(np.array([action]), np.vstack(state), is_entropy_regularized=True)[0, 0]
 
         if len(memory) > args.batch_size:
             # Number of updates per step in environment
@@ -136,6 +138,7 @@ for i_episode in itertools.count(1):
         next_state, reward, done, _, __ = sac_env.step(action) # Step
         episode_steps += 1
         total_numsteps += 1
+        # print(f"Step number: {episode_steps}", end='\r')
         episode_reward += reward
 
         # Ignore the "done" signal if it comes from hitting the time horizon.

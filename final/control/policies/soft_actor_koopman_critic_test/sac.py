@@ -1,5 +1,7 @@
 import numpy as np
 import os
+import pickle
+import sys
 import torch
 import torch.nn.functional as F
 from torch.distributions import Normal
@@ -13,6 +15,15 @@ from model import (
 )
 
 epsilon = np.finfo(np.float64).eps
+
+# Load LQR policy
+sys.path.append('../../../../')
+system_name = "linear_system"
+# system_name = "fluid_flow"
+# system_name = "lorenz"
+# system_name = "double_well"
+with open(f'../../{system_name}/analysis/tmp/lqr/policy.pickle', 'rb') as handle:
+    lqr_policy = pickle.load(handle)
 
 class SAKC(object):
     def __init__(self, env, args, koopman_tensor):
@@ -46,8 +57,8 @@ class SAKC(object):
         # self.critic_optim = Adam(self.critic.parameters(), lr=args.lr)
         # self.critic_target = QNetwork(state_dim, action_space.shape[0], args.hidden_size).to(device=self.device)
         # hard_update(self.critic_target, self.critic, is_koopman=False)
-        self.critic = KoopmanQFunction(koopman_tensor)
-        self.critic_target = KoopmanQFunction(koopman_tensor)
+        self.critic = KoopmanQFunction(koopman_tensor, self.gamma)
+        self.critic_target = KoopmanQFunction(koopman_tensor, self.gamma)
         hard_update(self.critic_target, self.critic, is_koopman=True)
 
         if self.policy_type == "Gaussian":
@@ -83,98 +94,99 @@ class SAKC(object):
 
         return action
 
-    def update_critic_weights(self, x_batch, reward_batch, x_prime_batch):
+    def update_critic_weights(self, x_batch, u_batch, r_batch, x_prime_batch):
         """
             Update the weights for the value function in the dictionary space.
         """
 
-        # Batch normalization
-        # x_batch = (x_batch - np.vstack(x_batch.mean(axis=1))) / (np.vstack(x_batch.std(axis=1)) + epsilon)
-        # reward_batch = (reward_batch - reward_batch.mean()) / (reward_batch.std() + epsilon)
-
-        # Prepare batches for numpy functions
-        numpy_x_batch = x_batch.detach().numpy().T # (state_dim, batch_size)
-        numpy_reward_batch = reward_batch.detach().numpy().T # (1, batch_size)
-        numpy_x_prime_batch = x_prime_batch.detach().numpy().T # (state_dim, batch_size)
-
-        # Compute phi(x)s and phi(x')s
-        phi_x_batch = self.koopman_tensor.phi(numpy_x_batch) # (phi_dim, batch_size)
-        phi_x_prime_batch = self.koopman_tensor.phi(numpy_x_prime_batch) # (phi_dim, batch_size)
-
         with torch.no_grad():
-            # Sample actions and log probabilities from current policy
-            num_samples = 100
-            u_batch = torch.zeros((x_batch.shape[0], num_samples)) # (batch_size, num_samples)
-            log_prob_batch = torch.zeros((x_batch.shape[0], num_samples)) # (batch_size, num_samples)
-            for i in range(num_samples):
-                u_batch_sample, log_prob_batch_sample, __ = self.policy.sample(x_batch) # Both are (batch_size, 1)
+            # Get batch size from input
+            batch_size = x_batch.shape[0]
 
-                u_batch[:, i] = u_batch_sample[:, 0]
-                log_prob_batch[:, i] = log_prob_batch_sample[:, 0]
+            # Get actions and log probabiltiies from current policy
+            u_prime_batch, log_prob_prime_batch, _ = self.policy.sample(x_prime_batch)
 
-            # Compute target V(x')s
-            # target_V_x_prime_batch = self.critic_target.w.T @ phi_x_prime_batch # (1, batch_size)
-            V_x_prime_batch = self.critic.w.T @ phi_x_prime_batch # (1, batch_size)
+            # Prepare batches for numpy functions
+            numpy_x_batch = x_batch.numpy().T # (state_dim, batch_size)
+            numpy_u_batch = u_batch.numpy().T # (action_dim, batch_size)
+            numpy_r_batch = r_batch.numpy().T # (1, batch_size)
+            numpy_x_prime_batch = x_prime_batch.numpy().T # (state_dim, batch_size)
 
-            # Compute rewards for x_prime_batch and u_prime_batch
-            expectation_term = np.zeros((1, x_batch.shape[0])) # (1, batch_size)
-            for i in range(x_batch.shape[0]):
-                for j in range(num_samples):
-                    expectation_term[:, i] = (-numpy_reward_batch[0, i] + \
-                        self.alpha*log_prob_batch[i, j] + \
-                            self.gamma*V_x_prime_batch[:, i]) / num_samples
+            numpy_u_prime_batch = u_prime_batch.numpy().T # (1, batch_size)
+            numpy_log_prob_prime_batch = log_prob_prime_batch.numpy().T # (1, batch_size)
+
+            # Compute rewards and expected phi(x')s
+            r_prime_batch = torch.zeros((batch_size, 1))
+            # expected_phi_x_prime_batch = np.zeros((self.koopman_tensor.Phi_X.shape[0], batch_size))
+            for i in range(batch_size):
+                r_prime_batch[i, 0] = self.env.reward(
+                    np.vstack(numpy_x_prime_batch[:, i]),
+                    np.vstack(numpy_u_prime_batch[:, i])
+                )[0, 0]
+
+                # expected_phi_x_prime_batch[:, i] = self.koopman_tensor.phi_f(
+                #     np.vstack(numpy_x_batch[:, i]),
+                #     np.vstack(numpy_u_batch[:, i])
+                # )[:, 0]
+            # normalized_r_prime_batch = (r_prime_batch - r_prime_batch.mean()) / (r_prime_batch.std() + epsilon)
+            phi_x_batch = self.koopman_tensor.phi(numpy_x_batch) # (phi_dim, batch_size)
+
+            # Compute target Q(s', a')
+            target_Q_x_u_prime_batch = self.critic_target(r_prime_batch, x_prime_batch, u_prime_batch).numpy() - \
+                                    self.alpha*numpy_log_prob_prime_batch # (1, batch_size)
+            # target_Q_x_u_prime_batch = self.critic_target(normalized_r_prime_batch, x_prime_batch, u_prime_batch).numpy() - \
+            #                         self.alpha*numpy_log_prob_prime_batch # (1, batch_size)
+            Q_x_u_prime_batch = numpy_r_batch + self.gamma*target_Q_x_u_prime_batch # (1, batch_size)
 
             # Update value function weights
             self.critic.w = torch.linalg.lstsq(
+                # torch.Tensor(expected_phi_x_prime_batch.T),
                 torch.Tensor(phi_x_batch.T),
-                torch.Tensor(expectation_term.T)
+                torch.Tensor((Q_x_u_prime_batch - numpy_r_batch).T)
             ).solution
+
+            # norms = np.linalg.norm(
+            #     (Q_x_u_prime_batch - numpy_r_batch) - (self.critic.w.numpy().T @ expected_phi_x_prime_batch),
+            #     axis=0
+            # ) / np.linalg.norm(
+            #     Q_x_u_prime_batch - numpy_r_batch,
+            #     axis=0
+            # ).mean()
+            # print(norms.mean())
 
     def update_parameters(self, memory, batch_size, updates):
         # Sample a batch from memory
         state_batch, action_batch, log_prob_batch, reward_batch, next_state_batch, mask_batch = memory.sample(batch_size=batch_size)
 
-        # Normalize the states and the rewards
-        # state_batch = (state_batch - np.vstack(state_batch.mean(axis=1))) / (np.vstack(state_batch.std(axis=1)) + epsilon)
-        # reward_batch = (reward_batch - reward_batch.mean()) / (reward_batch.std() + epsilon)
-
+        # Convert data to usable tensors
         state_batch = torch.FloatTensor(state_batch).to(self.device)
-        next_state_batch = torch.FloatTensor(next_state_batch).to(self.device)
         action_batch = torch.FloatTensor(action_batch).to(self.device)
         log_prob_batch = torch.FloatTensor(log_prob_batch).to(self.device).unsqueeze(1)
         reward_batch = torch.FloatTensor(reward_batch).to(self.device).unsqueeze(1)
+        next_state_batch = torch.FloatTensor(next_state_batch).to(self.device)
         mask_batch = torch.FloatTensor(mask_batch).to(self.device).unsqueeze(1)
+
+        # Normalize batches
+        # normalized_reward_batch = (reward_batch - reward_batch.mean()) / (reward_batch.std() + epsilon)
 
         """ UPDATE CRITIC """
 
         # OLS to update weight vector for critic
-        self.update_critic_weights(state_batch, reward_batch, next_state_batch)
-
-        # with torch.no_grad():
-        #     next_state_action, next_state_log_pi, _ = self.policy.sample(next_state_batch)
-        #     qf1_next_target, qf2_next_target = self.critic_target(next_state_batch, next_state_action)
-        #     min_qf_next_target = torch.min(qf1_next_target, qf2_next_target) - self.alpha * next_state_log_pi
-        #     next_q_value = reward_batch + mask_batch * (self.gamma*min_qf_next_target)
-        # qf1, qf2 = self.critic(state_batch, action_batch)  # Two Q-functions to mitigate positive bias in the policy improvement step
-        # qf1_loss = F.mse_loss(qf1, next_q_value)  # JQ = 𝔼(st,at)~D[0.5(Q1(st,at) - r(st,at) - γ(𝔼st+1~p[V(st+1)]))^2]
-        # qf2_loss = F.mse_loss(qf2, next_q_value)  # JQ = 𝔼(st,at)~D[0.5(Q1(st,at) - r(st,at) - γ(𝔼st+1~p[V(st+1)]))^2]
-        # qf_loss = qf1_loss + qf2_loss
-
-        # self.critic_optim.zero_grad()
-        # qf_loss.backward()
-        # self.critic_optim.step()
+        self.update_critic_weights(state_batch, action_batch, reward_batch, next_state_batch)
+        # self.update_critic_weights(state_batch, action_batch, normalized_reward_batch, next_state_batch)
 
         """ UPDATE POLICY """
 
-        new_action_batch, log_prob_batch, _ = self.policy.sample(state_batch)
+        # Sample actions and log probabilities from latest policy
+        new_action_batch, new_log_prob_batch, _ = self.policy.sample(state_batch)
 
-        # Q_pi_1_batch, Q_pi_2_batch = self.critic(state_batch, new_action_batch)
-        # Q_pi_batch = torch.min(Q_pi_1_batch, Q_pi_2_batch)
-        Q_pi_batch = self.critic(reward_batch, state_batch, new_action_batch)
+        # Compute Q_π(s, a)
+        Q_pi_batch = self.critic(reward_batch, state_batch, new_action_batch).T
+        # Q_pi_batch = self.critic(normalized_reward_batch, state_batch, new_action_batch).T
 
         # Equation 12 in SAC Paper
         # Jπ = 𝔼st∼D,εt∼N[α * logπ(f(εt;st)|st) − Q(st,f(εt;st))]
-        policy_loss = ((self.alpha * log_prob_batch) - Q_pi_batch).mean()
+        policy_loss = ((self.alpha*new_log_prob_batch) - Q_pi_batch).mean()
 
         self.policy_optim.zero_grad()
         policy_loss.backward()
