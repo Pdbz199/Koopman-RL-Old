@@ -55,15 +55,19 @@ class FluidFlow(gym.Env):
         return self.state, {}
 
     @staticmethod
-    def reward(state, action):
-        return -cost(
-            np.vstack(state),
-            np.vstack(action)
-        )[0, 0]
+    def cost_fn(state, action, vstack=True):
+        return cost(
+            np.vstack(state) if vstack else state,
+            np.vstack(action) if vstack else action
+        )
+
+    @staticmethod
+    def reward_fn(state, action, vstack=True):
+        return -FluidFlow.cost_fn(state, action, vstack=vstack)
 
     def step(self, action):
         # Compute reward of system
-        reward = FluidFlow.reward(self.state, action)
+        reward = FluidFlow.reward_fn(self.state, action)[0, 0]
 
         # Update state
         self.state = f(

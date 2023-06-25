@@ -14,7 +14,8 @@ from model import (
     QNetwork
 )
 
-epsilon = np.finfo(np.float64).eps
+# epsilon = np.finfo(np.float64).eps
+epsilon = np.finfo(np.float32).eps
 
 # Load LQR policy
 sys.path.append('../../../../')
@@ -99,60 +100,118 @@ class SAKC(object):
             Update the weights for the value function in the dictionary space.
         """
 
+        # Get batch size from input
+        batch_size = x_batch.shape[0]
+
+        """ SAC method """
+
+        if False:
+            with torch.no_grad():
+                # Get actions and log probabiltiies from current policy
+                u_prime_batch, log_prob_prime_batch, _ = self.policy.sample(x_prime_batch)
+
+                # Prepare batches for numpy functions
+                numpy_x_batch = x_batch.numpy().T # (state_dim, batch_size)
+                numpy_u_batch = u_batch.numpy().T # (action_dim, batch_size)
+                numpy_r_batch = r_batch.numpy().T # (1, batch_size)
+                numpy_x_prime_batch = x_prime_batch.numpy().T # (state_dim, batch_size)
+
+                numpy_u_prime_batch = u_prime_batch.numpy().T # (1, batch_size)
+                numpy_log_prob_prime_batch = log_prob_prime_batch.numpy().T # (1, batch_size)
+
+                # Compute rewards and expected phi(x')s
+                r_prime_batch = torch.zeros((batch_size, 1))
+                # expected_phi_x_prime_batch = np.zeros((self.koopman_tensor.Phi_X.shape[0], batch_size))
+                for i in range(batch_size):
+                    r_prime_batch[i, 0] = self.env.reward(
+                        np.vstack(numpy_x_prime_batch[:, i]),
+                        np.vstack(numpy_u_prime_batch[:, i])
+                    )[0, 0]
+
+                    # expected_phi_x_prime_batch[:, i] = self.koopman_tensor.phi_f(
+                    #     np.vstack(numpy_x_batch[:, i]),
+                    #     np.vstack(numpy_u_batch[:, i])
+                    # )[:, 0]
+                # normalized_r_prime_batch = (r_prime_batch - r_prime_batch.mean()) / (r_prime_batch.std() + epsilon)
+                phi_x_batch = self.koopman_tensor.phi(numpy_x_batch) # (phi_dim, batch_size)
+
+                # Compute target Q(s', a')
+                target_Q_x_u_prime_batch = self.critic_target(r_prime_batch, x_prime_batch, u_prime_batch).numpy() - \
+                                        self.alpha*numpy_log_prob_prime_batch # (1, batch_size)
+                # target_Q_x_u_prime_batch = self.critic_target(normalized_r_prime_batch, x_prime_batch, u_prime_batch).numpy() - \
+                #                         self.alpha*numpy_log_prob_prime_batch # (1, batch_size)
+                Q_x_u_prime_batch = numpy_r_batch + self.gamma*target_Q_x_u_prime_batch # (1, batch_size)
+
+                # Update value function weights
+                self.critic.w = torch.linalg.lstsq(
+                    # torch.Tensor(expected_phi_x_prime_batch.T),
+                    torch.Tensor(phi_x_batch.T),
+                    torch.Tensor((Q_x_u_prime_batch - numpy_r_batch).T)
+                ).solution
+
+                # norms = np.linalg.norm(
+                #     (Q_x_u_prime_batch - numpy_r_batch) - (self.critic.w.numpy().T @ expected_phi_x_prime_batch),
+                #     axis=0
+                # ) / np.linalg.norm(
+                #     Q_x_u_prime_batch - numpy_r_batch,
+                #     axis=0
+                # ).mean()
+                # print(norms.mean())
+
+        """ Value iteration method """
+
         with torch.no_grad():
-            # Get batch size from input
-            batch_size = x_batch.shape[0]
+            # Get random batch of X and Phi_X from tensor training data
+            x_batch_indices = np.random.choice(
+                self.koopman_tensor.X.shape[1],
+                batch_size,
+                replace=False
+            )
+            x_batch = self.koopman_tensor.X[:, x_batch_indices] # (X.shape[0], batch_size)
+            phi_x_batch = self.koopman_tensor.Phi_X[:, x_batch_indices] # (dim_phi, batch_size)
 
-            # Get actions and log probabiltiies from current policy
-            u_prime_batch, log_prob_prime_batch, _ = self.policy.sample(x_prime_batch)
+            # Compute costs indexed by the action and the state
+            costs = torch.Tensor(self.env.cost_fn(x_batch, self.all_actions, vstack=False)) # (all_actions.shape[1], batch_size)
 
-            # Prepare batches for numpy functions
-            numpy_x_batch = x_batch.numpy().T # (state_dim, batch_size)
-            numpy_u_batch = u_batch.numpy().T # (action_dim, batch_size)
-            numpy_r_batch = r_batch.numpy().T # (1, batch_size)
-            numpy_x_prime_batch = x_prime_batch.numpy().T # (state_dim, batch_size)
+            # Compute V(x')s
+            K_us = self.koopman_tensor.K_(self.all_actions) # (all_actions.shape[1], phi_dim, phi_dim)
+            phi_x_prime_batch = np.zeros((self.all_actions.shape[1], self.koopman_tensor.phi_dim, batch_size))
+            V_x_prime_batch = torch.zeros((self.all_actions.shape[1], batch_size))
+            for action_index in range(phi_x_prime_batch.shape[0]):
+                phi_x_prime_hat_batch = K_us[action_index] @ phi_x_batch # (phi_dim, batch_size)
+                phi_x_prime_batch[action_index] = phi_x_prime_hat_batch
+                V_x_prime_batch[action_index] = self.critic.w.T @ torch.Tensor(phi_x_prime_batch[action_index]) # (1, batch_size)
 
-            numpy_u_prime_batch = u_prime_batch.numpy().T # (1, batch_size)
-            numpy_log_prob_prime_batch = log_prob_prime_batch.numpy().T # (1, batch_size)
+            # Compute policy distribution
+            inner_pi_us_values = -(costs + self.gamma*V_x_prime_batch) # (all_actions.shape[1], batch_size)
+            inner_pi_us = inner_pi_us_values / self.regularization_lambda # (all_actions.shape[1], batch_size)
+            real_inner_pi_us = torch.real(inner_pi_us) # (all_actions.shape[1], batch_size)
 
-            # Compute rewards and expected phi(x')s
-            r_prime_batch = torch.zeros((batch_size, 1))
-            # expected_phi_x_prime_batch = np.zeros((self.koopman_tensor.Phi_X.shape[0], batch_size))
-            for i in range(batch_size):
-                r_prime_batch[i, 0] = self.env.reward(
-                    np.vstack(numpy_x_prime_batch[:, i]),
-                    np.vstack(numpy_u_prime_batch[:, i])
-                )[0, 0]
+            # Max trick
+            max_inner_pi_u = torch.amax(real_inner_pi_us, axis=0) # (batch_size,)
+            diff = real_inner_pi_us - max_inner_pi_u # (all_actions.shape[1], batch_size)
 
-                # expected_phi_x_prime_batch[:, i] = self.koopman_tensor.phi_f(
-                #     np.vstack(numpy_x_batch[:, i]),
-                #     np.vstack(numpy_u_batch[:, i])
-                # )[:, 0]
-            # normalized_r_prime_batch = (r_prime_batch - r_prime_batch.mean()) / (r_prime_batch.std() + epsilon)
-            phi_x_batch = self.koopman_tensor.phi(numpy_x_batch) # (phi_dim, batch_size)
+            # Softmax distribution
+            pi_us = torch.exp(diff) + epsilon # (all_actions.shape[1], batch_size)
+            Z_x = torch.sum(pi_us, axis=0) # (batch_size,)
+            pis_response = pi_us / Z_x # (all_actions.shape[1], batch_size)
 
-            # Compute target Q(s', a')
-            target_Q_x_u_prime_batch = self.critic_target(r_prime_batch, x_prime_batch, u_prime_batch).numpy() - \
-                                    self.alpha*numpy_log_prob_prime_batch # (1, batch_size)
-            # target_Q_x_u_prime_batch = self.critic_target(normalized_r_prime_batch, x_prime_batch, u_prime_batch).numpy() - \
-            #                         self.alpha*numpy_log_prob_prime_batch # (1, batch_size)
-            Q_x_u_prime_batch = numpy_r_batch + self.gamma*target_Q_x_u_prime_batch # (1, batch_size)
+            # Compute log pi
+            log_pis = torch.log(pis_response) # (all_actions.shape[1], batch_size)
 
-            # Update value function weights
+            # Compute expectations
+            expectation_term_1 = torch.sum(
+                (costs + \
+                    self.regularization_lambda*log_pis + \
+                        self.gamma*V_x_prime_batch) * pis_response,
+                dim=0
+            ).reshape(1, -1) # (1, batch_size)
+
+            # Optimize value function weights using OLS as in Lewis
             self.critic.w = torch.linalg.lstsq(
-                # torch.Tensor(expected_phi_x_prime_batch.T),
                 torch.Tensor(phi_x_batch.T),
-                torch.Tensor((Q_x_u_prime_batch - numpy_r_batch).T)
+                expectation_term_1.T
             ).solution
-
-            # norms = np.linalg.norm(
-            #     (Q_x_u_prime_batch - numpy_r_batch) - (self.critic.w.numpy().T @ expected_phi_x_prime_batch),
-            #     axis=0
-            # ) / np.linalg.norm(
-            #     Q_x_u_prime_batch - numpy_r_batch,
-            #     axis=0
-            # ).mean()
-            # print(norms.mean())
 
     def update_parameters(self, memory, batch_size, updates):
         # Sample a batch from memory
