@@ -27,6 +27,8 @@ from dynamics import (
 sys.path.append('../../../')
 import final.observables as observables
 from final.tensor import KoopmanTensor
+# import final.observables_pytorch as observables
+# from final.tensor_pytorch import KoopmanTensor
 
 #%% Construct datasets
 num_episodes = 1000

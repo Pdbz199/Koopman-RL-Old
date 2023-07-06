@@ -12,6 +12,9 @@ except:
 np.random.seed(seed)
 
 sys.path.append('./')
+sys.path.append('../../../../')
+sys.path.append('../../')
+sys.path.append('../')
 from cost import cost, reference_point
 from dynamics import (
     action_dim,
@@ -27,11 +30,11 @@ sys.path.append('../../../')
 from final.control.policies.discrete_value_iteration import DiscreteKoopmanValueIterationPolicy
 
 #%% Load Koopman tensor with pickle
-with open('./analysis/tmp/path_based_tensor.pickle', 'rb') as handle:
+with open('../analysis/tmp/path_based_tensor.pickle', 'rb') as handle:
     tensor = pickle.load(handle)
 
 #%% Load LQR policy
-with open('./analysis/tmp/lqr/policy.pickle', 'rb') as handle:
+with open('../analysis/tmp/lqr/policy.pickle', 'rb') as handle:
     lqr_policy = pickle.load(handle)
 
 #%% Variables
@@ -46,7 +49,7 @@ koopman_policy = DiscreteKoopmanValueIterationPolicy(
     tensor,
     all_actions,
     cost,
-    save_data_path="./analysis/tmp/discrete_value_iteration",
+    save_data_path="../analysis/tmp/discrete_value_iteration",
     seed=seed,
     load_model=True
 )
@@ -56,7 +59,7 @@ def show_plot():
     plt.tight_layout()
     plt.show()
 
-path = "./analysis/tmp/discrete_value_iteration/plots"
+path = "../analysis/tmp/discrete_value_iteration/plots"
 plot_file_extensions = ['png', 'svg']
 def save_figure(title: str):
     plt.tight_layout()

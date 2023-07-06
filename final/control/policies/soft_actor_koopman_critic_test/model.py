@@ -11,8 +11,14 @@ epsilon = 1e-6
 # Initialize Policy weights
 def weights_init_(m):
     if isinstance(m, nn.Linear):
-        torch.nn.init.xavier_uniform_(m.weight, gain=1)
-        torch.nn.init.constant_(m.bias, 0)
+        try:
+            torch.nn.init.xavier_uniform_(m.weight, gain=1)
+        except:
+            pass
+        try:
+            torch.nn.init.constant_(m.bias, 0)
+        except:
+            pass
 
 class ValueNetwork(nn.Module):
     def __init__(self, num_inputs, hidden_dim):
@@ -33,63 +39,47 @@ class ValueNetwork(nn.Module):
         return x
 
 class QNetwork(nn.Module):
-    def __init__(self, state_dim, action_dim, hidden_dim):
+    def __init__(self, phi_state_dim, psi_action_dim, hidden_dim):
         super(QNetwork, self).__init__()
 
         # Q1 architecture
-        self.linear1 = nn.Linear(state_dim + action_dim, hidden_dim)
-        self.linear2 = nn.Linear(hidden_dim, hidden_dim)
-        self.linear3 = nn.Linear(hidden_dim, 1)
+        # self.linear1 = nn.Linear(phi_state_dim + psi_action_dim - 1, hidden_dim, bias=False)
+        # self.linear2 = nn.Linear(hidden_dim, hidden_dim)
+        # self.linear3 = nn.Linear(hidden_dim, 1)
+        self.linear1 = nn.Linear(phi_state_dim + psi_action_dim - 1, 1, bias=False)
 
         # Q2 architecture
-        self.linear4 = nn.Linear(state_dim + action_dim, hidden_dim)
-        self.linear5 = nn.Linear(hidden_dim, hidden_dim)
-        self.linear6 = nn.Linear(hidden_dim, 1)
+        # self.linear4 = nn.Linear(phi_state_dim + psi_action_dim - 1, hidden_dim, bias=False)
+        # self.linear5 = nn.Linear(hidden_dim, hidden_dim)
+        # self.linear6 = nn.Linear(hidden_dim, 1)
+        self.linear2 = nn.Linear(phi_state_dim + psi_action_dim - 1, 1, bias=False)
 
         self.apply(weights_init_)
 
-    def forward(self, state, action):
-        xu = torch.cat([state, action], 1)
+    def forward(self, phi_state, psi_action):
+        xu = torch.cat([phi_state, psi_action[:, 1:]], dim=1)
 
+        # x1 = self.linear1(xu)
+        # x1 = F.relu(x1)
+        # x1 = self.linear2(x1)
+        # x1 = F.relu(x1)
+        # x1 = self.linear3(x1)
         x1 = self.linear1(xu)
-        x1 = F.relu(x1)
-        x1 = self.linear2(x1)
-        x1 = F.relu(x1)
-        x1 = self.linear3(x1)
 
-        x2 = self.linear4(xu)
-        x2 = F.relu(x2)
-        x2 = self.linear5(x2)
-        x2 = F.relu(x2)
-        x2 = self.linear6(x2)
+        # x2 = self.linear4(xu)
+        # x2 = F.relu(x2)
+        # x2 = self.linear5(x2)
+        # x2 = F.relu(x2)
+        # x2 = self.linear6(x2)
+        x2 = self.linear2(xu)
+
         return x1, x2
-
-class KoopmanQFunction():
-    def __init__(self, tensor, gamma):
-        self.tensor = tensor
-        self.gamma = gamma
-        self.w = torch.zeros((self.tensor.Phi_X.shape[0], 1)) # (phi_dim, 1)
-
-    def __call__(self, reward, state, action):
-        # Assuming the incoming values are batches of data
-        with torch.no_grad():
-            r = reward.numpy().T
-            x = state.numpy().T
-            u = action.numpy().T
-            qs = torch.zeros(1, x.shape[1])
-            for i in range(x.shape[1]):
-                expected_phi_x_prime = self.tensor.phi_f(
-                    np.vstack(x[:, i]),
-                    np.vstack(u[:, i])
-                ) # (phi_dim, 1)
-                expected_V_x_prime = (self.w.T @ expected_phi_x_prime)[0, 0]
-                qs[0, i] = r[0, i] + self.gamma*expected_V_x_prime
-            return qs
+        # return x1, x1
 
 class GaussianPolicy(nn.Module):
     def __init__(self, num_inputs, num_actions, hidden_dim, action_space=None):
         super(GaussianPolicy, self).__init__()
-
+        
         self.mean_linear1 = nn.Linear(num_inputs, hidden_dim)
         self.mean_linear2 = nn.Linear(hidden_dim, hidden_dim)
         self.mean_linear3 = nn.Linear(hidden_dim, num_actions)
@@ -132,7 +122,7 @@ class GaussianPolicy(nn.Module):
         std = log_std.exp()
         normal = Normal(mean, std)
 
-        x_t = normal.rsample() # (batch_size, 1) # for reparameterization trick (mean + std * N(0,1))
+        x_t = normal.rsample()  # for reparameterization trick (mean + std * N(0,1))
         y_t = torch.tanh(x_t)
         action = y_t * self.action_scale + self.action_bias
         log_prob = normal.log_prob(x_t)

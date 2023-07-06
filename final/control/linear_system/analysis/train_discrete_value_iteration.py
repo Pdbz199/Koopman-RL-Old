@@ -1,6 +1,7 @@
 # Imports
 import matplotlib.pyplot as plt
 import numpy as np
+import os
 import pickle
 import sys
 
@@ -12,6 +13,9 @@ except:
 np.random.seed(seed)
 
 sys.path.append('./')
+sys.path.append('../../')
+sys.path.append('../../../../')
+sys.path.append('../')
 from cost import cost
 from dynamics import all_actions, f
 
@@ -19,7 +23,7 @@ sys.path.append('../../../')
 from final.control.policies.discrete_value_iteration import DiscreteKoopmanValueIterationPolicy
 
 #%% Load Koopman tensor with pickle
-with open('./analysis/tmp/path_based_tensor.pickle', 'rb') as handle:
+with open('../analysis/tmp/path_based_tensor.pickle', 'rb') as handle:
     tensor = pickle.load(handle)
 
 # Variables
@@ -36,7 +40,7 @@ koopman_policy = DiscreteKoopmanValueIterationPolicy(
     tensor,
     all_actions,
     cost,
-    save_data_path="./analysis/tmp/discrete_value_iteration",
+    save_data_path="../analysis/tmp/discrete_value_iteration",
     seed=seed
 )
 
