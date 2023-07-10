@@ -43,35 +43,53 @@ class QNetwork(nn.Module):
         super(QNetwork, self).__init__()
 
         # Q1 architecture
-        # self.linear1 = nn.Linear(phi_state_dim + psi_action_dim - 1, hidden_dim, bias=False)
+        # self.linear1 = nn.Linear(psi_action_dim * phi_state_dim, hidden_dim, bias=False)
         # self.linear2 = nn.Linear(hidden_dim, hidden_dim)
         # self.linear3 = nn.Linear(hidden_dim, 1)
-        self.linear1 = nn.Linear(phi_state_dim + psi_action_dim - 1, 1, bias=False)
+
+        self.linear1 = nn.Linear(psi_action_dim * phi_state_dim, 1, bias=False)
 
         # Q2 architecture
-        # self.linear4 = nn.Linear(phi_state_dim + psi_action_dim - 1, hidden_dim, bias=False)
+        # self.linear4 = nn.Linear(psi_action_dim * phi_state_dim, hidden_dim, bias=False)
         # self.linear5 = nn.Linear(hidden_dim, hidden_dim)
         # self.linear6 = nn.Linear(hidden_dim, 1)
-        self.linear2 = nn.Linear(phi_state_dim + psi_action_dim - 1, 1, bias=False)
+
+        self.linear2 = nn.Linear(psi_action_dim * phi_state_dim, 1, bias=False)
 
         self.apply(weights_init_)
 
     def forward(self, phi_state, psi_action):
-        xu = torch.cat([phi_state, psi_action[:, 1:]], dim=1)
+        kron_xu = torch.zeros(phi_state.shape[0], phi_state.shape[1] * psi_action.shape[1])
+        for i in range(phi_state.shape[0]):
+            kron_xu[i] = torch.kron(psi_action[i], phi_state[i])
 
-        # x1 = self.linear1(xu)
+        # E_V(x) = w^T @ K^(u) @ phi(x) = w^T @ E_phi(x')
+        # Q(x, u) = r + gamma*E_V(x)
+        #         = r + gamma*(w^T @ K^(u) @ phi(x))
+        #         = r + gamma*(w^T @ E_phi(x'))
+
+        # Replace QNetwork output with the following:
+        # Q(x, u) = r + gamma*(w.T @ tensor.phi_f(x, u))
+
+        # NN Version
+        # x1 = self.linear1(kron_xu)
         # x1 = F.relu(x1)
         # x1 = self.linear2(x1)
         # x1 = F.relu(x1)
         # x1 = self.linear3(x1)
-        x1 = self.linear1(xu)
 
-        # x2 = self.linear4(xu)
+        # Kronecker Version
+        x1 = self.linear1(kron_xu)
+
+        # NN Version
+        # x2 = self.linear4(kron_xu)
         # x2 = F.relu(x2)
         # x2 = self.linear5(x2)
         # x2 = F.relu(x2)
         # x2 = self.linear6(x2)
-        x2 = self.linear2(xu)
+
+        # Kronecker Version
+        x2 = self.linear2(kron_xu)
 
         return x1, x2
         # return x1, x1

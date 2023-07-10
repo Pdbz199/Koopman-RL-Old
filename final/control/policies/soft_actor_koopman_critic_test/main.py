@@ -1,3 +1,8 @@
+"""
+cd ./final/control/policies/soft_actor_koopman_critic_test
+python main.py --env_name=LinearSystem-v0 --alpha=1.0 --start_steps=0 --batch_size=100
+"""
+
 import argparse
 import datetime
 import gym
@@ -18,7 +23,7 @@ from fluid_flow.dynamics_env import FluidFlow
 from double_well.dynamics_env import DoubleWell
 
 parser = argparse.ArgumentParser(description='PyTorch Soft Actor-Critic Args')
-# parser.add_argument('--env-name', default="HalfCheetah-v2",
+# parser.add_argument('--env_name', default="HalfCheetah-v2",
 #                     help='Mujoco Gym environment (default: HalfCheetah-v2)')
 parser.add_argument('--env_name', default="LunarLander-v2",
                     help='Gym environment (default: LunarLander-v2)')
@@ -73,6 +78,9 @@ np.random.seed(args.seed)
 # Append to sys path for loading tensor and LQR policy
 sys.path.append('../../../../')
 system_name = "linear_system"
+# system_name = "fluid_flow"
+# system_name = "lorenz"
+# system_name = "double_well"
 
 # Load LQR policy
 with open(f'../../{system_name}/analysis/tmp/lqr/policy.pickle', 'rb') as handle:

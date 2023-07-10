@@ -18,9 +18,9 @@ from fluid_flow.dynamics_env import FluidFlow
 from double_well.dynamics_env import DoubleWell
 
 parser = argparse.ArgumentParser(description='PyTorch Soft Actor-Critic Args')
-# parser.add_argument('--env-name', default="HalfCheetah-v2",
+# parser.add_argument('--env_name', default="HalfCheetah-v2",
 #                     help='Mujoco Gym environment (default: HalfCheetah-v2)')
-parser.add_argument('--env-name', default="LunarLander-v2",
+parser.add_argument('--env_name', default="LunarLander-v2",
                     help='Gym environment (default: LunarLander-v2)')
 parser.add_argument('--policy', default="Gaussian",
                     help='Policy Type: Gaussian | Deterministic (default: Gaussian)')
