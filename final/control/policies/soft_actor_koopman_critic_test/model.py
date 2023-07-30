@@ -39,35 +39,56 @@ class ValueNetwork(nn.Module):
         return x
 
 class QNetwork(nn.Module):
-    def __init__(self, phi_state_dim, psi_action_dim, hidden_dim):
+    def __init__(self, phi_state_dim, psi_action_dim, hidden_dim, koopman_tensor):
         super(QNetwork, self).__init__()
+
+        self.phi_state_dim = phi_state_dim
 
         # Q1 architecture
         # self.linear1 = nn.Linear(psi_action_dim * phi_state_dim, hidden_dim)
         # self.linear2 = nn.Linear(hidden_dim, hidden_dim)
         # self.linear3 = nn.Linear(hidden_dim, 1)
 
-        self.linear1 = nn.Linear(psi_action_dim * phi_state_dim, 1, bias=False)
+        # self.linear1 = nn.Linear(psi_action_dim * phi_state_dim, 1, bias=False)
 
         # self.linear1 = nn.Linear(psi_action_dim * phi_state_dim, hidden_dim, bias=False)
         # self.linear3 = nn.Linear(hidden_dim, 1, bias=False)
+
+        # self.linear1 = nn.Linear(psi_action_dim * phi_state_dim, phi_state_dim, bias=False)
+        self.linear2 = nn.Linear(phi_state_dim, 1, bias=False)
+        # self.linear3 = nn.Linear(1, 1)
 
         # Q2 architecture
         # self.linear4 = nn.Linear(psi_action_dim * phi_state_dim, hidden_dim)
         # self.linear5 = nn.Linear(hidden_dim, hidden_dim)
         # self.linear6 = nn.Linear(hidden_dim, 1)
 
-        self.linear4 = nn.Linear(psi_action_dim * phi_state_dim, 1, bias=False)
+        # self.linear4 = nn.Linear(psi_action_dim * phi_state_dim, 1, bias=False)
 
         # self.linear4 = nn.Linear(psi_action_dim * phi_state_dim, hidden_dim, bias=False)
         # self.linear6 = nn.Linear(hidden_dim, 1, bias=False)
 
+        # self.linear4 = nn.Linear(psi_action_dim * phi_state_dim, phi_state_dim, bias=False)
+        self.linear5 = nn.Linear(phi_state_dim, 1, bias=False)
+        # self.linear6 = nn.Linear(1, 1)
+
+        self.koopman_tensor = koopman_tensor
+
         self.apply(weights_init_)
 
-    def forward(self, phi_state, psi_action):
-        kron_xu = torch.zeros(phi_state.shape[0], phi_state.shape[1] * psi_action.shape[1]) # (batch_size, kron_dim)
-        for i in range(phi_state.shape[0]):
-            kron_xu[i] = torch.kron(psi_action[i], phi_state[i])
+    # def forward(self, phi_state, psi_action):
+    def forward(self, state, action):
+        # kron_xu = torch.zeros(phi_state.shape[0], phi_state.shape[1] * psi_action.shape[1]) # (batch_size, kron_dim)
+        # for i in range(phi_state.shape[0]):
+        #     kron_xu[i] = torch.kron(psi_action[i], phi_state[i])
+
+        # xu = torch.cat([state, action], 1)
+        batch_size = state.shape[0]
+        phi_x_primes = torch.zeros((batch_size, self.phi_state_dim))
+        for i in range(batch_size):
+            x = state[i].view(state[i].shape[0], 1)
+            u = action[i].view(action[i].shape[0], 1)
+            phi_x_primes[i] = self.koopman_tensor.phi_f(x, u)[:, 0]
 
         # E_V(x) = w^T @ K^(u) @ phi(x) = w^T @ E_phi(x')
         # Q(x, u) = r + gamma*E_V(x)
@@ -78,18 +99,22 @@ class QNetwork(nn.Module):
         # Q(x, u) = r + gamma*(w.T @ tensor.phi_f(x, u))
 
         # Q1
-        x1 = self.linear1(kron_xu)
+        # x1 = self.linear1(kron_xu)
         # x1 = F.relu(x1)
         # x1 = self.linear2(x1)
         # x1 = F.relu(x1)
         # x1 = self.linear3(x1)
 
+        x1 = self.linear2(phi_x_primes)
+
         # Q2
-        x2 = self.linear4(kron_xu)
+        # x2 = self.linear4(kron_xu)
         # x2 = F.relu(x2)
         # x2 = self.linear5(x2)
         # x2 = F.relu(x2)
         # x2 = self.linear6(x2)
+
+        x2 = self.linear5(phi_x_primes)
 
         return x1, x2
         # return x1, x1

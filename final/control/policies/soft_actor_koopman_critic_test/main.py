@@ -91,7 +91,7 @@ with open(f'../../{system_name}/analysis/tmp/path_based_tensor.pickle', 'rb') as
     tensor = pickle.load(handle)
 
 # Agent
-agent = SAC(training_env, args)
+agent = SAC(training_env, args, tensor)
 # agent.load_checkpoint(ckpt_path=f"checkpoints/sac_checkpoint_{args.env_name}_")
 
 # Tensorboard

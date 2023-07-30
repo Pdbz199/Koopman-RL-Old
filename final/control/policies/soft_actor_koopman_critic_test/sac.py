@@ -13,10 +13,11 @@ from torch.optim import Adam
 from utils import soft_update, hard_update
 
 sys.path.append('../../../')
-import observables_pytorch as observables
+# import observables_pytorch as observables
+import observables
 
 class SAC(object):
-    def __init__(self, env, args):
+    def __init__(self, env, args, koopman_tensor):
 
         self.env = env
 
@@ -40,10 +41,10 @@ class SAC(object):
 
         self.device = torch.device("cuda" if args.cuda else "cpu")
 
-        self.critic = QNetwork(phi_dim, psi_dim, args.hidden_size).to(device=self.device)
+        self.critic = QNetwork(phi_dim, psi_dim, args.hidden_size, koopman_tensor).to(device=self.device)
         self.critic_optim = Adam(self.critic.parameters(), lr=args.lr)
 
-        self.critic_target = QNetwork(phi_dim, psi_dim, args.hidden_size).to(device=self.device)
+        self.critic_target = QNetwork(phi_dim, psi_dim, args.hidden_size, koopman_tensor).to(device=self.device)
         hard_update(self.critic_target, self.critic)
 
         if self.policy_type == "Gaussian":
@@ -77,29 +78,33 @@ class SAC(object):
 
     def update_parameters(self, memory, batch_size, updates):
         # Sample a batch from memory
-        state_batch, action_batch, reward_batch, next_state_batch, mask_batch = memory.sample(batch_size=batch_size)
+        state_batch, action_batch, reward_batch, state_prime_batch, mask_batch = memory.sample(batch_size=batch_size)
 
         state_batch = torch.FloatTensor(state_batch).to(self.device)
-        next_state_batch = torch.FloatTensor(next_state_batch).to(self.device)
+        state_prime_batch = torch.FloatTensor(state_prime_batch).to(self.device)
         action_batch = torch.FloatTensor(action_batch).to(self.device)
         reward_batch = torch.FloatTensor(reward_batch).to(self.device).unsqueeze(1)
         mask_batch = torch.FloatTensor(mask_batch).to(self.device).unsqueeze(1)
 
         with torch.no_grad():
-            next_state_action, next_state_log_pi, _ = self.policy.sample(next_state_batch)
+            # next_state_action, next_state_log_pi, _ = self.policy.sample(next_state_batch)
+            action_prime_batch, action_prime_log_prob, _ = self.policy.sample(state_prime_batch)
 
-            phi_state_prime_batch = self.phi(next_state_batch.T).T # phi(x')
-            psi_action_prime_batch = self.psi(next_state_action.T).T # psi(u')
+            # phi_state_prime_batch = self.phi(next_state_batch.T).T # phi(x')
+            # psi_action_prime_batch = self.psi(next_state_action.T).T # psi(u')
 
-            qf1_next_target, qf2_next_target = self.critic_target(phi_state_prime_batch, psi_action_prime_batch)
-            min_qf_next_target = torch.min(qf1_next_target, qf2_next_target) - self.alpha*next_state_log_pi
+            # qf1_next_target, qf2_next_target = self.critic_target(phi_state_prime_batch, psi_action_prime_batch)
+            qf1_next_target, qf2_next_target = self.critic_target(state_prime_batch, action_prime_batch)
+            # min_qf_next_target = torch.min(qf1_next_target, qf2_next_target) - self.alpha*next_state_log_pi
+            min_qf_next_target = torch.min(qf1_next_target, qf2_next_target) - self.alpha*action_prime_log_prob
             next_q_value = reward_batch + mask_batch * self.gamma*min_qf_next_target
 
-        phi_state_batch = self.phi(state_batch.T).T
-        psi_action_batch = self.psi(action_batch.T).T
-        qf1, qf2 = self.critic(phi_state_batch, psi_action_batch)  # Two Q-functions to mitigate positive bias in the policy improvement step
-        qf1_loss = F.mse_loss(qf1, next_q_value)  # JQ = 𝔼(st,at)~D[0.5(Q1(st,at) - r(st,at) - γ(𝔼st+1~p[V(st+1)]))^2]
-        qf2_loss = F.mse_loss(qf2, next_q_value)  # JQ = 𝔼(st,at)~D[0.5(Q1(st,at) - r(st,at) - γ(𝔼st+1~p[V(st+1)]))^2]
+        # phi_state_batch = self.phi(state_batch.T).T
+        # psi_action_batch = self.psi(action_batch.T).T
+        # qf1, qf2 = self.critic(phi_state_batch, psi_action_batch) # Two Q-functions to mitigate positive bias in the policy improvement step
+        qf1, qf2 = self.critic(state_batch, action_batch) # Two Q-functions to mitigate positive bias in the policy improvement step
+        qf1_loss = F.mse_loss(qf1, next_q_value) # JQ = 𝔼(st,at)~D[0.5(Q1(st,at) - r(st,at) - γ(𝔼st+1~p[V(st+1)]))^2]
+        qf2_loss = F.mse_loss(qf2, next_q_value) # JQ = 𝔼(st,at)~D[0.5(Q1(st,at) - r(st,at) - γ(𝔼st+1~p[V(st+1)]))^2]
         qf_loss = qf1_loss + qf2_loss
 
         self.critic_optim.zero_grad()
@@ -107,7 +112,8 @@ class SAC(object):
         self.critic_optim.step()
 
         pi, log_pi, _ = self.policy.sample(state_batch)
-        qf1_pi, qf2_pi = self.critic(phi_state_batch, self.psi(pi.T).T)
+        # qf1_pi, qf2_pi = self.critic(phi_state_batch, self.psi(pi.T).T)
+        qf1_pi, qf2_pi = self.critic(state_batch, pi)
         min_qf_pi = torch.min(qf1_pi, qf2_pi)
 
         policy_loss = ((self.alpha * log_pi) - min_qf_pi).mean() # Jπ = 𝔼st∼D,εt∼N[α * logπ(f(εt;st)|st) − Q(st,f(εt;st))]
