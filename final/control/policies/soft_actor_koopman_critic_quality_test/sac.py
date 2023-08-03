@@ -4,9 +4,11 @@ import torch
 import torch.nn.functional as F
 
 from model import (
+    DeterministicPolicy,
     GaussianPolicy,
+    KoopmanQNetwork,
+    KoopmanVNetwork,
     QNetwork,
-    DeterministicPolicy
 )
 from scipy.special import comb
 from torch.optim import Adam
@@ -41,10 +43,12 @@ class SAC(object):
 
         self.device = torch.device("cuda" if args.cuda else "cpu")
 
-        self.critic = QNetwork(phi_dim, psi_dim, args.hidden_size, koopman_tensor).to(device=self.device)
+        # self.critic = QNetwork(state_dim, action_dim, args.hidden_size).to(device=self.device)
+        self.critic = KoopmanQNetwork(koopman_tensor).to(device=self.device)
         self.critic_optim = Adam(self.critic.parameters(), lr=args.lr)
 
-        self.critic_target = QNetwork(phi_dim, psi_dim, args.hidden_size, koopman_tensor).to(device=self.device)
+        # self.critic_target = QNetwork(state_dim, action_dim, args.hidden_size).to(device=self.device)
+        self.critic_target = KoopmanQNetwork(koopman_tensor).to(device=self.device)
         hard_update(self.critic_target, self.critic)
 
         if self.policy_type == "Gaussian":

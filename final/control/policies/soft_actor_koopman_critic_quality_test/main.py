@@ -83,8 +83,8 @@ system_name = "linear_system"
 # system_name = "double_well"
 
 # Load LQR policy
-with open(f'../../{system_name}/analysis/tmp/lqr/policy.pickle', 'rb') as handle:
-    lqr_policy = pickle.load(handle)
+# with open(f'../../{system_name}/analysis/tmp/lqr/policy.pickle', 'rb') as handle:
+#     lqr_policy = pickle.load(handle)
 
 # Load Koopman tensor with pickle
 with open(f'../../{system_name}/analysis/tmp/path_based_tensor.pickle', 'rb') as handle:

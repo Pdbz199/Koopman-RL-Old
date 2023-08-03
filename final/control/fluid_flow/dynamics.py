@@ -107,9 +107,28 @@ def continuous_f(action=None):
         if u is None:
             u = zero_policy()
 
-        return [ x_dot, y_dot + u, z_dot ]
+        # return [ x_dot, y_dot + u, z_dot ]
+        return [ x_dot, y_dot + u[0], z_dot ]
 
     return f_u
+
+# def f(state, action):
+#     """
+#         True, discretized dynamics of the system. Pushes forward from (t) to (t + dt) using a constant action.
+
+#         INPUTS:
+#             state - State column vector.
+#             action - Action column vector.
+
+#         OUTPUTS:
+#             State column vector pushed forward in time.
+#     """
+
+#     # soln = solve_ivp(fun=continuous_f(action[:, 0]), t_span=[0, dt], y0=state[:, 0], method='RK45')
+#     soln = np.array(continuous_f(action[:, 0])(0, state[:, 0])) * dt
+
+#     # return np.vstack(soln.y[:, -1])
+#     return np.vstack(soln)
 
 def f(state, action):
     """
@@ -123,11 +142,15 @@ def f(state, action):
             State column vector pushed forward in time.
     """
 
-    u = action[:, 0]
+    x = state[0, 0]
+    y = state[1, 0]
+    z = state[2, 0]
 
-    soln = solve_ivp(fun=continuous_f(u), t_span=[0, dt], y0=state[:, 0], method='RK45')
-
-    return np.vstack(soln.y[:, -1])
+    return state + (np.array([
+        [mu*x - omega*y + A*x*z],
+        [omega*x + mu*y + A*y*z + action[0, 0]],
+        [-lamb * ( z - np.power(x, 2) - np.power(y, 2) )]
+    ]) * dt)
 
 # Compute continuous A and B for LQR policy
 x_bar = 0

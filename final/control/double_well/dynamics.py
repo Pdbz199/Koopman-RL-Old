@@ -1,6 +1,7 @@
 # Imports
 import numpy as np
 
+# from cost import cost
 from double_well.cost import cost
 # from scipy.integrate import solve_ivp
 from scipy.special import comb
