@@ -120,7 +120,7 @@ class KoopmanQNetwork(nn.Module):
 
         output = self.linear(phi_x_primes)
 
-        return output, output # Return two copies to avoid having to change code too much
+        return output
 
 class GaussianPolicy(nn.Module):
     def __init__(self, num_inputs, num_actions, hidden_dim, action_space=None):
