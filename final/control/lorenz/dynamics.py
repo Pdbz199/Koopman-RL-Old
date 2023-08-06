@@ -102,24 +102,6 @@ def continuous_f(action=None):
 
     return f_u
 
-# def f(state, action):
-#     """
-#         True, discretized dynamics of the system. Pushes forward from (t) to (t + dt) using a constant action.
-
-#         INPUTS:
-#             state - State column vector.
-#             action - Action column vector.
-
-#         OUTPUTS:
-#             State column vector pushed forward in time.
-#     """
-
-#     # soln = solve_ivp(fun=continuous_f(action[:, 0]), t_span=[0, dt], y0=state[:, 0], method='RK45')
-#     soln = np.array(continuous_f(action[:, 0])(0, state[:, 0])) * dt
-    
-#     # return np.vstack(soln.y[:, -1])
-#     return np.vstack(soln)
-
 def f(state, action):
     """
         True, discretized dynamics of the system. Pushes forward from (t) to (t + dt) using a constant action.
@@ -132,15 +114,33 @@ def f(state, action):
             State column vector pushed forward in time.
     """
 
-    x = state[0, 0]
-    y = state[1, 0]
-    z = state[2, 0]
+    soln = solve_ivp(fun=continuous_f(action[:, 0]), t_span=[0, dt], y0=state[:, 0], method='RK45')
+    # soln = np.array(continuous_f(action[:, 0])(0, state[:, 0])) * dt
+    
+    return np.vstack(soln.y[:, -1])
+    # return np.vstack(soln)
 
-    return state + (np.array([
-        [sigma * ( y - x ) + action[0, 0]], # sigma*y - sigma*x
-        [( rho - z ) * x - y],              # rho*x - x*z - y
-        [x * y - beta * z]                  # x*y - beta*z
-    ]) * dt)
+# def f(state, action):
+#     """
+#         True, discretized dynamics of the system. Pushes forward from (t) to (t + dt) using a constant action.
+
+#         INPUTS:
+#             state - State column vector.
+#             action - Action column vector.
+
+#         OUTPUTS:
+#             State column vector pushed forward in time.
+#     """
+
+#     x = state[0, 0]
+#     y = state[1, 0]
+#     z = state[2, 0]
+
+#     return state + (np.array([
+#         [sigma * ( y - x ) + action[0, 0]], # sigma*y - sigma*x
+#         [( rho - z ) * x - y],              # rho*x - x*z - y
+#         [x * y - beta * z]                  # x*y - beta*z
+#     ]) * dt)
 
 # Compute continuous A and B for LQR policy
 x_bar = x_e

@@ -52,7 +52,7 @@ class KoopmanVNetwork(nn.Module):
         phi_xs = torch.zeros((batch_size, self.phi_state_dim))
         for i in range(batch_size):
             x = state[i].view(state.shape[1], 1)
-            phi_xs[i] = self.koopman_tensor.phi(x)
+            phi_xs[i] = self.koopman_tensor.phi(x)[:,0]
 
         output = self.linear(phi_xs)
 

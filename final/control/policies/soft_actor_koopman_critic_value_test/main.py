@@ -77,10 +77,10 @@ np.random.seed(args.seed)
 
 # Append to sys path for loading tensor and LQR policy
 sys.path.append('../../../../')
-system_name = "linear_system"
+# system_name = "linear_system"
 # system_name = "fluid_flow"
 # system_name = "lorenz"
-# system_name = "double_well"
+system_name = "double_well"
 
 # Load LQR policy
 # with open(f'../../{system_name}/analysis/tmp/lqr/policy.pickle', 'rb') as handle:

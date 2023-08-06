@@ -47,7 +47,7 @@ class SAC(object):
         self.soft_value_optim = Adam(self.soft_value.parameters(), lr=args.lr)
 
         self.soft_value_target = KoopmanVNetwork(koopman_tensor).to(device=self.device)
-        hard_update(self.soft_value_arget, self.soft_value)
+        hard_update(self.soft_value_target, self.soft_value)
 
         self.soft_quality = KoopmanQNetwork(koopman_tensor).to(device=self.device)
         self.soft_quality_optim = Adam(self.soft_quality.parameters(), lr=args.lr)
@@ -108,10 +108,10 @@ class SAC(object):
         """ Update soft quality function """
 
         with torch.no_grad():
-            target_value = reward_batch + mask_batch * self.gamma*self.soft_value_target(state_batch)
+            target_quality = reward_batch + mask_batch * self.gamma*self.soft_value_target(state_prime_batch)
 
-        soft_quality = self.soft_quality(state_batch, action_batch) # Two Q-functions to mitigate positive bias in the policy improvement step
-        soft_quality_loss = F.mse_loss(soft_quality, target_value) # JQ = 𝔼(st,at)~D[0.5(Q(st,at) - r(st,at) - γ(𝔼st+1~p[V(st+1)]))^2]
+        soft_quality = self.soft_quality(state_batch, action_batch)
+        soft_quality_loss = F.mse_loss(soft_quality, target_quality) # JQ = 𝔼(st,at)~D[0.5(Q(st,at) - r(st,at) - γ(𝔼st+1~p[V(st+1)]))^2]
 
         self.soft_quality_optim.zero_grad()
         soft_quality_loss.backward()
@@ -120,10 +120,9 @@ class SAC(object):
         """ Update policy """
 
         pi, log_pi, _ = self.policy.sample(state_batch)
-        qf1_pi, qf2_pi = self.critic(state_batch, pi)
-        min_qf_pi = torch.min(qf1_pi, qf2_pi)
+        soft_quality = self.soft_quality(state_batch, pi)
 
-        policy_loss = ((self.alpha * log_pi) - min_qf_pi).mean() # Jπ = 𝔼st∼D,εt∼N[α * logπ(f(εt;st)|st) − Q(st,f(εt;st))]
+        policy_loss = ((self.alpha * log_pi) - soft_quality).mean() # Jπ = 𝔼st∼D,εt∼N[α * logπ(f(εt;st)|st) − Q(st,f(εt;st))]
 
         self.policy_optim.zero_grad()
         policy_loss.backward()
@@ -158,28 +157,36 @@ class SAC(object):
         if ckpt_path is None:
             ckpt_path = "checkpoints/sac_checkpoint_{}_{}".format(env_name, suffix)
         print('Saving models to {}'.format(ckpt_path))
-        torch.save({'policy_state_dict': self.policy.state_dict(),
-                    'soft_critic_state_dict': self.soft_critic.state_dict(),
-                    'soft_critic_target_state_dict': self.soft_critic_target.state_dict(),
-                    'soft_critic_optimizer_state_dict': self.soft_critic_optim.state_dict(),
-                    'policy_optimizer_state_dict': self.policy_optim.state_dict()}, ckpt_path)
+        torch.save({
+            'soft_value_state_dict': self.soft_value.state_dict(),
+            'soft_value_optimizer_state_dict': self.soft_value_optim.state_dict(),
+            'soft_quality_state_dict': self.soft_quality.state_dict(),
+            'soft_quality_optimizer_state_dict': self.soft_quality_optim.state_dict(),
+            'policy_state_dict': self.policy.state_dict(),
+            'policy_optimizer_state_dict': self.policy_optim.state_dict(),
+            'soft_value_target_state_dict': self.soft_value_target.state_dict()
+        }, ckpt_path)
 
     # Load model parameters
     def load_checkpoint(self, ckpt_path, evaluate=False):
         print('Loading models from {}'.format(ckpt_path))
         if ckpt_path is not None:
             checkpoint = torch.load(ckpt_path)
+            self.soft_value.load_state_dict(checkpoint['soft_value_state_dict'])
+            self.soft_value_optim.load_state_dict(checkpoint['soft_value_optimizer_state_dict'])
+            self.soft_quality.load_state_dict(checkpoint['soft_quality_state_dict'])
+            self.soft_quality_optim.load_state_dict(checkpoint['soft_quality_optimizer_state_dict'])
             self.policy.load_state_dict(checkpoint['policy_state_dict'])
-            self.soft_critic.load_state_dict(checkpoint['soft_critic_state_dict'])
-            self.soft_critic_target.load_state_dict(checkpoint['soft_critic_target_state_dict'])
-            self.soft_critic_optim.load_state_dict(checkpoint['soft_critic_optimizer_state_dict'])
             self.policy_optim.load_state_dict(checkpoint['policy_optimizer_state_dict'])
+            self.soft_value_target.load_state_dict(checkpoint['soft_value_target_state_dict'])
 
             if evaluate:
                 self.policy.eval()
-                self.critic.eval()
-                self.critic_target.eval()
+                self.soft_value.eval()
+                self.soft_value_target.eval()
+                self.soft_quality.eval()
             else:
                 self.policy.train()
-                self.critic.train()
-                self.critic_target.train()
+                self.soft_value.train()
+                self.soft_value_target.train()
+                self.soft_quality.train()
