@@ -9,6 +9,7 @@ from model import (
     KoopmanQNetwork,
     KoopmanVNetwork,
     QNetwork,
+    VNetwork
 )
 from scipy.special import comb
 from torch.optim import Adam
@@ -25,12 +26,6 @@ class SAC(object):
 
         state_dim = env.observation_space.shape[0]
         action_dim = env.action_space.shape[0]
-        state_monomials_order = 2
-        action_monomials_order = 2
-        self.phi = observables.monomials(state_monomials_order)
-        self.psi = observables.monomials(action_monomials_order)
-        phi_dim = int( comb( state_monomials_order+state_dim, state_monomials_order ) )
-        psi_dim = int( comb( action_monomials_order+action_dim, action_monomials_order ) )
         action_space = env.action_space
 
         self.gamma = args.gamma
@@ -43,13 +38,16 @@ class SAC(object):
 
         self.device = torch.device("cuda" if args.cuda else "cpu")
 
+        # self.soft_value = VNetwork(state_dim, args.hidden_size).to(device=self.device)
         self.soft_value = KoopmanVNetwork(koopman_tensor).to(device=self.device)
         self.soft_value_optim = Adam(self.soft_value.parameters(), lr=args.lr)
 
+        # self.soft_value_target = VNetwork(state_dim, args.hidden_size).to(device=self.device)
         self.soft_value_target = KoopmanVNetwork(koopman_tensor).to(device=self.device)
         hard_update(self.soft_value_target, self.soft_value)
 
-        self.soft_quality = KoopmanQNetwork(koopman_tensor).to(device=self.device)
+        self.soft_quality = QNetwork(state_dim, action_dim, args.hidden_size).to(device=self.device)
+        # self.soft_quality = KoopmanQNetwork(koopman_tensor).to(device=self.device)
         self.soft_quality_optim = Adam(self.soft_quality.parameters(), lr=args.lr)
 
         if self.policy_type == "Gaussian":
@@ -97,8 +95,9 @@ class SAC(object):
         with torch.no_grad():
             _, current_policy_action_log_prob_batch, __ = self.policy.sample(state_batch)
 
+        soft_quality = torch.min(*self.soft_quality(state_batch, action_batch))
+        true_soft_value = soft_quality - current_policy_action_log_prob_batch
         predicted_soft_value = self.soft_value(state_batch)
-        true_soft_value = self.soft_quality(state_batch, action_batch) - current_policy_action_log_prob_batch
         soft_value_loss = F.mse_loss(predicted_soft_value, true_soft_value)
 
         self.soft_value_optim.zero_grad()
@@ -110,7 +109,7 @@ class SAC(object):
         with torch.no_grad():
             target_quality = reward_batch + mask_batch * self.gamma*self.soft_value_target(state_prime_batch)
 
-        soft_quality = self.soft_quality(state_batch, action_batch)
+        soft_quality = torch.min(*self.soft_quality(state_batch, action_batch))
         soft_quality_loss = F.mse_loss(soft_quality, target_quality) # JQ = 𝔼(st,at)~D[0.5(Q(st,at) - r(st,at) - γ(𝔼st+1~p[V(st+1)]))^2]
 
         self.soft_quality_optim.zero_grad()
@@ -120,7 +119,7 @@ class SAC(object):
         """ Update policy """
 
         pi, log_pi, _ = self.policy.sample(state_batch)
-        soft_quality = self.soft_quality(state_batch, pi)
+        soft_quality = torch.min(*self.soft_quality(state_batch, pi))
 
         policy_loss = ((self.alpha * log_pi) - soft_quality).mean() # Jπ = 𝔼st∼D,εt∼N[α * logπ(f(εt;st)|st) − Q(st,f(εt;st))]
 

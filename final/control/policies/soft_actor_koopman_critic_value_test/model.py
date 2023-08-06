@@ -47,6 +47,8 @@ class KoopmanVNetwork(nn.Module):
 
         self.linear = nn.Linear(self.phi_state_dim, 1, bias=False)
 
+        self.apply(weights_init_)
+
     def forward(self, state):
         batch_size = state.shape[0]
         phi_xs = torch.zeros((batch_size, self.phi_state_dim))
@@ -100,7 +102,10 @@ class KoopmanQNetwork(nn.Module):
         self.koopman_tensor = koopman_tensor
         self.phi_state_dim = self.koopman_tensor.Phi_X.shape[0]
 
-        self.linear = nn.Linear(self.phi_state_dim, 1, bias=False)
+        self.linear1 = nn.Linear(self.phi_state_dim, 1, bias=False)
+        self.linear2 = nn.Linear(self.phi_state_dim, 1, bias=False)
+
+        self.apply(weights_init_)
 
     def forward(self, state, action):
         # E_V(x) = w^T @ K^(u) @ phi(x) = w^T @ E_phi(x')
@@ -118,9 +123,10 @@ class KoopmanQNetwork(nn.Module):
             u = action[i].view(action.shape[1], 1)
             phi_x_primes[i] = self.koopman_tensor.phi_f(x, u)[:, 0]
 
-        output = self.linear(phi_x_primes)
+        output1 = self.linear1(phi_x_primes)
+        output2 = self.linear2(phi_x_primes)
 
-        return output
+        return output1, output2
 
 class GaussianPolicy(nn.Module):
     def __init__(self, num_inputs, num_actions, hidden_dim, action_space=None):
