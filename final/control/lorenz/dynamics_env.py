@@ -17,8 +17,8 @@ from lorenz.dynamics import (
 )
 from gym.envs.registration import register
 
-# max_episode_steps = int(20 / dt)
-max_episode_steps = int(2 / dt)
+max_episode_steps = int(20 / dt)
+# max_episode_steps = int(2 / dt)
 
 register(
     id='Lorenz-v0',
