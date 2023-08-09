@@ -49,6 +49,7 @@ class FluidFlow(gym.Env):
 
         # Choose the initial state uniformly at random
         self.state = self.observation_space.sample()
+        # self.state = np.array([1, 1, 1])
 
         # Track number of steps taken
         self.step_count = 0

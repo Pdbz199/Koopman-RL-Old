@@ -125,10 +125,8 @@ def f(state, action):
     """
 
     soln = solve_ivp(fun=continuous_f(action[:, 0]), t_span=[0, dt], y0=state[:, 0], method='RK45')
-    # soln = np.array(continuous_f(action[:, 0])(0, state[:, 0])) * dt
 
     return np.vstack(soln.y[:, -1])
-    # return np.vstack(soln)
 
 # def f(state, action):
 #     """

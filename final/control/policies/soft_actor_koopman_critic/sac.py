@@ -1,38 +1,30 @@
-import numpy as np
 import os
 import torch
 import torch.nn.functional as F
-from torch.distributions import Normal
-from torch.optim import Adam
-from utils import soft_update, hard_update
+
 from model import (
     DeterministicPolicy,
+    DoubleQNetwork,
     GaussianPolicy,
-    KoopmanQFunction,
-    QNetwork
+    KoopmanQNetwork,
+    KoopmanVNetwork,
+    QNetwork,
+    VNetwork
 )
+from torch.optim import Adam
+from utils import soft_update, hard_update
 
-epsilon = np.finfo(np.float64).eps
-
-class SAKC(object):
+class SAC(object):
     def __init__(self, env, args, koopman_tensor):
         self.env = env
 
-        state_dim = env.observation_space.shape[0]
-        action_space = env.action_space
-        step_size = 0.1
-        self.all_actions = np.array([
-            np.arange(
-                action_space.low[0],
-                action_space.high[0]+step_size,
-                step=step_size
-            )
-        ])
+        self.state_dim = env.observation_space.shape[0]
+        self.action_dim = env.action_space.shape[0]
+        self.action_space = env.action_space
 
         self.gamma = args.gamma
         self.tau = args.tau
         self.alpha = args.alpha
-        self.regularization_lambda = args.regularization_lambda
 
         self.policy_type = args.policy
         self.target_update_interval = args.target_update_interval
@@ -41,145 +33,147 @@ class SAKC(object):
         self.device = torch.device("cuda" if args.cuda else "cpu")
 
         self.koopman_tensor = koopman_tensor
+        self.phi_state_dim = koopman_tensor.Phi_X.shape[0]
+        self.psi_action_dim = koopman_tensor.Psi_U.shape[0]
 
-        # self.critic = QNetwork(state_dim, action_space.shape[0], args.hidden_size).to(device=self.device)
-        # self.critic_optim = Adam(self.critic.parameters(), lr=args.lr)
-        # self.critic_target = QNetwork(state_dim, action_space.shape[0], args.hidden_size).to(device=self.device)
-        # hard_update(self.critic_target, self.critic, is_koopman=False)
-        self.critic = KoopmanQFunction(koopman_tensor)
-        self.critic_target = KoopmanQFunction(koopman_tensor)
-        hard_update(self.critic_target, self.critic, is_koopman=True)
+        # self.soft_value = VNetwork(self.state_dim, args.hidden_size).to(device=self.device)
+        self.soft_value = KoopmanVNetwork(koopman_tensor).to(device=self.device)
+        self.soft_value_optim = Adam(self.soft_value.parameters(), lr=args.lr)
+
+        # self.soft_value_target = VNetwork(self.state_dim, args.hidden_size).to(device=self.device)
+        self.soft_value_target = KoopmanVNetwork(koopman_tensor).to(device=self.device)
+        hard_update(self.soft_value_target, self.soft_value)
+
+        self.soft_quality = DoubleQNetwork(self.state_dim, self.action_dim, args.hidden_size).to(device=self.device)
+        # self.soft_quality = KoopmanQNetwork(koopman_tensor).to(device=self.device)
+        self.soft_quality_optim = Adam(self.soft_quality.parameters(), lr=args.lr)
+
+        # self.soft_quality_target = DoubleQNetwork(self.state_dim, self.action_dim, args.hidden_size).to(device=self.device)
+        # self.soft_quality = KoopmanQNetwork(koopman_tensor).to(device=self.device)
+        # hard_update(self.soft_quality_target, self.soft_quality)
 
         if self.policy_type == "Gaussian":
             # Target Entropy = −dim(A) (e.g. , -6 for HalfCheetah-v2) as given in the paper
             if self.automatic_entropy_tuning is True:
-                self.target_entropy = -torch.prod(torch.Tensor(action_space.shape).to(self.device)).item()
+                self.target_entropy = -torch.prod(torch.Tensor(self.action_space.shape).to(self.device)).item()
                 self.log_alpha = torch.zeros(1, requires_grad=True, device=self.device)
                 self.alpha_optim = Adam([self.log_alpha], lr=args.lr)
 
-            self.policy = GaussianPolicy(state_dim, action_space.shape[0], args.hidden_size, action_space).to(self.device)
+            self.policy = GaussianPolicy(
+                self.state_dim,
+                self.action_space.shape[0],
+                args.hidden_size,
+                self.action_space
+            ).to(self.device)
             self.policy_optim = Adam(self.policy.parameters(), lr=args.lr)
 
         else:
             self.alpha = 0
             self.automatic_entropy_tuning = False
             self.policy = DeterministicPolicy(
-                state_dim,
-                action_space.shape[0],
+                self.state_dim,
+                self.action_space.shape[0],
                 args.hidden_size,
-                action_space
+                self.action_space
             ).to(self.device)
             self.policy_optim = Adam(self.policy.parameters(), lr=args.lr)
 
-    def select_action(self, state, return_log_prob=False):
+    def select_action(self, state, evaluate=False):
         state = torch.FloatTensor(state).to(self.device).unsqueeze(0)
-
-        action, log_prob, _ = self.policy.sample(state) # Sample from policy
-        action = action.detach().cpu().numpy()[0]
-
-        if return_log_prob:
-            log_prob = log_prob.detach().cpu().numpy()[0, 0]
-            return action, log_prob
-
-        return action
-
-    def update_critic_weights(self, x_batch, u_batch, log_prob_batch, reward_batch):
-        """
-            Update the weights for the value function in the dictionary space.
-        """
-
-        # For use with numpy functions
-        x_batch = x_batch.detach().numpy().T # (state_dim, batch_size)
-        u_batch = u_batch.detach().numpy().T # (1, batch_size)
-        log_prob_batch = log_prob_batch.detach().numpy().T # (1, batch_size)
-        reward_batch = reward_batch.detach().numpy().T # (1, batch_size)
-
-        # Batch normalization
-        # x_batch = (x_batch - np.vstack(x_batch.mean(axis=1))) / (np.vstack(x_batch.std(axis=1)) + epsilon)
-        # reward_batch = (reward_batch - reward_batch.mean()) / (reward_batch.std() + epsilon)
-
-        # Compute phi states for given batch
-        phi_x_batch = self.koopman_tensor.phi(x_batch) # (phi_dim, batch_size)
-
-        # Compute expected phi(x')
-        expected_phi_x_prime_batch = np.zeros_like(phi_x_batch) # (phi_dim, batch_size)
-        for i in range(phi_x_batch.shape[1]):
-            K_u = self.koopman_tensor.K_(np.vstack(u_batch[:, i])) # (phi_dim, phi_dim)
-            expected_phi_x_prime_batch[:, i] = (K_u @ np.vstack(phi_x_batch[:, i]))[:, 0] # (phi_dim,)
-
-        # Compute expected V(x')s
-        expected_V_x_prime_batch = self.critic.w.numpy().T @ expected_phi_x_prime_batch # (1, batch_size)
-
-        # Update value function weights
-        self.critic.w = torch.linalg.lstsq(
-            torch.Tensor(phi_x_batch.T),
-            torch.Tensor((
-                (-reward_batch + \
-                 (self.regularization_lambda * log_prob_batch) + \
-                    (self.gamma * expected_V_x_prime_batch)) * \
-                    np.exp(log_prob_batch)).T
-            )
-        ).solution / 100
+        if evaluate is False:
+            action, _, _ = self.policy.sample(state)
+        else:
+            _, _, action = self.policy.sample(state)
+        return action.detach().cpu().numpy()[0]
 
     def update_parameters(self, memory, batch_size, updates):
-        # Sample a batch from memory
-        state_batch, action_batch, log_prob_batch, reward_batch, next_state_batch, mask_batch = memory.sample(batch_size=batch_size)
+        """ Sample a batch from replay buffer """
 
-        # Normalize the states and the rewards
-        # state_batch = (state_batch - np.vstack(state_batch.mean(axis=1))) / (np.vstack(state_batch.std(axis=1)) + epsilon)
-        # reward_batch = (reward_batch - reward_batch.mean()) / (reward_batch.std() + epsilon)
+        (
+            state_batch,
+            action_batch,
+            reward_batch,
+            state_prime_batch,
+            mask_batch
+        ) = memory.sample(batch_size=batch_size)
 
         state_batch = torch.FloatTensor(state_batch).to(self.device)
-        next_state_batch = torch.FloatTensor(next_state_batch).to(self.device)
+        state_prime_batch = torch.FloatTensor(state_prime_batch).to(self.device)
         action_batch = torch.FloatTensor(action_batch).to(self.device)
-        log_prob_batch = torch.FloatTensor(log_prob_batch).to(self.device).unsqueeze(1)
         reward_batch = torch.FloatTensor(reward_batch).to(self.device).unsqueeze(1)
         mask_batch = torch.FloatTensor(mask_batch).to(self.device).unsqueeze(1)
 
-        """ UPDATE CRITIC """
+        """ Update soft value function """
 
-        # OLS to update weight vector for critic
-        self.update_critic_weights(state_batch, action_batch, log_prob_batch, reward_batch)
+        # Sample new log probabilities of actions for state batch from replay buffer from current policy
+        with torch.no_grad():
+            _, current_policy_action_log_prob_batch, __ = self.policy.sample(state_batch)
 
-        # with torch.no_grad():
-        #     next_state_action, next_state_log_pi, _ = self.policy.sample(next_state_batch)
-        #     qf1_next_target, qf2_next_target = self.critic_target(next_state_batch, next_state_action)
-        #     min_qf_next_target = torch.min(qf1_next_target, qf2_next_target) - self.alpha * next_state_log_pi
-        #     next_q_value = reward_batch + mask_batch * self.gamma * (min_qf_next_target)
-        # qf1, qf2 = self.critic(state_batch, action_batch)  # Two Q-functions to mitigate positive bias in the policy improvement step
-        # qf1_loss = F.mse_loss(qf1, next_q_value)  # JQ = 𝔼(st,at)~D[0.5(Q1(st,at) - r(st,at) - γ(𝔼st+1~p[V(st+1)]))^2]
-        # qf2_loss = F.mse_loss(qf2, next_q_value)  # JQ = 𝔼(st,at)~D[0.5(Q1(st,at) - r(st,at) - γ(𝔼st+1~p[V(st+1)]))^2]
-        # qf_loss = qf1_loss + qf2_loss
+        # Compute estimated Q, true V, and estimated V for MSE
+        soft_quality = torch.min(*self.soft_quality(state_batch, action_batch))
+        true_soft_value = soft_quality - self.alpha*current_policy_action_log_prob_batch
+        estimated_soft_value = self.soft_value(state_batch)
+        soft_value_loss = F.mse_loss(estimated_soft_value, true_soft_value)
+        # soft_value_loss = torch.Tensor([0])
 
-        # self.critic_optim.zero_grad()
-        # qf_loss.backward()
-        # self.critic_optim.step()
+        # Update
+        self.soft_value_optim.zero_grad()
+        soft_value_loss.backward()
+        self.soft_value_optim.step()
 
-        """ UPDATE POLICY """
+        """ Update soft quality function """
 
-        new_action_batch, log_prob_batch, _ = self.policy.sample(state_batch)
+        # First, we must compute the target quality function
+        # Q(s, a) = r + gamma * 𝔼 V(s')
+        with torch.no_grad():
+            phi_x_primes = torch.zeros((batch_size, self.phi_state_dim))
+            for i in range(batch_size):
+                x = state_batch[i].view(state_batch.shape[1], 1)
+                u = action_batch[i].view(action_batch.shape[1], 1)
+                phi_x_primes[i] = self.koopman_tensor.phi_f(x, u)[:, 0]
+            target_quality = reward_batch + mask_batch * self.gamma*self.soft_value_target.linear(phi_x_primes)
 
-        # Q_pi_1_batch, Q_pi_2_batch = self.critic(state_batch, new_action_batch)
-        # Q_pi_batch = torch.min(Q_pi_1_batch, Q_pi_2_batch)
-        Q_pi_batch = self.critic(reward_batch, state_batch, new_action_batch)
+            # target_quality = reward_batch + mask_batch * self.gamma*self.soft_value_target(state_prime_batch)
 
-        # Equation 12 in SAC Paper
-        # Jπ = 𝔼st∼D,εt∼N[α * logπ(f(εt;st)|st) − Q(st,f(εt;st))]
-        policy_loss = ((self.alpha * log_prob_batch) - Q_pi_batch).mean()
+            # state_prime_action_batch, state_prime_log_pi_batch, _ = self.policy.sample(state_prime_batch)
+            # target_soft_quality_prime = torch.min(*self.soft_quality_target(state_prime_batch, state_prime_action_batch)) - self.alpha*state_prime_log_pi_batch
+            # target_quality = reward_batch + mask_batch * self.gamma*target_soft_quality_prime
 
+        # Get current estimates for Q and compute MSE
+        soft_quality_1, soft_quality_2 = self.soft_quality(state_batch, action_batch) # Two Q-functions to mitigate positive bias in the policy improvement step
+        soft_quality_1_loss = F.mse_loss(soft_quality_1, target_quality) # JQ = 𝔼(st,at)~D[0.5(Q1(st,at) - r(st,at) - γ(𝔼st+1~p[V(st+1)]))^2]
+        soft_quality_2_loss = F.mse_loss(soft_quality_2, target_quality) # JQ = 𝔼(st,at)~D[0.5(Q2(st,at) - r(st,at) - γ(𝔼st+1~p[V(st+1)]))^2]
+        soft_quality_loss = soft_quality_1_loss + soft_quality_2_loss
+
+        # Update
+        self.soft_quality_optim.zero_grad()
+        soft_quality_loss.backward()
+        self.soft_quality_optim.step()
+
+        """ Update policy """
+
+        # Sample new actions of state batch from replay buffer using current policy
+        pi, log_pi, _ = self.policy.sample(state_batch)
+        soft_quality = torch.min(*self.soft_quality(state_batch, pi))
+
+        # Compute loss
+        policy_loss = ((self.alpha * log_pi) - soft_quality).mean() # Jπ = 𝔼st∼D,εt∼N[α * logπ(f(εt;st)|st) − Q(st,f(εt;st))]
+
+        # Update
         self.policy_optim.zero_grad()
         policy_loss.backward()
         self.policy_optim.step()
 
-        """ CRITIC TARGET UPDATE """
+        """ Update target parameters """
 
-        # soft_update(self.critic_target, self.critic, self.tau, is_koopman=False)
-        soft_update(self.critic_target, self.critic, self.tau, is_koopman=True)
+        if updates % self.target_update_interval == 0:
+            soft_update(self.soft_value_target, self.soft_value, self.tau)
+            # soft_update(self.soft_quality_target, self.soft_quality, self.tau)
 
-        """ UPDATE ENTROPY TERM """
+        """ Update entropy variable if enabled """
 
         if self.automatic_entropy_tuning:
-            alpha_loss = -(self.log_alpha * (log_prob_batch + self.target_entropy).detach()).mean()
+            alpha_loss = -(self.log_alpha * (log_pi + self.target_entropy).detach()).mean()
 
             self.alpha_optim.zero_grad()
             alpha_loss.backward()
@@ -191,7 +185,7 @@ class SAKC(object):
             alpha_loss = torch.tensor(0).to(self.device)
             alpha_tlogs = torch.tensor(self.alpha) # For TensorboardX logs
 
-        return policy_loss.item(), alpha_loss.item(), alpha_tlogs.item()
+        return soft_value_loss.item(), soft_quality_loss.item(), policy_loss.item(), alpha_loss.item(), alpha_tlogs.item()
 
     # Save model parameters
     def save_checkpoint(self, env_name, suffix="", ckpt_path=None):
@@ -201,9 +195,13 @@ class SAKC(object):
             ckpt_path = "checkpoints/sac_checkpoint_{}_{}".format(env_name, suffix)
         print('Saving models to {}'.format(ckpt_path))
         torch.save({
+            'soft_value_state_dict': self.soft_value.state_dict(),
+            'soft_value_optimizer_state_dict': self.soft_value_optim.state_dict(),
+            'soft_value_target_state_dict': self.soft_value_target.state_dict(),
+            'soft_quality_state_dict': self.soft_quality.state_dict(),
+            'soft_quality_optimizer_state_dict': self.soft_quality_optim.state_dict(),
+            # 'soft_quality_target_state_dict': self.soft_quality_target.state_dict(),
             'policy_state_dict': self.policy.state_dict(),
-            'critic_weights': self.critic.w,
-            'critic_target_weights': self.critic_target.w,
             'policy_optimizer_state_dict': self.policy_optim.state_dict()
         }, ckpt_path)
 
@@ -212,16 +210,24 @@ class SAKC(object):
         print('Loading models from {}'.format(ckpt_path))
         if ckpt_path is not None:
             checkpoint = torch.load(ckpt_path)
+            self.soft_value.load_state_dict(checkpoint['soft_value_state_dict'])
+            self.soft_value_optim.load_state_dict(checkpoint['soft_value_optimizer_state_dict'])
+            self.soft_value_target.load_state_dict(checkpoint['soft_value_target_state_dict'])
+            self.soft_quality.load_state_dict(checkpoint['soft_quality_state_dict'])
+            self.soft_quality_optim.load_state_dict(checkpoint['soft_quality_optimizer_state_dict'])
+            # self.soft_quality_target.load_state_dict(checkpoint['soft_quality_target_state_dict'])
             self.policy.load_state_dict(checkpoint['policy_state_dict'])
-            self.critic.w = checkpoint['critic_weights']
-            self.critic_target.w = checkpoint['critic_target_weights']
             self.policy_optim.load_state_dict(checkpoint['policy_optimizer_state_dict'])
 
             if evaluate:
+                self.soft_value.eval()
+                self.soft_value_target.eval()
+                self.soft_quality.eval()
+                # self.soft_quality_target.eval()
                 self.policy.eval()
-                # self.critic.eval()
-                # self.critic_target.eval()
             else:
+                self.soft_value.train()
+                self.soft_value_target.train()
+                self.soft_quality.train()
+                # self.soft_quality_target.train()
                 self.policy.train()
-                # self.critic.train()
-                # self.critic_target.train()

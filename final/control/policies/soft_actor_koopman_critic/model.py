@@ -11,12 +11,18 @@ epsilon = 1e-6
 # Initialize Policy weights
 def weights_init_(m):
     if isinstance(m, nn.Linear):
-        torch.nn.init.xavier_uniform_(m.weight, gain=1)
-        torch.nn.init.constant_(m.bias, 0)
+        try:
+            torch.nn.init.xavier_uniform_(m.weight, gain=1)
+        except:
+            pass
+        try:
+            torch.nn.init.constant_(m.bias, 0)
+        except:
+            pass
 
-class ValueNetwork(nn.Module):
+class VNetwork(nn.Module):
     def __init__(self, num_inputs, hidden_dim):
-        super(ValueNetwork, self).__init__()
+        super(VNetwork, self).__init__()
 
         self.linear1 = nn.Linear(num_inputs, hidden_dim)
         self.linear2 = nn.Linear(hidden_dim, hidden_dim)
@@ -32,9 +38,53 @@ class ValueNetwork(nn.Module):
         x = self.linear3(x)
         return x
 
+class KoopmanVNetwork(nn.Module):
+    def __init__(self, koopman_tensor):
+        super(KoopmanVNetwork, self).__init__()
+
+        self.koopman_tensor = koopman_tensor
+        self.phi_state_dim = self.koopman_tensor.Phi_X.shape[0]
+
+        self.linear = nn.Linear(self.phi_state_dim, 1, bias=False)
+
+        self.apply(weights_init_)
+
+    def forward(self, state):
+        batch_size = state.shape[0]
+        phi_xs = torch.zeros((batch_size, self.phi_state_dim))
+        for i in range(batch_size):
+            x = state[i].view(state.shape[1], 1)
+            phi_xs[i] = self.koopman_tensor.phi(x)[:,0]
+
+        output = self.linear(phi_xs)
+
+        return output
+
 class QNetwork(nn.Module):
     def __init__(self, state_dim, action_dim, hidden_dim):
         super(QNetwork, self).__init__()
+
+        # Q architecture
+        self.linear1 = nn.Linear(state_dim + action_dim, hidden_dim)
+        self.linear2 = nn.Linear(hidden_dim, hidden_dim)
+        self.linear3 = nn.Linear(hidden_dim, 1)
+
+        self.apply(weights_init_)
+
+    def forward(self, state, action):
+        xu = torch.cat([state, action], 1)
+
+        x = self.linear1(xu)
+        x = F.relu(x)
+        x = self.linear2(x)
+        x = F.relu(x)
+        x = self.linear3(x)
+
+        return x
+
+class DoubleQNetwork(nn.Module):
+    def __init__(self, state_dim, action_dim, hidden_dim):
+        super(DoubleQNetwork, self).__init__()
 
         # Q1 architecture
         self.linear1 = nn.Linear(state_dim + action_dim, hidden_dim)
@@ -51,38 +101,77 @@ class QNetwork(nn.Module):
     def forward(self, state, action):
         xu = torch.cat([state, action], 1)
 
+        # Q1
         x1 = self.linear1(xu)
         x1 = F.relu(x1)
         x1 = self.linear2(x1)
         x1 = F.relu(x1)
         x1 = self.linear3(x1)
 
+        # Q2
         x2 = self.linear4(xu)
         x2 = F.relu(x2)
         x2 = self.linear5(x2)
         x2 = F.relu(x2)
         x2 = self.linear6(x2)
+
         return x1, x2
 
-class KoopmanQFunction():
-    def __init__(self, tensor):
-        self.tensor = tensor
-        # self.w = torch.zeros((self.tensor.Phi_X.shape[0], 1), requires_grad=True)
-        self.w = torch.zeros((self.tensor.Phi_X.shape[0], 1))
+class KoopmanQNetwork(nn.Module):
+    def __init__(self, koopman_tensor):
+        super(KoopmanQNetwork, self).__init__()
 
-    def __call__(self, reward, state, action):
-        # Assuming the incoming values are batches of data
-        x = state.detach().numpy().T
-        u = action.detach().numpy().T
-        qs = torch.zeros(1, x.shape[1])
-        for i in range(x.shape[1]):
-            phi_x_prime = self.tensor.phi_f(
-                np.vstack(x[:, i]),
-                np.vstack(u[:, i])
-            )
-            expected_V_x_prime = (self.w.T @ phi_x_prime)[0, 0]
-            qs[:, i] = reward[i, 0] + expected_V_x_prime
-        return qs
+        self.koopman_tensor = koopman_tensor
+        self.phi_state_dim = self.koopman_tensor.Phi_X.shape[0]
+
+        self.linear = nn.Linear(self.phi_state_dim, 1, bias=False)
+
+        self.apply(weights_init_)
+
+    def forward(self, state, action):
+        batch_size = state.shape[0]
+        phi_x_primes = torch.zeros((batch_size, self.phi_state_dim))
+        for i in range(batch_size):
+            x = state[i].view(state.shape[1], 1)
+            u = action[i].view(action.shape[1], 1)
+            phi_x_primes[i] = self.koopman_tensor.phi_f(x, u)[:, 0]
+
+        output = self.linear(phi_x_primes)
+
+        return output
+
+class KoopmanDoubleQNetwork(nn.Module):
+    def __init__(self, koopman_tensor):
+        super(KoopmanDoubleQNetwork, self).__init__()
+
+        self.koopman_tensor = koopman_tensor
+        self.phi_state_dim = self.koopman_tensor.Phi_X.shape[0]
+
+        self.linear1 = nn.Linear(self.phi_state_dim, 1, bias=False)
+        self.linear2 = nn.Linear(self.phi_state_dim, 1, bias=False)
+
+        self.apply(weights_init_)
+
+    def forward(self, state, action):
+        # E_V(x) = w^T @ K^(u) @ phi(x) = w^T @ E_phi(x')
+        # Q(x, u) = r + gamma*E_V(x)
+        #         = r + gamma*(w^T @ K^(u) @ phi(x))
+        #         = r + gamma*(w^T @ E_phi(x'))
+
+        # Replace QNetwork output with the following:
+        # Q(x, u) = r + gamma*(w.T @ tensor.phi_f(x, u))
+
+        batch_size = state.shape[0]
+        phi_x_primes = torch.zeros((batch_size, self.phi_state_dim))
+        for i in range(batch_size):
+            x = state[i].view(state.shape[1], 1)
+            u = action[i].view(action.shape[1], 1)
+            phi_x_primes[i] = self.koopman_tensor.phi_f(x, u)[:, 0]
+
+        output1 = self.linear1(phi_x_primes)
+        output2 = self.linear2(phi_x_primes)
+
+        return output1, output2
 
 class GaussianPolicy(nn.Module):
     def __init__(self, num_inputs, num_actions, hidden_dim, action_space=None):
