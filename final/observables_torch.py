@@ -1,69 +1,65 @@
-'''
-This file was directly copied from the
-codebase at https://github.com/sklus/d3s
-'''
+"""
+    This file was directly copied from the
+    codebase at https://github.com/sklus/d3s
+"""
 
+import copy
 import math
 import numpy as np
 import torch
 from scipy.spatial import distance
 
 def identity(x):
-    '''
-    Identity function.
-    '''
+    """
+        Identity function.
+    """
     return x
 
 class monomials(object):
-    '''
-    Computation of monomials in d dimensions.
-    '''
+    """
+        Computation of monomials in d dimensions.
+    """
 
     def __init__(self, p):
-        '''
-        The parameter p defines the maximum order of the monomials.
-        '''
+        """
+            The parameter p defines the maximum order of the monomials.
+        """
         self.p = p
 
     def __call__(self, x):
-        '''
-        Evaluate all monomials of order up to p for all data points in x.
-        '''
+        """
+            Evaluate all monomials of order up to p for all data points in x.
+        """
         [d, m] = x.shape # d = dimension of state space, m = number of test points
         c = allMonomialPowers(d, self.p) # matrix containing all powers for the monomials
         n = c.shape[1] # number of monomials
-        y = np.ones([n, m])
-        # y = torch.ones([n, m])
+        y = torch.ones([n, m])
         for i in range(n):
             for j in range(d):
-                y[i, :] = y[i, :] * np.power(x[j, :], c[j, i])
-                # y[i, :] = y[i, :] * torch.pow(x[j, :], c[j, i])
+                # y[i] = y[i] * torch.pow(x[j], c[j, i])
+                y[i] *= torch.pow(x[j], c[j, i])
         return y
 
     def diff(self, x):
-        '''
-        Compute partial derivatives for all data points in x.
-        '''
+        """
+            Compute partial derivatives for all data points in x.
+        """
         [d, m] = x.shape # d = dimension of state space, m = number of test points
         c = allMonomialPowers(d, self.p) # matrix containing all powers for the monomials
         n = c.shape[1] # number of monomials
-        y = np.zeros([n, d, m])
-        # y = torch.zeros([n, d, m])
+        y = torch.zeros([n, d, m])
         for i in range(n): # for all monomials
             for j in range(d): # for all dimensions
                 e = c[:, i].copy() # exponents of ith monomial
                 a = e[j]
                 e[j] = e[j] - 1 # derivative w.r.t. j
 
-                if np.any(e < 0):
-                # if torch.any(e < 0):
+                if torch.any(e < 0):
                     continue # nothing to do, already zero
 
-                y[i, j, :] = a*np.ones([1, m])
-                # y[i, j, :] = a*torch.ones([1, m])
+                y[i, j, :] = a*torch.ones([1, m])
                 for k in range(d):
-                    y[i, j, :] = y[i, j, :] * np.power(x[k, :], e[k])
-                    # y[i, j, :] = y[i, j, :] * torch.pow(x[k, :], e[k])
+                    y[i, j, :] = y[i, j, :] * torch.pow(x[k, :], e[k])
         return y
 
     def ddiff(self, x):
@@ -73,8 +69,7 @@ class monomials(object):
         [d, m] = x.shape # d = dimension of state space, m = number of test points
         c = allMonomialPowers(d, self.p) # matrix containing all powers for the monomials
         n = c.shape[1] # number of monomials
-        y = np.zeros([n, d, d, m])
-        # y = torch.zeros([n, d, d, m])
+        y = torch.zeros([n, d, d, m])
         for i in range(n): # for all monomials
             for j1 in range(d): # for all dimensions
                 for j2 in range(d): # for all dimensions
@@ -84,30 +79,26 @@ class monomials(object):
                     a *= e[j2]
                     e[j2] = e[j2] - 1 # derivative w.r.t. j2
 
-                    if np.any(e < 0):
-                    # if torch.any(e < 0):
+                    if torch.any(e < 0):
                         continue # nothing to do, already zero
 
-                    y[i, j1, j2, :] = a*np.ones([1, m])
-                    # y[i, j1, j2, :] = a*torch.ones([1, m])
+                    y[i, j1, j2, :] = a*torch.ones([1, m])
                     for k in range(d):
-                        y[i, j1, j2, :] = y[i, j1, j2, :] * np.power(x[k, :], e[k])
-                        # y[i, j1, j2, :] = y[i, j1, j2, :] * torch.pow(x[k, :], e[k])
+                        y[i, j1, j2, :] = y[i, j1, j2, :] * torch.pow(x[k, :], e[k])
         return y
 
     def __repr__(self):
         return 'Monomials of order up to %d.' % self.p
 
     def display(self, alpha, d, name = None, eps = 1e-6):
-        '''
-        Display the polynomial with coefficients alpha.
-        '''
+        """
+            Display the polynomial with coefficients alpha.
+        """
         c = allMonomialPowers(d, self.p) # matrix containing all powers for the monomials
 
         if name != None: print(name + ' = ', end = '')
 
-        ind, = np.where(abs(alpha) > eps)
-        # ind, = torch.where(abs(alpha) > eps)
+        ind, = torch.where(abs(alpha) > eps)
         k = ind.shape[0]
 
         if k == 0: # no nonzero coefficients
@@ -128,8 +119,7 @@ class monomials(object):
 
     def _displayMonomial(self, p):
         d = p.shape[0]
-        if np.all(p == 0):
-        # if torch.all(p == 0):
+        if torch.all(p == 0):
             print('1', end = '')
         else:
             for j in range(d):
@@ -141,16 +131,16 @@ class monomials(object):
                     print(' x_%d^%d' % (j+1, p[j]), end = '')
 
 class indicators(object):
-    '''
-    Indicator functions for box discretization Omega.
-    '''
+    """
+        Indicator functions for box discretization Omega.
+    """
     def __init__(self, Omega):
         self.Omega = Omega
 
     def __call__(self, x):
         [d, m] = x.shape # d = dimension of state space, m = number of test points
         n = self.Omega.numBoxes()
-        y = np.zeros([n, m])
+        y = torch.zeros([n, m])
         for i in range(m):
             ind = self.Omega.index(x[:, i])
             pass
@@ -164,55 +154,55 @@ class indicators(object):
 
 
 class gaussians(object):
-    '''
-    Gaussians whose centers are the centers of the box discretization Omega.
+    """
+        Gaussians whose centers are the centers of the box discretization Omega.
 
-    sigma: width of Gaussians
-    '''
+        sigma: width of Gaussians
+    """
     def __init__(self, Omega, sigma=1):
         self.Omega = Omega
         self.sigma = sigma
 
     def __call__(self, x):
-        '''
-        Evaluate Gaussians for all data points in x.
-        '''
+        """
+            Evaluate Gaussians for all data points in x.
+        """
         c = self.Omega.midpointGrid()
         D = distance.cdist(c.T, x.T, 'sqeuclidean')
-        y = np.exp(-1/(2*self.sigma**2)*D)
+        y = torch.exp(-1/(2*self.sigma**2)*D)
         return y
-    
+
     def diff(self, x):
-        '''
-        Compute partial derivatives for all data points in x.
-        '''
+        """
+            Compute partial derivatives for all data points in x.
+        """
         [d, m] = x.shape # d = dimension of state space, m = number of test points
         n = self.Omega.numBoxes() # number of basis functions
         c = self.Omega.midpointGrid()
         D = distance.cdist(c.T, x.T, 'sqeuclidean')
-        y = np.zeros([n, d, m])
+        y = torch.zeros([n, d, m])
         for i in range(n): # for all Gaussians
             for j in range(d): # for all dimensions
-                y[i, j, :] =  -2/(2*self.sigma**2) * (x[j, :] - c[j, i]) * np.exp(-1/(2*self.sigma**2)*D[i, :])
+                y[i, j, :] =  -2/(2*self.sigma**2) * (x[j, :] - c[j, i]) * torch.exp(-1/(2*self.sigma**2)*D[i, :])
 
         return y
     
     def ddiff(self, x):
-        '''
-        Compute second order derivatives for all data points in x.
-        '''
+        """
+            Compute second order derivatives for all data points in x.
+        """
         [d, m] = x.shape # d = dimension of state space, m = number of test points
         n = self.Omega.numBoxes() # number of basis functions
         c = self.Omega.midpointGrid()
         D = distance.cdist(c.T, x.T, 'sqeuclidean')
-        y = np.zeros([n, d, d, m])
+        y = torch.zeros([n, d, d, m])
         for i in range(n): # for all Gaussians
             for j1 in range(d): # for all dimensions
                 for j2 in range(d): # for all dimensions
                     if j1 == j2:
-                        y[i, j1, j2, :] = ( -2/(2*self.sigma**2) + 4/(4*self.sigma**4) * (x[j1, :] - c[j1, i])**2 ) * np.exp(-1/(2*self.sigma**2)*D[i, :])
+                        y[i, j1, j2, :] = ( -2/(2*self.sigma**2) + 4/(4*self.sigma**4) * (x[j1, :] - c[j1, i])**2 ) * torch.exp(-1/(2*self.sigma**2)*D[i, :])
                     else:
-                        y[i, j1, j2, :] = ( 4/(4*self.sigma**4) * (x[j1, :] - c[j1, i]) * (x[j2, :] - c[j2, i]) ) * np.exp(-1/(2*self.sigma**2)*D[i, :])
+                        y[i, j1, j2, :] = ( 4/(4*self.sigma**4) * (x[j1, :] - c[j1, i]) * (x[j2, :] - c[j2, i]) ) * torch.exp(-1/(2*self.sigma**2)*D[i, :])
         return y
 
     def __repr__(self):
@@ -221,17 +211,18 @@ class gaussians(object):
 
 # auxiliary functions
 def nchoosek(n, k):
-    '''
-    Computes binomial coefficients.
-    '''
+    """
+        Computes binomial coefficients.
+    """
     return math.factorial(n)//math.factorial(k)//math.factorial(n-k) # integer division operator
 
 
-def nextMonomialPowers(x):
-    '''
-    Returns powers for the next monomial. Implementation based on John Burkardt's MONOMIAL toolbox, see
-    http://people.sc.fsu.edu/~jburkardt/m_src/monomial/monomial.html.
-    '''
+def nextMonomialPowers(_x):
+    """
+        Returns powers for the next monomial. Implementation based on John Burkardt's MONOMIAL toolbox, see
+        http://people.sc.fsu.edu/~jburkardt/m_src/monomial/monomial.html.
+    """
+    x = copy.deepcopy(_x)
     m = len(x)
     j = 0
     for i in range(1, m): # find the first index j > 1 s.t. x[j] > 0
@@ -254,19 +245,22 @@ def nextMonomialPowers(x):
         x[j] = x[j] - 1
     return x
 
-
 def allMonomialPowers(d, p):
-    '''
-    All monomials in d dimensions of order up to p.
-    '''
-    # Example: For d = 3 and p = 2, we obtain
-    # [[ 0  1  0  0  2  1  1  0  0  0]
-    #  [ 0  0  1  0  0  1  0  2  1  0]
-    #  [ 0  0  0  1  0  0  1  0  1  2]]
+    """
+        All monomials in d dimensions of order up to p.
+
+        Example: For d = 3 and p = 2, we obtain
+        [[ 0  1  0  0  2  1  1  0  0  0]
+         [ 0  0  1  0  0  1  0  2  1  0]
+         [ 0  0  0  1  0  0  1  0  1  2]]
+    """
     n = nchoosek(p + d, p) # number of monomials
+    # x = np.zeros(d) # vector containing powers for the monomials, initially zero
     x = np.zeros(d) # vector containing powers for the monomials, initially zero
-    c = np.zeros([d, n]) # matrix containing all powers for the monomials
+    # c = np.zeros([d, n]) # matrix containing all powers for the monomials
+    c = torch.zeros([d, n]) # matrix containing all powers for the monomials
     for i in range(1, n):
-        c[:, i] = nextMonomialPowers(x)
-    c = np.flipud(c) # flip array in the up/down direction
+        x = nextMonomialPowers(x)
+        c[:, i] = torch.Tensor(x)
+    c = torch.flipud(c)
     return c

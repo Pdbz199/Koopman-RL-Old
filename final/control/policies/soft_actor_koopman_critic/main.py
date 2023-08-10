@@ -77,9 +77,9 @@ np.random.seed(args.seed)
 
 # Append to sys path for loading tensor and LQR policy
 sys.path.append('../../../../')
-# system_name = "linear_system"
+system_name = "linear_system"
 # system_name = "fluid_flow"
-system_name = "lorenz"
+# system_name = "lorenz"
 # system_name = "double_well"
 
 # Load LQR policy
@@ -218,4 +218,6 @@ for i_episode in itertools.count(1):
 
     # break
 
-env.close()
+training_env.close()
+sac_env.close()
+lqr_env.close()

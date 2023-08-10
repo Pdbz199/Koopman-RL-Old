@@ -1,8 +1,10 @@
 # Imports
 import numpy as np
 
-# from dynamics import state_dim, x_e, y_e, z_e #, action_dim
-from lorenz.dynamics import state_dim, x_e, y_e, z_e #, action_dim
+try:
+    from dynamics import state_dim, x_e, y_e, z_e #, action_dim
+except:
+    from lorenz.dynamics import state_dim, x_e, y_e, z_e #, action_dim
 
 # Define cost/reward
 Q = np.eye(state_dim)
