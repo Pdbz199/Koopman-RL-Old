@@ -1,17 +1,16 @@
 #%%
-import numpy as np
-import numba as nb
+import torch
 
 #%%
 def checkMatrixRank(X, name):
-    rank = np.linalg.matrix_rank(X)
+    rank = torch.linalg.matrix_rank(X)
     print(f"{name} matrix rank: {rank}")
     if rank != X.shape[0]:
         # raise ValueError(f"{name} matrix is not full rank ({rank} / {X.shape[0]})")
         pass
 
 def checkConditionNumber(X, name, threshold=200):
-    cond_num = np.linalg.cond(X)
+    cond_num = torch.linalg.cond(X)
     print(f"Condition number of {name}: {cond_num}")
     if cond_num > threshold:
         # raise ValueError(f"Condition number of {name} is too large ({cond_num} > {threshold})")
@@ -20,10 +19,10 @@ def checkConditionNumber(X, name, threshold=200):
 #%% (Theta=Psi_X_T, dXdt=dPsi_X_T, lamb=0.05, n=d)
 def SINDy(Theta, dXdt, lamb=0.05):
     d = dXdt.shape[1]
-    Xi = np.linalg.lstsq(Theta, dXdt, rcond=None)[0] # Initial guess: Least-squares
+    Xi = torch.linalg.lstsq(Theta, dXdt, rcond=None)[0] # Initial guess: Least-squares
     
     for _ in range(10): #which parameter should we be tuning here for RRR comp
-        smallinds = np.abs(Xi) < lamb # Find small coefficients
+        smallinds = torch.abs(Xi) < lamb # Find small coefficients
         Xi[smallinds] = 0             # and threshold
         for ind in range(d):          # n is state dimension
             biginds = smallinds[:, ind] == 0
@@ -35,15 +34,15 @@ def SINDy(Theta, dXdt, lamb=0.05):
 
 def ols(X, Y, pinv=True):
     if pinv:
-        return np.linalg.pinv(X.T @ X) @ X.T @ Y
-    return np.linalg.inv(X.T @ X) @ X.T @ Y
+        return torch.linalg.pinv(X.T @ X) @ X.T @ Y
+    return torch.linalg.inv(X.T @ X) @ X.T @ Y
 
 def OLS(X, Y, pinv=True):
     return ols(X, Y, pinv)
 
 def rrr(X, Y, rank=8):
     B_ols = ols(X, Y) # if infeasible use GD (numpy CG)
-    U, S, V = np.linalg.svd(Y.T @ X @ B_ols)
+    U, S, V = torch.linalg.svd(Y.T @ X @ B_ols)
     W = V[0:rank].T
 
     B_rr = B_ols @ W @ W.T
@@ -53,9 +52,8 @@ def rrr(X, Y, rank=8):
 def RRR(X, Y, rank=8):
     return rrr(X, Y, rank)
 
-@nb.njit(fastmath=True)
 def ridgeRegression(X, y, lamb=0.05):
-    return np.linalg.inv(X.T @ X + (lamb * np.identity(X.shape[1]))) @ X.T @ y
+    return torch.linalg.inv(X.T @ X + (lamb * np.identity(X.shape[1]))) @ X.T @ y
 
 class KoopmanTensor:
     def __init__(
@@ -125,12 +123,12 @@ class KoopmanTensor:
             finite_differences = (self.Y - self.X) # (self.x_dim, self.N)
             phi_derivative = self.phi.diff(self.X) # (self.phi_dim, self.x_dim, self.N)
             phi_double_derivative = self.phi.ddiff(self.X) # (self.phi_dim, self.x_dim, self.x_dim, self.N)
-            self.regression_Y = np.einsum(
+            self.regression_Y = torch.einsum(
                 'os,pos->ps',
                 finite_differences / self.dt,
                 phi_derivative
             )
-            self.regression_Y += np.einsum(
+            self.regression_Y += torch.einsum(
                 'ot,pots->ps',
                 0.5 * ( finite_differences @ finite_differences.T ) / self.dt, # (state_dim, state_dim)
                 phi_double_derivative
@@ -152,12 +150,12 @@ class KoopmanTensor:
         print('\n')
 
         # Build matrix of kronecker products between u_i and x_i for all 0 <= i <= N
-        self.kron_matrix = np.empty([
+        self.kron_matrix = torch.empty([
             self.psi_dim * self.phi_dim,
             self.N
         ])
         for i in range(self.N):
-            self.kron_matrix[:,i] = np.kron(
+            self.kron_matrix[:,i] = torch.kron(
                 self.Psi_U[:,i],
                 self.Phi_X[:,i]
             )
@@ -177,7 +175,7 @@ class KoopmanTensor:
             raise Exception("Did not pick a supported regression algorithm.")
 
         # reshape M into tensor K
-        self.K = np.empty([
+        self.K = torch.empty([
             self.phi_dim,
             self.phi_dim,
             self.psi_dim
@@ -200,12 +198,14 @@ class KoopmanTensor:
         """
 
         # If array, convert to column vector
-        if isinstance(u, int) or isinstance(u, float) or isinstance(u, np.int64) or isinstance(u, np.float64):
-            u = np.array([[u]])
-        elif len(u.shape) == 1:
-            u = np.vstack(u)
-        
-        K_u = np.einsum('ijz,zk->kij', self.K, self.psi(u))
+        # print(type(u))
+        # if isinstance(u, int) or isinstance(u, float) or isinstance(u, torch.int64) or isinstance(u, torch.float64):
+        #     u = torch.array([[u]])
+        # elif len(u.shape) == 1:
+        #     u = torch.vstack(u)
+
+        torch_K = torch.Tensor(self.K)
+        K_u = torch.einsum('ijz,zk->kij', torch_K, self.psi(u))
 
         if K_u.shape[0] == 1:
             return K_u[0]
@@ -223,7 +223,7 @@ class KoopmanTensor:
             OUTPUTS:
                 phi(x') column vector(s).
         """
-        
+
         return self.K_(u) @ self.phi(x)
 
     def f(self, x, u):
