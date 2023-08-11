@@ -1,4 +1,3 @@
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -21,10 +20,10 @@ def weights_init_(m):
             pass
 
 class VNetwork(nn.Module):
-    def __init__(self, num_inputs, hidden_dim):
+    def __init__(self, state_dim, hidden_dim):
         super(VNetwork, self).__init__()
 
-        self.linear1 = nn.Linear(num_inputs, hidden_dim)
+        self.linear1 = nn.Linear(state_dim, hidden_dim)
         self.linear2 = nn.Linear(hidden_dim, hidden_dim)
         self.linear3 = nn.Linear(hidden_dim, 1)
 
@@ -129,14 +128,22 @@ class KoopmanQNetwork(nn.Module):
         self.apply(weights_init_)
 
     def forward(self, state, action):
+        # E_V(x) = w^T @ K^(u) @ phi(x) = w^T @ E_phi(x')
+        # Q(x, u) = r + gamma*E_V(x)
+        #         = r + gamma*(w^T @ K^(u) @ phi(x))
+        #         = r + gamma*(w^T @ E_phi(x'))
+
+        # Replace QNetwork output with the following:
+        # Q(x, u) = r + gamma*(w.T @ tensor.phi_f(x, u))
+
         batch_size = state.shape[0]
-        phi_x_primes = torch.zeros((batch_size, self.phi_state_dim))
+        expected_phi_x_primes = torch.zeros((batch_size, self.phi_state_dim))
         for i in range(batch_size):
             x = state[i].view(state.shape[1], 1)
             u = action[i].view(action.shape[1], 1)
-            phi_x_primes[i] = self.koopman_tensor.phi_f(x, u)[:, 0]
+            expected_phi_x_primes[i] = self.koopman_tensor.phi_f(x, u)[:, 0]
 
-        output = self.linear(phi_x_primes)
+        output = self.linear(expected_phi_x_primes)
 
         return output
 
@@ -162,28 +169,28 @@ class KoopmanDoubleQNetwork(nn.Module):
         # Q(x, u) = r + gamma*(w.T @ tensor.phi_f(x, u))
 
         batch_size = state.shape[0]
-        phi_x_primes = torch.zeros((batch_size, self.phi_state_dim))
+        expected_phi_x_primes = torch.zeros((batch_size, self.phi_state_dim))
         for i in range(batch_size):
             x = state[i].view(state.shape[1], 1)
             u = action[i].view(action.shape[1], 1)
-            phi_x_primes[i] = self.koopman_tensor.phi_f(x, u)[:, 0]
+            expected_phi_x_primes[i] = self.koopman_tensor.phi_f(x, u)[:, 0]
 
-        output1 = self.linear1(phi_x_primes)
-        output2 = self.linear2(phi_x_primes)
+        output1 = self.linear1(expected_phi_x_primes)
+        output2 = self.linear2(expected_phi_x_primes)
 
         return output1, output2
 
 class GaussianPolicy(nn.Module):
-    def __init__(self, num_inputs, num_actions, hidden_dim, action_space=None):
+    def __init__(self, state_dim, action_dim, hidden_dim, action_space=None):
         super(GaussianPolicy, self).__init__()
 
-        self.mean_linear1 = nn.Linear(num_inputs, hidden_dim)
+        self.mean_linear1 = nn.Linear(state_dim, hidden_dim)
         self.mean_linear2 = nn.Linear(hidden_dim, hidden_dim)
-        self.mean_linear3 = nn.Linear(hidden_dim, num_actions)
+        self.mean_linear3 = nn.Linear(hidden_dim, action_dim)
 
         # self.log_std_linear1 = nn.Linear(num_inputs, hidden_dim)
         # self.log_std_linear2 = nn.Linear(hidden_dim, hidden_dim)
-        self.log_std_linear3 = nn.Linear(hidden_dim, num_actions)
+        self.log_std_linear3 = nn.Linear(hidden_dim, action_dim)
 
         self.apply(weights_init_)
 

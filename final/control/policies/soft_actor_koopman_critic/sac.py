@@ -61,7 +61,7 @@ class SAC(object):
 
             self.policy = GaussianPolicy(
                 self.state_dim,
-                self.action_space.shape[0],
+                self.action_dim,
                 args.hidden_size,
                 self.action_space
             ).to(self.device)
@@ -79,6 +79,12 @@ class SAC(object):
             self.policy_optim = Adam(self.policy.parameters(), lr=args.lr)
 
     def select_action(self, state, evaluate=False):
+        """
+            OUTPUTS:
+                If evaluate is True, return mean action
+                Else return sample from distribution
+        """
+
         state = torch.FloatTensor(state).to(self.device).unsqueeze(0)
         if evaluate is False:
             action, _, _ = self.policy.sample(state)
@@ -107,10 +113,10 @@ class SAC(object):
 
         # Sample new log probabilities of actions for state batch from replay buffer from current policy
         with torch.no_grad():
-            _, current_policy_action_log_prob_batch, __ = self.policy.sample(state_batch)
+            current_policy_action_batch, current_policy_action_log_prob_batch, __ = self.policy.sample(state_batch)
 
         # Compute estimated Q, true V, and estimated V for MSE
-        soft_quality = torch.min(*self.soft_quality(state_batch, action_batch))
+        soft_quality = torch.min(*self.soft_quality(state_batch, current_policy_action_batch))
         true_soft_value = soft_quality - self.alpha*current_policy_action_log_prob_batch
         estimated_soft_value = self.soft_value(state_batch)
         soft_value_loss = F.mse_loss(estimated_soft_value, true_soft_value)
@@ -126,12 +132,12 @@ class SAC(object):
         # First, we must compute the target quality function
         # Q(s, a) = r + gamma * 𝔼 V(s')
         with torch.no_grad():
-            phi_x_primes = torch.zeros((batch_size, self.phi_state_dim))
+            expected_phi_x_primes = torch.zeros((batch_size, self.phi_state_dim))
             for i in range(batch_size):
                 x = state_batch[i].view(state_batch.shape[1], 1)
                 u = action_batch[i].view(action_batch.shape[1], 1)
-                phi_x_primes[i] = self.koopman_tensor.phi_f(x, u)[:, 0]
-            target_quality = reward_batch + mask_batch * self.gamma*self.soft_value_target.linear(phi_x_primes)
+                expected_phi_x_primes[i] = self.koopman_tensor.phi_f(x, u)[:, 0]
+            target_quality = reward_batch + mask_batch * self.gamma*self.soft_value_target.linear(expected_phi_x_primes)
 
             # target_quality = reward_batch + mask_batch * self.gamma*self.soft_value_target(state_prime_batch)
 

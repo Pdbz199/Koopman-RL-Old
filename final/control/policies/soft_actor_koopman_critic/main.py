@@ -31,6 +31,8 @@ parser.add_argument('--policy', default="Gaussian",
                     help='Policy Type: Gaussian | Deterministic (default: Gaussian)')
 parser.add_argument('--eval', type=bool, default=True,
                     help='Evaluates a policy a policy every 10 episode (default: True)')
+parser.add_argument('--eval_frequency', type=int, default=10,
+                    help='Number of iterations to run between each evaluation step (default: 10)')
 parser.add_argument('--gamma', type=float, default=0.99, metavar='G',
                     help='discount factor for reward (default: 0.99)')
 parser.add_argument('--tau', type=float, default=0.005, metavar='G',
@@ -62,6 +64,15 @@ parser.add_argument('--cuda', action="store_true",
                     help='run on CUDA (default: False)')
 args = parser.parse_args()
 
+# Extract system name
+env_name_to_system_name = {
+    "LinearSystem-v0": "linear_system",
+    "FluidFlow-v0": "fluid_flow",
+    "Lorenz-v0": "lorenz",
+    "DoubleWell-v0": "double_well"
+}
+system_name = env_name_to_system_name[args.env_name]
+
 # Environment
 # env = NormalizedActions(gym.make(args.env_name))
 training_env = gym.make(args.env_name)
@@ -77,10 +88,6 @@ np.random.seed(args.seed)
 
 # Append to sys path for loading tensor and LQR policy
 sys.path.append('../../../../')
-# system_name = "linear_system"
-# system_name = "fluid_flow"
-system_name = "lorenz"
-# system_name = "double_well"
 
 # Load LQR policy
 with open(f'../../{system_name}/analysis/tmp/lqr/policy.pickle', 'rb') as handle:
@@ -110,12 +117,12 @@ for i_episode in itertools.count(1):
     episode_reward = 0
     episode_steps = 0
     done = False
-    state, _ = sac_env.reset()
+    state, _ = training_env.reset()
     # done = True
 
     while not done:
         if args.start_steps > total_numsteps:
-            action = sac_env.action_space.sample()  # Sample random action
+            action = training_env.action_space.sample()  # Sample random action
         else:
             action = agent.select_action(state)  # Sample action from policy
 
@@ -132,14 +139,14 @@ for i_episode in itertools.count(1):
                 writer.add_scalar('entropy_temprature/alpha', alpha, updates)
                 updates += 1
 
-        next_state, reward, done, _, __ = sac_env.step(action) # Step
+        next_state, reward, done, _, __ = training_env.step(action) # Step
         episode_steps += 1
         total_numsteps += 1
         episode_reward += reward
 
         # Ignore the "done" signal if it comes from hitting the time horizon.
         # (https://github.com/openai/spinningup/blob/master/spinup/algos/sac/sac.py)
-        mask = 1 if episode_steps == sac_env._max_episode_steps else float(not done)
+        mask = 1 if episode_steps == training_env._max_episode_steps else float(not done)
 
         memory.push(state, action, reward, next_state, mask) # Append transition to memory
 
@@ -151,7 +158,7 @@ for i_episode in itertools.count(1):
     writer.add_scalar('reward/train', episode_reward, i_episode)
     print("Episode: {}, total numsteps: {}, episode steps: {}, reward: {}".format(i_episode, total_numsteps, episode_steps, round(episode_reward, 2)))
 
-    if i_episode % 10 == 0:# or True:
+    if i_episode % args.eval_frequency == 0:
         if len(memory) > args.batch_size:
             agent.save_checkpoint(args.env_name)
 
@@ -218,4 +225,6 @@ for i_episode in itertools.count(1):
 
     # break
 
-env.close()
+training_env.close()
+sac_env.close()
+lqr_env.close()
