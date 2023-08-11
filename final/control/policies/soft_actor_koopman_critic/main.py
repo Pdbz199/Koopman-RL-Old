@@ -1,6 +1,6 @@
 """
 cd ./final/control/policies/soft_actor_koopman_critic_test
-python main.py --env_name=LinearSystem-v0 --alpha=1.0 --start_steps=0 --batch_size=100
+python main.py --env_name=LinearSystem-v0 --alpha=1.0 --batch_size=100 --eval_frequency=10 --start_steps=0
 """
 
 import argparse
@@ -23,8 +23,6 @@ from fluid_flow.dynamics_env import FluidFlow
 from double_well.dynamics_env import DoubleWell
 
 parser = argparse.ArgumentParser(description='PyTorch Soft Actor-Critic Args')
-# parser.add_argument('--env_name', default="HalfCheetah-v2",
-#                     help='Mujoco Gym environment (default: HalfCheetah-v2)')
 parser.add_argument('--env_name', default="LunarLander-v2",
                     help='Gym environment (default: LunarLander-v2)')
 parser.add_argument('--policy', default="Gaussian",
@@ -117,12 +115,12 @@ for i_episode in itertools.count(1):
     episode_reward = 0
     episode_steps = 0
     done = False
-    state, _ = training_env.reset()
+    state, _ = sac_env.reset()
     # done = True
 
     while not done:
         if args.start_steps > total_numsteps:
-            action = training_env.action_space.sample()  # Sample random action
+            action = sac_env.action_space.sample()  # Sample random action
         else:
             action = agent.select_action(state)  # Sample action from policy
 
@@ -139,14 +137,14 @@ for i_episode in itertools.count(1):
                 writer.add_scalar('entropy_temprature/alpha', alpha, updates)
                 updates += 1
 
-        next_state, reward, done, _, __ = training_env.step(action) # Step
+        next_state, reward, done, _, __ = sac_env.step(action) # Step
         episode_steps += 1
         total_numsteps += 1
         episode_reward += reward
 
         # Ignore the "done" signal if it comes from hitting the time horizon.
         # (https://github.com/openai/spinningup/blob/master/spinup/algos/sac/sac.py)
-        mask = 1 if episode_steps == training_env._max_episode_steps else float(not done)
+        mask = 1 if episode_steps == sac_env._max_episode_steps else float(not done)
 
         memory.push(state, action, reward, next_state, mask) # Append transition to memory
 

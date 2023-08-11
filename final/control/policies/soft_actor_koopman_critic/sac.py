@@ -36,12 +36,12 @@ class SAC(object):
         self.phi_state_dim = koopman_tensor.Phi_X.shape[0]
         self.psi_action_dim = koopman_tensor.Psi_U.shape[0]
 
-        # self.soft_value = VNetwork(self.state_dim, args.hidden_size).to(device=self.device)
-        self.soft_value = KoopmanVNetwork(koopman_tensor).to(device=self.device)
+        self.soft_value = VNetwork(self.state_dim, args.hidden_size).to(device=self.device)
+        # self.soft_value = KoopmanVNetwork(koopman_tensor).to(device=self.device)
         self.soft_value_optim = Adam(self.soft_value.parameters(), lr=args.lr)
 
-        # self.soft_value_target = VNetwork(self.state_dim, args.hidden_size).to(device=self.device)
-        self.soft_value_target = KoopmanVNetwork(koopman_tensor).to(device=self.device)
+        self.soft_value_target = VNetwork(self.state_dim, args.hidden_size).to(device=self.device)
+        # self.soft_value_target = KoopmanVNetwork(koopman_tensor).to(device=self.device)
         hard_update(self.soft_value_target, self.soft_value)
 
         self.soft_quality = DoubleQNetwork(self.state_dim, self.action_dim, args.hidden_size).to(device=self.device)
@@ -132,14 +132,14 @@ class SAC(object):
         # First, we must compute the target quality function
         # Q(s, a) = r + gamma * 𝔼 V(s')
         with torch.no_grad():
-            expected_phi_x_primes = torch.zeros((batch_size, self.phi_state_dim))
-            for i in range(batch_size):
-                x = state_batch[i].view(state_batch.shape[1], 1)
-                u = action_batch[i].view(action_batch.shape[1], 1)
-                expected_phi_x_primes[i] = self.koopman_tensor.phi_f(x, u)[:, 0]
-            target_quality = reward_batch + mask_batch * self.gamma*self.soft_value_target.linear(expected_phi_x_primes)
+            # expected_phi_x_primes = torch.zeros((batch_size, self.phi_state_dim))
+            # for i in range(batch_size):
+            #     x = state_batch[i].view(state_batch.shape[1], 1)
+            #     u = action_batch[i].view(action_batch.shape[1], 1)
+            #     expected_phi_x_primes[i] = self.koopman_tensor.phi_f(x, u)[:, 0]
+            # target_quality = reward_batch + mask_batch * self.gamma*self.soft_value_target.linear(expected_phi_x_primes)
 
-            # target_quality = reward_batch + mask_batch * self.gamma*self.soft_value_target(state_prime_batch)
+            target_quality = reward_batch + mask_batch * self.gamma*self.soft_value_target(state_prime_batch)
 
             # state_prime_action_batch, state_prime_log_pi_batch, _ = self.policy.sample(state_prime_batch)
             # target_soft_quality_prime = torch.min(*self.soft_quality_target(state_prime_batch, state_prime_action_batch)) - self.alpha*state_prime_log_pi_batch
