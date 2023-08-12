@@ -181,6 +181,7 @@ for i_episode in itertools.count(1):
         )
     )
 
+    eval_steps = 0
     if i_episode % args.eval_frequency == 0:
         if len(memory) > args.batch_size:
             agent.save_checkpoint(args.env_name)
@@ -192,7 +193,6 @@ for i_episode in itertools.count(1):
             sac_avg_reward = 0
             lqr_avg_reward = 0
             num_eval_episodes = args.eval_episodes
-            eval_steps = 0
 
             for _  in range(num_eval_episodes):
                 # initial_state = np.array([1, 1, 1])
