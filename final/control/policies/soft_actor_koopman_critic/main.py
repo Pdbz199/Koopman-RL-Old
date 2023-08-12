@@ -1,6 +1,6 @@
 """
 cd ./final/control/policies/soft_actor_koopman_critic_test
-python main.py --env_name=LinearSystem-v0 --alpha=1.0 --batch_size=100 --eval_frequency=10 --start_steps=0
+python main.py --start_steps=0 --alpha=1.0 --batch_size=256 --eval_frequency=10 --eval_episodes=100 --env_name=FluidFlow-v0 --use_neural_networks=True
 """
 
 import argparse
@@ -31,7 +31,7 @@ parser.add_argument('--eval', type=bool, default=True,
                     help='Evaluates a policy a policy every 10 episode (default: True)')
 parser.add_argument('--eval_frequency', type=int, default=10,
                     help='Number of iterations to run between each evaluation step (default: 10)')
-parser.add_argument('--eval_steps', type=int, default=100,
+parser.add_argument('--eval_episodes', type=int, default=100,
                     help='Number of episodes to perform per evaluation step (default: 100)')
 parser.add_argument('--gamma', type=float, default=0.99, metavar='G',
                     help='discount factor for reward (default: 0.99)')
@@ -186,16 +186,15 @@ for i_episode in itertools.count(1):
             agent.save_checkpoint(args.env_name)
 
         sac_avg_reward = None
-        episodes = None
+        num_eval_episodes = None
 
         if args.eval is True and len(memory) > args.batch_size:
             sac_avg_reward = 0
             lqr_avg_reward = 0
-            # episodes = 200
-            episodes = 100
-            # episodes = 1
+            num_eval_episodes = args.eval_episodes
+            eval_steps = 0
 
-            for _  in range(episodes):
+            for _  in range(num_eval_episodes):
                 # initial_state = np.array([1, 1, 1])
 
                 # sac_env.reset(options={"state": initial_state})
@@ -228,8 +227,8 @@ for i_episode in itertools.count(1):
 
                 sac_avg_reward += sac_episode_reward
                 lqr_avg_reward += lqr_episode_reward
-            sac_avg_reward /= episodes
-            lqr_avg_reward /= episodes
+            sac_avg_reward /= num_eval_episodes
+            lqr_avg_reward /= num_eval_episodes
 
             print("SAC Average Reward:", sac_avg_reward)
             print("LQR Average Reward:", lqr_avg_reward, "\n")
@@ -243,7 +242,7 @@ for i_episode in itertools.count(1):
             rounded_sac_avg_reward = None
 
         print("----------------------------------------")
-        print("Test Episodes: {}, Avg. Reward: {}".format(episodes, rounded_sac_avg_reward))
+        print("Test Episodes: {}, Avg. Reward: {}".format(num_eval_episodes, rounded_sac_avg_reward))
         print("----------------------------------------")
 
     # break
