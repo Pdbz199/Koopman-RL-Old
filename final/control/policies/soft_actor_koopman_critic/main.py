@@ -23,14 +23,16 @@ from fluid_flow.dynamics_env import FluidFlow
 from double_well.dynamics_env import DoubleWell
 
 parser = argparse.ArgumentParser(description='PyTorch Soft Actor-Critic Args')
-parser.add_argument('--env_name', default="LunarLander-v2",
-                    help='Gym environment (default: LunarLander-v2)')
+parser.add_argument('--env_name', default="LinearSystem-v0",
+                    help='Gym environment (default: LinearSystem-v0)')
 parser.add_argument('--policy', default="Gaussian",
                     help='Policy Type: Gaussian | Deterministic (default: Gaussian)')
 parser.add_argument('--eval', type=bool, default=True,
                     help='Evaluates a policy a policy every 10 episode (default: True)')
 parser.add_argument('--eval_frequency', type=int, default=10,
                     help='Number of iterations to run between each evaluation step (default: 10)')
+parser.add_argument('--eval_steps', type=int, default=100,
+                    help='Number of episodes to perform per evaluation step (default: 100)')
 parser.add_argument('--gamma', type=float, default=0.99, metavar='G',
                     help='discount factor for reward (default: 0.99)')
 parser.add_argument('--tau', type=float, default=0.005, metavar='G',
@@ -46,7 +48,7 @@ parser.add_argument('--seed', type=int, default=123456, metavar='N',
                     help='random seed (default: 123456)')
 parser.add_argument('--batch_size', type=int, default=256, metavar='N',
                     help='batch size (default: 256)')
-parser.add_argument('--num_steps', type=int, default=1000001, metavar='N',
+parser.add_argument('--num_steps', type=int, default=1000000, metavar='N',
                     help='maximum number of steps (default: 1000000)')
 parser.add_argument('--hidden_size', type=int, default=256, metavar='N',
                     help='hidden size (default: 256)')
@@ -58,6 +60,8 @@ parser.add_argument('--target_update_interval', type=int, default=1, metavar='N'
                     help='Value target update per no. of updates per step (default: 1)')
 parser.add_argument('--replay_size', type=int, default=1000000, metavar='N',
                     help='size of replay buffer (default: 10000000)')
+parser.add_argument('--use_neural_networks', type=bool, default=False,
+                    help='Use neural networks for all networks in SAC algorithm (default: False)')
 parser.add_argument('--cuda', action="store_true",
                     help='run on CUDA (default: False)')
 args = parser.parse_args()
@@ -100,8 +104,14 @@ agent = SAC(training_env, args, tensor)
 # agent.load_checkpoint(ckpt_path=f"checkpoints/sac_checkpoint_{args.env_name}_")
 
 # Tensorboard
-writer = SummaryWriter('runs/{}_SAC_{}_{}_{}'.format(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), args.env_name,
-                                                             args.policy, "autotune" if args.automatic_entropy_tuning else ""))
+writer = SummaryWriter(
+    'runs/{}_SAC_{}_{}_{}'.format(
+        datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
+        args.env_name,
+        args.policy,
+        "autotune" if args.automatic_entropy_tuning else "no_autotune"
+    )
+)
 
 # Memory
 memory = ReplayMemory(args.replay_size, args.seed)
@@ -128,12 +138,20 @@ for i_episode in itertools.count(1):
             # Number of updates per step in environment
             for i in range(args.updates_per_step):
                 # Update parameters of all the networks
-                critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha = agent.update_parameters(memory, args.batch_size, updates)
+                (
+                    soft_value_loss,
+                    soft_quality_1_loss,
+                    soft_quality_2_loss,
+                    policy_loss,
+                    entropy_loss,
+                    alpha
+                ) = agent.update_parameters(memory, args.batch_size, updates)
 
-                writer.add_scalar('loss/critic_1', critic_1_loss, updates)
-                writer.add_scalar('loss/critic_2', critic_2_loss, updates)
+                writer.add_scalar('loss/soft_value', soft_value_loss, updates)
+                writer.add_scalar('loss/soft_quality_1', soft_quality_1_loss, updates)
+                writer.add_scalar('loss/soft_quality_2', soft_quality_2_loss, updates)
                 writer.add_scalar('loss/policy', policy_loss, updates)
-                writer.add_scalar('loss/entropy_loss', ent_loss, updates)
+                writer.add_scalar('loss/entropy_loss', entropy_loss, updates)
                 writer.add_scalar('entropy_temprature/alpha', alpha, updates)
                 updates += 1
 
@@ -154,7 +172,14 @@ for i_episode in itertools.count(1):
     #     break
 
     writer.add_scalar('reward/train', episode_reward, i_episode)
-    print("Episode: {}, total numsteps: {}, episode steps: {}, reward: {}".format(i_episode, total_numsteps, episode_steps, round(episode_reward, 2)))
+    print(
+        "Episode: {}, total numsteps: {}, episode steps: {}, reward: {}".format(
+            i_episode,
+            total_numsteps,
+            episode_steps,
+            round(episode_reward, 2)
+        )
+    )
 
     if i_episode % args.eval_frequency == 0:
         if len(memory) > args.batch_size:
