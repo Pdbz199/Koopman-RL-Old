@@ -73,7 +73,10 @@ env_name_to_system_name = {
     "Lorenz-v0": "lorenz",
     "DoubleWell-v0": "double_well"
 }
-system_name = env_name_to_system_name[args.env_name]
+try:
+    system_name = env_name_to_system_name[args.env_name]
+except:
+    system_name = "linear_system"
 
 # Environment
 # env = NormalizedActions(gym.make(args.env_name))
@@ -181,7 +184,6 @@ for i_episode in itertools.count(1):
         )
     )
 
-    eval_steps = 0
     if i_episode % args.eval_frequency == 0:
         if len(memory) > args.batch_size:
             agent.save_checkpoint(args.env_name)

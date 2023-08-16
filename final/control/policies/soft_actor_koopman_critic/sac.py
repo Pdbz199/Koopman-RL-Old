@@ -6,6 +6,7 @@ from model import (
     DeterministicPolicy,
     DoubleQNetwork,
     GaussianPolicy,
+    KoopmanDoubleQNetwork,
     KoopmanQNetwork,
     KoopmanVNetwork,
     QNetwork,
@@ -48,10 +49,12 @@ class SAC(object):
 
         self.soft_quality = DoubleQNetwork(self.state_dim, self.action_dim, args.hidden_size).to(device=self.device)
         # self.soft_quality = KoopmanQNetwork(koopman_tensor).to(device=self.device)
+        # self.soft_quality = KoopmanDoubleQNetwork(koopman_tensor).to(device=self.device)
         self.soft_quality_optim = Adam(self.soft_quality.parameters(), lr=args.lr)
 
         # self.soft_quality_target = DoubleQNetwork(self.state_dim, self.action_dim, args.hidden_size).to(device=self.device)
-        # self.soft_quality = KoopmanQNetwork(koopman_tensor).to(device=self.device)
+        # self.soft_quality_target = KoopmanQNetwork(koopman_tensor).to(device=self.device)
+        # self.soft_quality_target = KoopmanDoubleQNetwork(koopman_tensor).to(device=self.device)
         # hard_update(self.soft_quality_target, self.soft_quality)
 
         if self.policy_type == "Gaussian":
@@ -196,6 +199,7 @@ class SAC(object):
 
         return (
             soft_value_loss.item(),
+            # 0,
             soft_quality_1_loss.item(),
             soft_quality_2_loss.item(),
             policy_loss.item(),

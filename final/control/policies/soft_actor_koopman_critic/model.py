@@ -32,8 +32,10 @@ class VNetwork(nn.Module):
     def forward(self, state):
         x = self.linear1(state)
         x = F.relu(x)
+        # x = F.tanh(x)
         x = self.linear2(x)
         x = F.relu(x)
+        # x = F.tanh(x)
         x = self.linear3(x)
         return x
 
@@ -75,8 +77,10 @@ class QNetwork(nn.Module):
 
         x = self.linear1(xu)
         x = F.relu(x)
+        # x = F.tanh(x)
         x = self.linear2(x)
         x = F.relu(x)
+        # x = F.tanh(x)
         x = self.linear3(x)
 
         return x
@@ -103,15 +107,19 @@ class DoubleQNetwork(nn.Module):
         # Q1
         x1 = self.linear1(xu)
         x1 = F.relu(x1)
+        # x1 = F.tanh(x1)
         x1 = self.linear2(x1)
         x1 = F.relu(x1)
+        # x1 = F.tanh(x1)
         x1 = self.linear3(x1)
 
         # Q2
         x2 = self.linear4(xu)
         x2 = F.relu(x2)
+        # x2 = F.tanh(x2)
         x2 = self.linear5(x2)
         x2 = F.relu(x2)
+        # x2 = F.tanh(x2)
         x2 = self.linear6(x2)
 
         return x1, x2
@@ -207,14 +215,18 @@ class GaussianPolicy(nn.Module):
     def forward(self, state):
         x = self.mean_linear1(state)
         x = F.relu(x)
+        # x = F.tanh(x)
         x = self.mean_linear2(x)
         x = F.relu(x)
+        # x = F.tanh(x)
         mean = self.mean_linear3(x)
 
         # x = self.log_std_linear1(state)
         # x = F.relu(x)
+        # x = F.tanh(x)
         # x = self.log_std_linear2(x)
         # x = F.relu(x)
+        # x = F.tanh(x)
         log_std = self.log_std_linear3(x)
         log_std = torch.clamp(log_std, min=LOG_SIG_MIN, max=LOG_SIG_MAX)
 
@@ -266,8 +278,10 @@ class DeterministicPolicy(nn.Module):
     def forward(self, state):
         x = self.linear1(state)
         x = F.relu(x)
+        # x = F.tanh(x)
         x = self.linear2(x)
         x = F.relu(x)
+        # x = F.tanh(x)
         mean = torch.tanh(self.mean(x)) * self.action_scale + self.action_bias
         return mean
 
