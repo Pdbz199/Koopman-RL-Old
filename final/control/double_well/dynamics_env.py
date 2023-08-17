@@ -27,18 +27,24 @@ register(
 
 class DoubleWell(gym.Env):
     def __init__(self):
+        self.state_minimums = state_minimums
+        self.state_maximums = state_maximums
+
+        self.action_minimums = action_minimums
+        self.action_maximums = action_maximums
+
         # Observations are 3-dimensional vectors indicating spatial location.
         self.observation_space = spaces.Box(
-            low=state_minimums[:, 0],
-            high=state_maximums[:, 0],
+            low=self.state_minimums[:, 0],
+            high=self.state_maximums[:, 0],
             shape=(state_dim,),
             dtype=np.float64
         )
 
         # We have a continuous action space. In this case, there is only 1 dimension per action
         self.action_space = spaces.Box(
-            low=action_minimums[:, 0],
-            high=action_maximums[:, 0],
+            low=self.action_minimums[:, 0],
+            high=self.action_maximums[:, 0],
             shape=(action_dim,),
             dtype=np.float64
         )
