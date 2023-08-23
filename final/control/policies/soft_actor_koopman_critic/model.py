@@ -50,6 +50,20 @@ class KoopmanVNetwork(nn.Module):
 
         self.apply(weights_init_)
 
+        # Optimal parameters for LinearSystem
+        # self.linear.weight.data = torch.tensor([[
+        #     -0.0020, # 1
+        #     0.1184,  # x
+        #     0.4977,  # y
+        #     -0.0444, # z
+        #     1.3893,  # x^2
+        #     0.3182,  # x*y
+        #     0.1925,  # x*z
+        #     0.4038,  # y^2
+        #     0.7556,  # y*z
+        #     1.2154   # z^2
+        # ]])
+
     def forward(self, state):
         batch_size = state.shape[0]
         phi_xs = torch.zeros((batch_size, self.phi_state_dim))
